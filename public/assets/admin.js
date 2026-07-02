@@ -1,0 +1,458 @@
+/* =====================================================
+   FireCheck — หน้าแอดมิน (หัวหน้าสถานี)
+   แท็บ: แดชบอร์ด / รายงาน / วันหยุด / เจ้าหน้าที่ / ตั้งค่า
+   ===================================================== */
+
+const C_OK = '#2e7d32', C_LATE = '#d97706', C_LEAVE = '#2563eb', C_ABSENT = '#dc2626';
+const CHART_BASE = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { position: 'bottom', labels: { font: { family: 'Kanit', size: 12 }, boxWidth: 12, boxHeight: 12, usePointStyle: true } } },
+};
+
+const Admin = {
+  tab: 'dash',
+  charts: [],
+
+  async enter() {
+    clearInterval(App.clockTimer);
+    $app().innerHTML = `<div class="shell shell-wide">
+      <div class="topbar">
+        <div class="avatar">🔥</div>
+        <div><div class="t-title">FireCheck — หัวหน้าสถานี</div>
+        <div class="t-sub" id="tbSub">สถานีควบคุมไฟป่าสลักพระ-เอราวัณ</div></div>
+        <div class="t-right">
+          <button class="icon-btn" onclick="Admin.refresh()" title="รีเฟรช">⟳</button>
+          <button class="icon-btn" onclick="App.logout()" title="ออกจากระบบ">⏻</button>
+        </div>
+      </div>
+      <div id="view"></div>
+    </div>
+    <nav class="bottom-nav wide">
+      ${[['dash', '📊', 'แดชบอร์ด'], ['report', '📋', 'รายงาน'], ['dayoff', '🗓️', 'วันหยุด'], ['users', '👥', 'เจ้าหน้าที่'], ['settings', '⚙️', 'ตั้งค่า']]
+        .map(([v, i, l]) => `<button class="nav-item" data-v="${v}" onclick="Admin.go('${v}')"><span class="ni">${i}</span>${l}</button>`).join('')}
+    </nav>`;
+    await this.refresh();
+  },
+
+  async refresh() {
+    App.adminData = await App.api('admin_data');
+    byId('tbSub').textContent = App.adminData.settings.station_name;
+    this.go(this.tab);
+  },
+
+  go(tab) {
+    this.tab = tab;
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.v === tab));
+    this.charts.forEach(c => c.destroy()); this.charts = [];
+    ({ dash: () => this.vDash(), report: () => this.vReport(), dayoff: () => this.vDayoff(),
+       users: () => this.vUsers(), settings: () => this.vSettings() })[tab]();
+  },
+
+  // =====================================================
+  // แดชบอร์ด
+  // =====================================================
+  vDash() {
+    const d = App.adminData, c = d.today.counts;
+
+    // แถบแจ้งเตือน
+    let alerts = '';
+    if (d.pending_users.length) alerts += `<div class="alert-bar">👤 มีเจ้าหน้าที่รออนุมัติ <b>${d.pending_users.length} คน</b>
+      <button class="btn btn-sm btn-primary" onclick="Admin.go('users')">ไปอนุมัติ</button></div>`;
+    if (d.over_quota.length) alerts += `<div class="alert-bar">⚠️ วันหยุดเกินโควต้า: <b>${d.over_quota.map(o =>
+      `${esc(o.name)} (${o.n} วัน เดือน ${thaiMonth(o.ym)})`).join(', ')}</b>
+      <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ดูปฏิทิน</button></div>`;
+
+    const holiday = d.today.is_holiday;
+    byId('view').innerHTML = `
+      ${alerts}
+      <div class="card" style="padding:14px 18px"><div class="row">
+        <div><div style="font-size:16px;font-weight:500">📍 วันนี้ — ${esc(d.today.thai_date)}</div>
+        <div class="tiny">${holiday ? 'วันอาทิตย์ วันหยุดสถานี' : 'อัปเดตล่าสุด ' + new Date().toTimeString().substr(0, 5) + ' น.'}</div></div>
+      </div></div>
+      ${holiday ? '<div class="card empty"><span class="e-ico">🌴</span>วันนี้วันหยุดสถานี ไม่มีการเช็คชื่อ</div>' : `
+      <div class="grid-4">
+        <div class="kpi k-ok"><div class="k-label">🟢 มาแล้ว</div><div class="k-value">${c.present}<span style="font-size:15px;color:var(--ink-3)">/${c.total}</span></div>
+          <div class="k-sub">ตรงเวลา ${c.ontime} คน</div></div>
+        <div class="kpi k-late"><div class="k-label">🟡 มาสาย</div><div class="k-value">${c.late}</div><div class="k-sub">หลัง ${d.settings.late_cutoff} น.</div></div>
+        <div class="kpi k-leave"><div class="k-label">🔵 ลา/หยุด</div><div class="k-value">${c.leave}</div><div class="k-sub">แจ้งล่วงหน้า</div></div>
+        <div class="kpi k-absent"><div class="k-label">🔴 ยังไม่มา</div><div class="k-value">${c.absent}</div><div class="k-sub">ไม่เช็คชื่อ+ไม่แจ้งลา</div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h3>👥 รายชื่อวันนี้</h3>
+        <div class="roster">${d.today.roster.map(r => `
+          <div class="roster-cell s-${r.state}">
+            <span class="dot dot-${r.state === 'ontime' ? 'ok' : r.state}"></span>
+            <div><div class="rc-name">${esc(r.name)}</div>
+            <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
+              r.state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
+          </div>`).join('')}</div>
+      </div>`}
+
+      <div class="grid-2-lg">
+        <div class="card"><h3>📈 แนวโน้ม 14 วันทำการ</h3><div class="chart-box"><canvas id="chTrend"></canvas></div></div>
+        <div class="card"><h3>📅 สถิติตามวันในสัปดาห์ <span class="h-right">8 สัปดาห์ล่าสุด</span></h3><div class="chart-box"><canvas id="chWeekday"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
+        ${this.rankingHtml(d.ranking)}
+      </div>
+
+      <div class="grid-2-lg">
+        <div class="card"><h3>⚖️ สัปดาห์นี้ vs สัปดาห์ก่อน</h3>${this.weekCompareHtml(d.week_compare)}</div>
+        <div class="card"><h3>🕐 กิจกรรมล่าสุด</h3>
+          ${d.activity.length ? d.activity.map(a => `<div class="feed-item"><span>${a.icon}</span><span>${esc(a.text)}</span>
+            <span class="f-time">${a.ts.substr(5, 11)}</span></div>`).join('') : '<div class="empty">ยังไม่มีกิจกรรม</div>'}
+        </div>
+      </div>`;
+
+    this.drawTrend(d.trend14);
+    this.drawWeekday(d.weekday);
+  },
+
+  rankingHtml(ranking) {
+    if (!ranking.length) return '<div class="empty"><span class="e-ico">👥</span>ยังไม่มีเจ้าหน้าที่ในระบบ</div>';
+    const scored = ranking.filter(r => r.score !== null);
+    const medals = ['🥇', '🥈', '🥉'];
+    const top = scored.slice(0, 3).map((r, i) => `
+      <div class="rank-card"><div class="r-medal">${medals[i]}</div>
+        <div class="r-name">${esc(r.name)}</div><div class="r-score">${r.score}</div>
+        <div class="tiny">คะแนน</div></div>`).join('');
+    return `${top ? `<div class="rank-top">${top}</div>` : ''}
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>#</th><th>ชื่อ</th><th class="num">คะแนน</th><th class="num">ต้องมา</th><th class="num">มา</th>
+        <th class="num">ตรงเวลา</th><th class="num">สาย</th><th class="num">ลา</th><th class="num">ขาด</th><th class="num">เฉลี่ยเข้า</th></tr>
+        ${ranking.map((r, i) => `<tr>
+          <td>${i + 1}</td><td><b>${esc(r.name)}</b><div class="tiny">${esc(r.position || '')}</div></td>
+          <td class="num"><b style="color:${r.score === null ? 'var(--ink-3)' : r.score >= 80 ? C_OK : r.score >= 50 ? C_LATE : C_ABSENT}">${r.score ?? '—'}</b></td>
+          <td class="num">${r.planned}</td><td class="num">${r.present}</td>
+          <td class="num" style="color:${C_OK}">${r.ontime}</td><td class="num" style="color:${C_LATE}">${r.late}</td>
+          <td class="num" style="color:${C_LEAVE}">${r.leave}</td><td class="num" style="color:${C_ABSENT}">${r.absent}</td>
+          <td class="num">${r.avg_in ?? '—'}</td></tr>`).join('')}
+      </table></div>`;
+  },
+
+  weekCompareHtml(w) {
+    const diff = (a, b, invert = false) => {
+      const d = a - b;
+      if (!d) return '<span class="tiny">เท่าเดิม</span>';
+      const good = invert ? d < 0 : d > 0;
+      return `<span style="color:${good ? C_OK : C_ABSENT};font-size:13px">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
+    };
+    return `<div class="grid-4" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="k-label">มาทำงาน</div><div class="k-value">${w.this.total}</div><div class="k-sub">ก่อนหน้า ${w.last.total} ${diff(w.this.total, w.last.total)}</div></div>
+      <div class="kpi k-ok"><div class="k-label">ตรงเวลา</div><div class="k-value">${w.this.ontime}</div><div class="k-sub">ก่อนหน้า ${w.last.ontime} ${diff(w.this.ontime, w.last.ontime)}</div></div>
+      <div class="kpi k-late"><div class="k-label">สาย</div><div class="k-value">${w.this.late}</div><div class="k-sub">ก่อนหน้า ${w.last.late} ${diff(w.this.late, w.last.late, true)}</div></div>
+    </div>`;
+  },
+
+  drawTrend(trend) {
+    const el = byId('chTrend'); if (!el) return;
+    const mk = (label, key, color) => ({
+      label, data: trend.map(t => t[key]), backgroundColor: color,
+      borderColor: '#fff', borderWidth: 1, borderRadius: 4, stack: 's', maxBarThickness: 26,
+    });
+    this.charts.push(new Chart(el, {
+      type: 'bar',
+      data: { labels: trend.map(t => t.label), datasets: [
+        mk('ตรงเวลา', 'ontime', C_OK), mk('สาย', 'late', C_LATE),
+        mk('ลา/หยุด', 'leave', C_LEAVE), mk('ขาด', 'absent', C_ABSENT)] },
+      options: { ...CHART_BASE, scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Kanit', size: 10 } } },
+        y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Kanit', size: 11 } }, grid: { color: '#eef1ec' } } } },
+    }));
+  },
+
+  drawWeekday(weekday) {
+    const el = byId('chWeekday'); if (!el) return;
+    this.charts.push(new Chart(el, {
+      type: 'bar',
+      data: { labels: weekday.map(w => w.day), datasets: [
+        { label: 'ตรงเวลา', data: weekday.map(w => w.ontime), backgroundColor: C_OK, borderRadius: 4, maxBarThickness: 22 },
+        { label: 'สาย', data: weekday.map(w => w.late), backgroundColor: C_LATE, borderRadius: 4, maxBarThickness: 22 }] },
+      options: { ...CHART_BASE, scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Kanit', size: 12 } } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Kanit', size: 11 } }, grid: { color: '#eef1ec' } } } },
+    }));
+  },
+
+  // =====================================================
+  // รายงานย้อนหลัง
+  // =====================================================
+  async vReport() {
+    const users = (await App.api('users_list')).users.filter(u => u.role === 'staff');
+    const mStart = todayStr().substr(0, 8) + '01';
+    byId('view').innerHTML = `
+      <div class="card"><h3>📋 รายงานการเช็คชื่อ</h3>
+        <div class="grid-2" style="grid-template-columns:1fr 1fr auto auto;align-items:end;gap:8px">
+          <div class="field" style="margin:0"><label>จาก</label><input type="date" class="input" id="rpFrom" value="${mStart}"></div>
+          <div class="field" style="margin:0"><label>ถึง</label><input type="date" class="input" id="rpTo" value="${todayStr()}"></div>
+          <div class="field" style="margin:0"><label>คน</label><select class="select" id="rpUser">
+            <option value="0">ทุกคน</option>${users.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
+          <button class="btn btn-primary" onclick="Admin.loadReport()">ดู</button>
+        </div>
+      </div>
+      <div id="rpOut"></div>`;
+    this.loadReport();
+  },
+
+  async loadReport() {
+    byId('rpOut').innerHTML = '<div class="card muted">กำลังโหลด...</div>';
+    const d = await App.api('report_range', { from: byId('rpFrom').value, to: byId('rpTo').value, user_id: +byId('rpUser').value });
+    this.lastReport = d;
+    const ontime = d.attendance.filter(a => !+a.late).length;
+    byId('rpOut').innerHTML = `
+      <div class="grid-4">
+        <div class="kpi"><div class="k-label">บันทึกทั้งหมด</div><div class="k-value">${d.attendance.length}</div></div>
+        <div class="kpi k-ok"><div class="k-label">ตรงเวลา</div><div class="k-value">${ontime}</div></div>
+        <div class="kpi k-late"><div class="k-label">สาย</div><div class="k-value">${d.attendance.length - ontime}</div></div>
+        <div class="kpi k-leave"><div class="k-label">ลา/หยุด</div><div class="k-value">${d.day_offs.length}</div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>บันทึกเช็คชื่อ <span class="h-right"><button class="link-btn" onclick="Admin.exportCsv()">⬇ ดาวน์โหลด CSV</button></span></h3>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>วันที่</th><th>ชื่อ</th><th>เวลาเข้า</th><th>สถานะ</th><th class="num">ระยะ (ม.)</th><th>รายงาน</th></tr>
+          ${d.attendance.map(a => `<tr>
+            <td>${thaiDate(a.work_date)}</td><td>${esc(a.name)}</td>
+            <td>${a.time_in.substr(11, 5)}${a.time_out ? ' – ' + a.time_out.substr(11, 5) : ''}</td>
+            <td><span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span></td>
+            <td class="num">${a.distance_m ?? '—'}</td>
+            <td>${a.report_text ? `<button class="link-btn" onclick="Admin.showReport(${a.id})">ดู</button>` : '—'}</td></tr>`).join('')
+            || '<tr><td colspan="6" class="empty">ไม่มีข้อมูลช่วงนี้</td></tr>'}
+        </table></div>
+      </div>
+      ${d.day_offs.length ? `<div class="card"><h3>วันลา/หยุดในช่วงนี้</h3>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>วันที่</th><th>ชื่อ</th><th>ประเภท</th><th>หมายเหตุ</th></tr>
+          ${d.day_offs.map(o => `<tr><td>${thaiDate(o.off_date)}</td><td>${esc(o.name)}</td>
+            <td><span class="chip chip-leave">${offLabel(o.type)}</span>${+o.over_quota ? ' ⚠️' : ''}</td><td>${esc(o.note || '—')}</td></tr>`).join('')}
+        </table></div></div>` : ''}`;
+  },
+
+  showReport(id) {
+    const a = this.lastReport.attendance.find(x => x.id == id);
+    if (!a) return;
+    const photos = JSON.parse(a.photos_json || '[]');
+    Swal.fire({
+      title: esc(a.name) + ' — ' + thaiDate(a.work_date),
+      html: `<div style="text-align:left;font-family:Kanit;font-weight:300;white-space:pre-wrap">${esc(a.report_text)}</div>
+        ${photos.map(p => `<img src="photo.php?p=${encodeURIComponent(p)}&token=${App.token}" style="max-width:100%;border-radius:10px;margin-top:8px">`).join('')}
+        ${a.selfie_path ? `<div class="tiny" style="margin-top:8px">เซลฟี่ตอนเช็คอิน:</div><img src="photo.php?p=${encodeURIComponent(a.selfie_path)}&token=${App.token}" style="max-width:50%;border-radius:10px">` : ''}`,
+      confirmButtonText: 'ปิด', width: 560,
+    });
+  },
+
+  exportCsv() {
+    const d = this.lastReport;
+    const rows = [['วันที่', 'ชื่อ', 'เวลาเข้า', 'เวลาออก', 'สถานะ', 'ระยะ_เมตร', 'รายงาน']];
+    d.attendance.forEach(a => rows.push([a.work_date, a.name, a.time_in.substr(11, 8),
+      a.time_out ? a.time_out.substr(11, 8) : '', +a.late ? 'สาย' : 'ตรงเวลา', a.distance_m ?? '', (a.report_text || '').replace(/\n/g, ' ')]));
+    rows.push([]); rows.push(['วันที่', 'ชื่อ', 'ประเภทลา', 'หมายเหตุ']);
+    d.day_offs.forEach(o => rows.push([o.off_date, o.name, offLabel(o.type), o.note || '']));
+    const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `firecheck_${d.from}_${d.to}.csv`;
+    a.click();
+  },
+
+  // =====================================================
+  // วันหยุด (มุมมองแอดมิน)
+  // =====================================================
+  aYm: null,
+  async vDayoff() {
+    this.aYm = this.aYm || ymNow();
+    const [d, ul] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list')]);
+    const staff = ul.users.filter(u => u.role === 'staff' && u.status === 'active');
+    const byDate = {};
+    d.day_offs.forEach(o => (byDate[o.off_date] = byDate[o.off_date] || []).push(o));
+
+    byId('view').innerHTML = `
+      <div class="card">
+        <div class="cal-head">
+          <button class="cal-nav" onclick="Admin.aMove(-1)">‹</button>
+          <span class="cal-title">ปฏิทินวันหยุด — ${thaiMonth(this.aYm)}</span>
+          <button class="cal-nav" onclick="Admin.aMove(1)">›</button>
+        </div>
+        <div id="aCalList">${Object.keys(byDate).sort().map(ds => `
+          <div class="list-row"><span class="dot dot-leave"></span>
+            <div class="lr-main"><div class="lr-title">${thaiDate(ds)}</div>
+              <div class="lr-sub">${byDate[ds].map(o =>
+                `${esc(o.name)} (${offLabel(o.type)})${+o.over_quota ? ' ⚠️' : ''}
+                 <button class="link-btn" style="color:var(--absent);font-size:12px" onclick="Admin.delOff(${o.id})">ลบ</button>`).join(' • ')}</div></div>
+            <span class="chip chip-leave">${byDate[ds].length} คน</span>
+          </div>`).join('') || '<div class="empty"><span class="e-ico">🌿</span>เดือนนี้ไม่มีวันหยุด/ลา</div>'}
+        </div>
+      </div>
+      <div class="card"><h3>➕ บันทึกลาแทนเจ้าหน้าที่ <span class="h-right">เช่น โทรมาลาป่วยตอนเช้า</span></h3>
+        <div class="field"><label>เจ้าหน้าที่</label><select class="select" id="aoUser">
+          ${staff.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
+        <div class="grid-2">
+          <div class="field"><label>วันที่</label><input type="date" class="input" id="aoDate" value="${todayStr()}"></div>
+          <div class="field"><label>ประเภท</label><select class="select" id="aoType">
+            <option value="sick">ลาป่วย</option><option value="personal">ลากิจ</option><option value="dayoff">วันหยุด (นับโควต้า)</option></select></div>
+        </div>
+        <div class="field"><label>หมายเหตุ</label><input class="input" id="aoNote" maxlength="255"></div>
+        <button class="btn btn-primary btn-block" onclick="Admin.addOff()">บันทึก</button>
+      </div>`;
+  },
+
+  aMove(dir) {
+    const [Y, M] = this.aYm.split('-').map(Number);
+    const dt = new Date(Y, M - 1 + dir, 1);
+    this.aYm = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    this.vDayoff();
+  },
+
+  async addOff() {
+    const d = await App.api('dayoff_admin_add', {
+      user_id: +byId('aoUser').value, dates: [byId('aoDate').value],
+      type: byId('aoType').value, note: byId('aoNote').value.trim(),
+    });
+    toast(d.message);
+    this.vDayoff();
+  },
+
+  async delOff(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบรายการลานี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    await App.api('dayoff_admin_del', { id });
+    toast('ลบแล้ว');
+    this.vDayoff();
+  },
+
+  // =====================================================
+  // เจ้าหน้าที่
+  // =====================================================
+  async vUsers() {
+    const d = await App.api('users_list');
+    const pending = d.users.filter(u => u.status === 'pending');
+    const staff = d.users.filter(u => u.role === 'staff' && u.status !== 'pending');
+
+    byId('view').innerHTML = `
+      ${pending.length ? `<div class="card" style="border:1.5px solid #fed7aa"><h3>⏳ รออนุมัติ (${pending.length})</h3>
+        ${pending.map(u => `<div class="list-row">
+          <div class="lr-main"><div class="lr-title">${esc(u.name)}</div><div class="lr-sub">@${esc(u.username)} ${esc(u.position || '')}</div></div>
+          <button class="btn btn-primary btn-sm" onclick="Admin.userAct('user_approve',${u.id})">อนุมัติ</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.userAct('user_reject',${u.id})">ปฏิเสธ</button>
+        </div>`).join('')}</div>` : ''}
+
+      <div class="card"><h3>➕ เพิ่มเจ้าหน้าที่ใหม่</h3>
+        <div class="grid-2">
+          <div class="field"><label>ชื่อผู้ใช้ (a-z, 0-9)</label><input class="input" id="nuUser" autocapitalize="none"></div>
+          <div class="field"><label>ชื่อ-สกุล</label><input class="input" id="nuName"></div>
+        </div>
+        <div class="field"><label>ตำแหน่ง</label><input class="input" id="nuPos" placeholder="เช่น พนักงานดับไฟป่า"></div>
+        <button class="btn btn-primary btn-block" onclick="Admin.addUser()">เพิ่ม</button>
+        <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งรหัสผ่าน → พี่กดอนุมัติ</div>
+      </div>
+
+      <div class="card"><h3>👥 เจ้าหน้าที่ทั้งหมด (${staff.length})</h3>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>ชื่อ</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
+          ${staff.map(u => `<tr>
+            <td><b>${esc(u.name)}</b><div class="tiny">@${esc(u.username)} ${esc(u.position || '')}</div></td>
+            <td>${{ active: '<span class="chip chip-ok">ใช้งาน</span>', unregistered: '<span class="chip chip-plain">ยังไม่ลงทะเบียน</span>',
+                   disabled: '<span class="chip chip-absent">ปิดใช้งาน</span>' }[u.status] || u.status}</td>
+            <td class="num">${u.quota_used}/${d.quota_max}</td>
+            <td style="white-space:nowrap;text-align:right">
+              ${u.status === 'active' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_reset',${u.id},'รีเซ็ตรหัสผ่าน? เจ้าตัวต้องลงทะเบียนใหม่')">รีเซ็ตรหัส</button>
+                <button class="btn btn-danger-ghost btn-sm" onclick="Admin.userAct('user_disable',${u.id},'ปิดใช้งานบัญชีนี้?')">ปิด</button>` : ''}
+              ${u.status === 'disabled' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_enable',${u.id})">เปิดใช้งาน</button>` : ''}
+            </td></tr>`).join('') || '<tr><td colspan="4" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
+        </table></div>
+      </div>`;
+  },
+
+  async addUser() {
+    const d = await App.api('user_add', { username: byId('nuUser').value.trim(), name: byId('nuName').value.trim(), position: byId('nuPos').value.trim() });
+    await Swal.fire({ icon: 'success', title: 'เพิ่มแล้ว', text: d.message, confirmButtonText: 'ตกลง' });
+    this.vUsers();
+  },
+
+  async userAct(action, id, confirmMsg) {
+    if (confirmMsg) {
+      const c = await Swal.fire({ icon: 'warning', title: confirmMsg, showCancelButton: true, confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' });
+      if (!c.isConfirmed) return;
+    }
+    const d = await App.api(action, { id });
+    toast(d.message);
+    this.vUsers();
+  },
+
+  // =====================================================
+  // ตั้งค่า
+  // =====================================================
+  async vSettings() {
+    const s = (await App.api('settings_get')).settings;
+    const T = (k, label, sub) => `<div class="setting-row">
+      <div class="sr-main"><div class="sr-title">${label}</div>${sub ? `<div class="sr-sub">${sub}</div>` : ''}</div>
+      <label class="switch"><input type="checkbox" id="st_${k}" ${s[k] === '1' ? 'checked' : ''}><span class="sl"></span></label></div>`;
+    const I = (k, label, type = 'text', extra = '') => `<div class="field"><label>${label}</label>
+      <input class="input" id="st_${k}" type="${type}" value="${esc(s[k])}" ${extra}></div>`;
+
+    byId('view').innerHTML = `
+      <div class="card"><h3>🎚️ สวิตช์ฟีเจอร์</h3>
+        ${T('selfie_required', '🤳 บังคับเซลฟี่ตอนเช็คอิน', 'โค้ดพร้อมแล้ว เปิดเมื่อไหร่ก็ได้')}
+        ${T('checkout_enabled', '📝 เช็คเอาท์ + รายงานผลงานเย็น', 'เปิดแล้วคะแนนความขยันเปลี่ยนเป็นสูตรเต็ม 30/30/20/20')}
+        ${T('gps_enforce', '📍 บังคับ GPS ในรัศมีสถานี', 'ปิดชั่วคราวได้ตอนทดสอบระบบ')}
+        ${T('sunday_off', '🌴 วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด')}
+      </div>
+      <div class="card"><h3>⏰ เวลา</h3>
+        <div class="grid-2">
+          ${I('checkin_open', 'เปิดเช็คอิน (น.)', 'time')}${I('late_cutoff', 'หลังเวลานี้ = สาย', 'time')}
+          ${I('checkout_open', 'เปิดส่งรายงาน', 'time')}${I('report_cutoff', 'หลังเวลานี้ = รายงานช้า', 'time')}
+        </div>
+      </div>
+      <div class="card"><h3>📍 พิกัดสถานี</h3>
+        <div class="grid-2">${I('gps_lat', 'ละติจูด')}${I('gps_lng', 'ลองจิจูด')}</div>
+        <div class="grid-2">${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}${I('off_quota_month', 'โควต้าวันหยุด (วัน/เดือน)', 'number')}</div>
+        <button class="btn btn-ghost btn-sm" onclick="Admin.useHere()">📌 ใช้ตำแหน่งปัจจุบันของฉัน</button>
+      </div>
+      <div class="card"><h3>🏷️ ทั่วไป</h3>${I('station_name', 'ชื่อสถานี')}
+        <div class="setting-row" style="border:none;padding-top:4px">
+          <div class="sr-main"><div class="sr-title">🔑 เปลี่ยนรหัสผ่านแอดมิน</div>
+          <div class="sr-sub">ควรเปลี่ยนทันทีหลัง deploy ครั้งแรก</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="App.changePass()">เปลี่ยน</button></div>
+      </div>
+      <div class="card"><h3>💬 LINE Bot</h3>
+        ${I('line_token', 'Channel Access Token')}${I('line_group_id', 'Group ID')}
+        <div class="row" style="gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('morning')">ทดสอบสรุปเช้า</button>
+          <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('evening')">ทดสอบสรุปเย็น</button>
+        </div>
+        <div class="tiny" style="margin-top:8px">สรุปอัตโนมัติ: ตั้ง cron เรียก <code>php cron/report.php morning</code> (08:30) และ <code>evening</code> (17:30) — ดูวิธีใน README</div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
+  },
+
+  useHere() {
+    getPosition().then(p => {
+      byId('st_gps_lat').value = p.lat.toFixed(6);
+      byId('st_gps_lng').value = p.lng.toFixed(6);
+      toast('ใส่พิกัดปัจจุบันแล้ว อย่าลืมกดบันทึก');
+    }).catch(() => toast('หาตำแหน่งไม่ได้', 'error'));
+  },
+
+  async saveSettings() {
+    const keys = ['selfie_required', 'checkout_enabled', 'gps_enforce', 'sunday_off',
+      'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
+      'gps_lat', 'gps_lng', 'gps_radius_m', 'off_quota_month', 'station_name', 'line_token', 'line_group_id'];
+    const settings = {};
+    keys.forEach(k => {
+      const el = byId('st_' + k);
+      settings[k] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+    });
+    const d = await App.api('settings_save', { settings });
+    toast(d.message);
+    App.adminData = await App.api('admin_data');
+  },
+
+  async testLine(type) {
+    const d = await App.api('cron_report&type=' + type + '&force=1', {});
+    if (d.sent) toast('ส่งเข้ากลุ่ม LINE แล้ว');
+    else Swal.fire({ icon: 'info', title: d.sent === false ? 'ยังส่งไม่ได้' : 'ตัวอย่างข้อความ',
+      html: `<div class="tiny" style="margin-bottom:6px">${esc(d.detail || d.skipped || '')}</div>
+        <pre style="text-align:left;font-family:Kanit;font-size:13px;white-space:pre-wrap;background:#f4f6f2;padding:12px;border-radius:10px">${esc(d.preview || '')}</pre>`,
+      confirmButtonText: 'ปิด', width: 520 });
+  },
+};

@@ -40,9 +40,15 @@ function save_setting(string $key, string $value): void {
         ->execute([$key, $value]);
 }
 
-/** สร้างบัญชีแอดมินเริ่มต้นถ้ายังไม่มี admin ที่ active */
+/** สร้างบัญชีแอดมินเริ่มต้นถ้ายังไม่มี admin — ถ้ายังไม่มีตาราง (deploy ครั้งแรก) รัน schema.sql ให้อัตโนมัติ */
 function ensure_admin(): void {
-    $n = db()->query("SELECT COUNT(*) c FROM users WHERE role='admin'")->fetch()['c'];
+    try {
+        $n = db()->query("SELECT COUNT(*) c FROM users WHERE role='admin'")->fetch()['c'];
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+        $n = 0;
+    }
     if ((int)$n === 0) {
         db()->prepare("INSERT INTO users (username, password_hash, name, role, status)
                        VALUES (?, ?, ?, 'admin', 'active')")
