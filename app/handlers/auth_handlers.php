@@ -1,0 +1,64 @@
+<?php
+// =====================================================
+// FireCheck — Auth handlers
+// =====================================================
+
+function h_login(): never {
+    $username = trim((string)param('username'));
+    $password = (string)param('password');
+    if ($username === '' || $password === '') fail('กรอกชื่อผู้ใช้และรหัสผ่าน');
+
+    $st = db()->prepare('SELECT * FROM users WHERE username = ?');
+    $st->execute([$username]);
+    $u = $st->fetch();
+
+    if (!$u || !$u['password_hash'] || !password_verify($password, $u['password_hash'])) {
+        fail('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 401);
+    }
+    if ($u['status'] === 'pending')  fail('บัญชีรอผู้ดูแลระบบอนุมัติ', 403);
+    if ($u['status'] !== 'active')   fail('บัญชีนี้ถูกปิดใช้งาน', 403);
+
+    ok(['token' => issue_token((int)$u['id']), 'user' => public_user($u)]);
+}
+
+function h_logout(): never {
+    $t = auth_token();
+    if ($t) db()->prepare('DELETE FROM auth_tokens WHERE token = ?')->execute([$t]);
+    ok();
+}
+
+function h_me(): never {
+    ok(['user' => public_user(require_user())]);
+}
+
+/** รายชื่อที่แอดมินเพิ่มไว้แต่ยังไม่ตั้งรหัสผ่าน — สำหรับหน้าลงทะเบียน (public) */
+function h_register_list(): never {
+    $rows = db()->query("SELECT id, name, position FROM users WHERE status = 'unregistered' ORDER BY name")->fetchAll();
+    ok(['users' => $rows]);
+}
+
+function h_register(): never {
+    $userId   = (int)param('user_id');
+    $password = (string)param('password');
+    if (mb_strlen($password) < 6) fail('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');
+
+    $st = db()->prepare("SELECT id FROM users WHERE id = ? AND status = 'unregistered'");
+    $st->execute([$userId]);
+    if (!$st->fetch()) fail('ไม่พบบัญชีนี้ หรือลงทะเบียนไปแล้ว');
+
+    db()->prepare("UPDATE users SET password_hash = ?, status = 'pending' WHERE id = ?")
+        ->execute([password_hash($password, PASSWORD_DEFAULT), $userId]);
+    ok(['message' => 'ลงทะเบียนแล้ว รอผู้ดูแลระบบอนุมัติ']);
+}
+
+function h_change_password(): never {
+    $u = require_user();
+    $old = (string)param('old_password');
+    $new = (string)param('new_password');
+    if (mb_strlen($new) < 6) fail('รหัสผ่านใหม่ต้องยาวอย่างน้อย 6 ตัวอักษร');
+    if (!password_verify($old, $u['password_hash'])) fail('รหัสผ่านเดิมไม่ถูกต้อง');
+
+    db()->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+        ->execute([password_hash($new, PASSWORD_DEFAULT), $u['id']]);
+    ok(['message' => 'เปลี่ยนรหัสผ่านแล้ว']);
+}

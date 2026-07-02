@@ -1,0 +1,9 @@
+.env
+*.env
+config.env
+credentials.json
+token.pkl
+*.csv
+public/uploads/*
+!public/uploads/.gitkeep
+.DS_Store
