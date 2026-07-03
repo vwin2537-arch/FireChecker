@@ -1,6 +1,6 @@
 # PROGRESS.md — FireCheck
 
-## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://firecheck-app-production.up.railway.app
+## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
 อัปเดตล่าสุด: 3 ก.ค. 2026 (push GitHub + deploy Railway สำเร็จ)
 
