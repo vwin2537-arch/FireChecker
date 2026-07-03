@@ -71,6 +71,30 @@ CREATE TABLE IF NOT EXISTS line_logs (
   UNIQUE KEY uq_type_date (report_type, report_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- คลังความรู้ (โซนพัฒนาตัวเอง เฟส 1) ----------
+CREATE TABLE IF NOT EXISTS library_items (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  title       VARCHAR(200) NOT NULL,
+  description VARCHAR(500) NOT NULL DEFAULT '',
+  category    VARCHAR(20)  NOT NULL DEFAULT 'doc',   -- doc/slide/news/video/manual
+  url         VARCHAR(500) NOT NULL,                 -- ลิงก์ Drive/ภายนอก (http/https เท่านั้น)
+  file_id     VARCHAR(80)  NOT NULL DEFAULT '',      -- Drive file id (ดึง thumbnail); ว่าง = ไม่มีรูปปก
+  is_active   TINYINT(1)   NOT NULL DEFAULT 1,       -- 0 = ซ่อน (soft delete)
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS library_reads (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  item_id   INT NOT NULL,
+  user_id   INT NOT NULL,
+  viewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  acked_at  DATETIME NULL,                           -- เวลาที่กด "รับทราบ" (null = แค่เปิด ยังไม่รับทราบ)
+  UNIQUE KEY uq_item_user (item_id, user_id),
+  KEY idx_item (item_id),
+  FOREIGN KEY (item_id) REFERENCES library_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- ค่าตั้งต้น (แก้ได้จากหน้าตั้งค่าแอดมิน) ----------
 INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('station_name',     'สถานีควบคุมไฟป่าสลักพระ-เอราวัณ'),

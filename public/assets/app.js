@@ -134,7 +134,7 @@ const App = {
       <div id="view"></div>
     </div>
     <nav class="bottom-nav">
-      ${[['home', '🏠', 'หน้าหลัก'], ['dayoff', '🗓️', 'วันหยุด'], ['history', '📖', 'ประวัติ'], ['profile', '👤', 'โปรไฟล์']]
+      ${[['home', '🏠', 'หน้าหลัก'], ['dayoff', '🗓️', 'วันหยุด'], ['develop', '📚', 'พัฒนาตัวเอง'], ['history', '📖', 'ประวัติ'], ['profile', '👤', 'โปรไฟล์']]
         .map(([v, i, l]) => `<button class="nav-item" data-v="${v}" onclick="App.go('${v}')"><span class="ni">${i}</span>${l}</button>`).join('')}
     </nav>`;
     await this.refreshStaff();
@@ -142,14 +142,25 @@ const App = {
 
   async refreshStaff() {
     this.data = await this.api('app_data');
+    this.paintNavBadge();
     this.go(this.view || 'home');
+  },
+
+  /** ป้ายจำนวนเอกสารใหม่บนแท็บพัฒนาตัวเอง */
+  paintNavBadge() {
+    const ni = document.querySelector('.nav-item[data-v="develop"] .ni');
+    if (!ni) return;
+    ni.querySelector('.ni-badge')?.remove();
+    const n = this.data?.library_unread || 0;
+    if (n) ni.insertAdjacentHTML('beforeend', `<span class="ni-badge">${n > 9 ? '9+' : n}</span>`);
   },
 
   go(v) {
     this.view = v;
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.v === v));
     clearInterval(this.clockTimer);
-    ({ home: () => this.vHome(), dayoff: () => this.vDayoff(), history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
+    ({ home: () => this.vHome(), dayoff: () => this.vDayoff(), develop: () => this.vDevelop(),
+       history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
   },
 
   // ---------- หน้าหลัก ----------
@@ -192,6 +203,13 @@ const App = {
         <div class="clock-date">${esc(t.thai_date)}</div>
         ${stateHtml}
       </div>
+
+      ${d.library_unread ? `<div class="card lib-nudge" onclick="App.go('develop')">
+        <span class="ln-ico">📚</span>
+        <div class="ln-main"><div class="ln-title">มีเอกสารใหม่ ${d.library_unread} รายการ</div>
+        <div class="ln-sub">แตะเพื่อเข้าคลังความรู้ พัฒนาตัวเอง</div></div>
+        <span class="ln-arrow">›</span>
+      </div>` : ''}
 
       <div class="card">
         <h3>🗓️ โควต้าวันหยุดเดือนนี้ <span class="h-right">${q.used}/${q.max} วัน</span></h3>
@@ -425,6 +443,83 @@ const App = {
     this.vDayoff();
   },
 
+  // ---------- พัฒนาตัวเอง (hub) ----------
+  libItems: null,
+  libFilter: 'all',
+
+  async vDevelop() {
+    byId('view').innerHTML = `
+      <div class="seg" id="devSeg">
+        <button class="active">📚 คลังความรู้</button>
+        <button disabled title="เร็วๆ นี้">📝 แบบทดสอบ</button>
+        <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
+      </div>
+      <div id="libBox"><div class="card muted">กำลังโหลด...</div></div>`;
+    const d = await this.api('library_list');
+    this.libItems = d.items;
+    this.renderLib();
+  },
+
+  renderLib() {
+    const items = this.libFilter === 'all' ? this.libItems : this.libItems.filter(i => i.category === this.libFilter);
+    const chip = (v, l) => `<button class="lib-chip ${this.libFilter === v ? 'active' : ''}" onclick="App.libSetFilter('${v}')">${l}</button>`;
+    const chips = `<div class="lib-chips">${chip('all', 'ทั้งหมด')}${Object.entries(LIB_CAT).map(([v, c]) => chip(v, c.icon + ' ' + c.label)).join('')}</div>`;
+
+    if (!this.libItems.length) {
+      byId('libBox').innerHTML = chips + '<div class="card empty"><span class="e-ico">📚</span>ยังไม่มีเอกสารในคลัง<br>หัวหน้าสถานีจะเพิ่มให้เร็วๆ นี้ค่ะ</div>';
+      return;
+    }
+    const cards = items.map(it => {
+      const cat = LIB_CAT[it.category] || { icon: '📄', label: it.category };
+      const thumb = it.file_id
+        ? `<img class="lib-img" src="https://drive.google.com/thumbnail?id=${encodeURIComponent(it.file_id)}&sz=w400" alt=""
+             onerror="this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<span class=&quot;lib-ico&quot;>${cat.icon}</span>'">`
+        : `<span class="lib-ico">${cat.icon}</span>`;
+      const done = it.acked_at ? `<span class="chip chip-ok">รับทราบแล้ว</span>`
+        : it.viewed_at ? `<span class="chip chip-plain">เปิดแล้ว</span>` : '';
+      const ackBtn = it.acked_at ? '' : `<button class="btn btn-ghost btn-sm" onclick="App.libAck(${it.id})">รับทราบ</button>`;
+      return `<div class="lib-card">
+        <div class="lib-thumb ${it.file_id ? '' : 'noimg'}">${thumb}</div>
+        <div class="lib-body">
+          <div class="lib-cat">${cat.icon} ${cat.label}</div>
+          <div class="lib-title">${esc(it.title)}</div>
+          ${it.description ? `<div class="lib-desc">${esc(it.description)}</div>` : ''}
+          <div class="lib-actions">
+            <button class="btn btn-primary btn-sm" onclick="App.libOpen(${it.id})">เปิดดู</button>
+            ${ackBtn}${done}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    byId('libBox').innerHTML = chips + (items.length ? `<div class="lib-grid">${cards}</div>`
+      : '<div class="card empty"><span class="e-ico">🔍</span>ไม่มีเอกสารในหมวดนี้</div>');
+  },
+
+  libSetFilter(v) { this.libFilter = v; this.renderLib(); },
+
+  async libOpen(id) {
+    const it = this.libItems.find(i => i.id == id);
+    if (!it) return;
+    window.open(it.url, '_blank', 'noopener');
+    if (!it.viewed_at) {
+      it.viewed_at = true;   // sentinel — เปิดแล้ว (ห้ามใช้ toISOString ตามกฎเวลาไทย)
+      if (this.data?.library_unread) { this.data.library_unread--; this.paintNavBadge(); }
+      this.api('library_view', { id }, { soft: true, noKick: true }).catch(() => {});
+      this.renderLib();
+    }
+  },
+
+  async libAck(id) {
+    await this.api('library_ack', { id });
+    const it = this.libItems.find(i => i.id == id);
+    if (it) {
+      if (!it.viewed_at && this.data?.library_unread) { this.data.library_unread--; this.paintNavBadge(); }
+      it.acked_at = true; it.viewed_at = true;
+    }
+    toast('รับทราบแล้ว ขอบคุณค่ะ');
+    this.renderLib();
+  },
+
   // ---------- ประวัติ ----------
   histYm: null,
   async vHistory() {
@@ -504,6 +599,13 @@ const todayStr = () => { const n = new Date(); return `${n.getFullYear()}-${Stri
 const ymNow = () => todayStr().substr(0, 7);
 const initials = (name) => name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
 const offLabel = (t) => ({ dayoff: 'วันหยุด', sick: 'ลาป่วย', personal: 'ลากิจ' }[t] || t);
+const LIB_CAT = {
+  doc:    { icon: '📄', label: 'เอกสาร' },
+  slide:  { icon: '📊', label: 'สไลด์' },
+  news:   { icon: '📰', label: 'ข่าว' },
+  video:  { icon: '🎬', label: 'วิดีโอ' },
+  manual: { icon: '📘', label: 'คู่มือ' },
+};
 
 const TH_D = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 const TH_M = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];

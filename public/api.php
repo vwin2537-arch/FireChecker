@@ -13,6 +13,7 @@ require_once __DIR__ . '/../app/handlers/attendance.php';
 require_once __DIR__ . '/../app/handlers/dayoffs.php';
 require_once __DIR__ . '/../app/handlers/admin.php';
 require_once __DIR__ . '/../app/handlers/line.php';
+require_once __DIR__ . '/../app/handlers/library.php';
 
 const ACTIONS = [
     // auth
@@ -44,6 +45,14 @@ const ACTIONS = [
     'settings_save'   => 'h_settings_save',
     'dayoff_admin_add'=> 'h_dayoff_admin_add',
     'dayoff_admin_del'=> 'h_dayoff_admin_del',
+    // คลังความรู้ (staff)
+    'library_list'    => 'h_library_list',
+    'library_view'    => 'h_library_view',
+    'library_ack'     => 'h_library_ack',
+    // คลังความรู้ (admin)
+    'library_admin_list' => 'h_library_admin_list',
+    'library_save'    => 'h_library_save',
+    'library_delete'  => 'h_library_delete',
     // cron (LINE Bot)
     'cron_report'     => 'h_cron_report',
 ];

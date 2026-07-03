@@ -28,7 +28,7 @@ const Admin = {
       <div id="view"></div>
     </div>
     <nav class="bottom-nav wide">
-      ${[['dash', '📊', 'แดชบอร์ด'], ['report', '📋', 'รายงาน'], ['dayoff', '🗓️', 'วันหยุด'], ['users', '👥', 'เจ้าหน้าที่'], ['settings', '⚙️', 'ตั้งค่า']]
+      ${[['dash', '📊', 'แดชบอร์ด'], ['report', '📋', 'รายงาน'], ['dayoff', '🗓️', 'วันหยุด'], ['users', '👥', 'เจ้าหน้าที่'], ['develop', '📚', 'พัฒนา'], ['settings', '⚙️', 'ตั้งค่า']]
         .map(([v, i, l]) => `<button class="nav-item" data-v="${v}" onclick="Admin.go('${v}')"><span class="ni">${i}</span>${l}</button>`).join('')}
     </nav>`;
     await this.refresh();
@@ -45,7 +45,7 @@ const Admin = {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.v === tab));
     this.charts.forEach(c => c.destroy()); this.charts = [];
     ({ dash: () => this.vDash(), report: () => this.vReport(), dayoff: () => this.vDayoff(),
-       users: () => this.vUsers(), settings: () => this.vSettings() })[tab]();
+       users: () => this.vUsers(), develop: () => this.vDevelop(), settings: () => this.vSettings() })[tab]();
   },
 
   // =====================================================
@@ -377,6 +377,132 @@ const Admin = {
     const d = await App.api(action, { id });
     toast(d.message);
     this.vUsers();
+  },
+
+  // =====================================================
+  // พัฒนาตัวเอง — จัดการคลังความรู้
+  // =====================================================
+  libAdmin: null,
+  libStaffN: 0,
+
+  async vDevelop() {
+    byId('view').innerHTML = `
+      <div class="seg">
+        <button class="active">📚 คลังความรู้</button>
+        <button disabled title="เร็วๆ นี้">📝 แบบทดสอบ</button>
+        <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
+      </div>
+      <div class="card"><h3 id="lfHead">➕ เพิ่มเอกสารเข้าคลัง</h3>
+        <input type="hidden" id="lfId" value="">
+        <div class="field"><label>ชื่อเอกสาร</label><input class="input" id="lfTitle" maxlength="200"></div>
+        <div class="grid-2">
+          <div class="field"><label>หมวดหมู่</label><select class="select" id="lfCat">
+            ${Object.entries(LIB_CAT).map(([v, c]) => `<option value="${v}">${c.icon} ${c.label}</option>`).join('')}</select></div>
+          <div class="field"><label>รูปปก (จากลิงก์)</label><div class="lib-preview" id="lfPreview"></div></div>
+        </div>
+        <div class="field"><label>ลิงก์ Google Drive / ภายนอก</label>
+          <input class="input" id="lfUrl" placeholder="https://drive.google.com/file/d/..." oninput="Admin.libPreview()"></div>
+        <div class="field"><label>คำอธิบายสั้นๆ (ถ้ามี)</label><input class="input" id="lfDesc" maxlength="500"></div>
+        <div class="row" style="gap:8px">
+          <button class="btn btn-primary" onclick="Admin.libSave()">บันทึก</button>
+          <button class="btn btn-ghost btn-sm" id="lfCancel" style="display:none" onclick="Admin.libResetForm()">ยกเลิกแก้ไข</button>
+        </div>
+        <div class="tiny" style="margin-top:8px">💡 ตั้งแชร์ไฟล์ใน Drive เป็น "ทุกคนที่มีลิงก์" รูปปกถึงจะขึ้น</div>
+      </div>
+      <div id="libList"><div class="card muted">กำลังโหลด...</div></div>`;
+    this.libResetForm();
+    const d = await App.api('library_admin_list');
+    this.libAdmin = d.items;
+    this.libStaffN = d.active_staff;
+    this.renderLibList();
+  },
+
+  libExtractId(url) {
+    const m = url.match(/\/d\/([-\w]{20,})/) || url.match(/[?&]id=([-\w]{20,})/);
+    return m ? m[1] : '';
+  },
+
+  libPreview() {
+    const id = this.libExtractId(byId('lfUrl').value.trim());
+    byId('lfPreview').innerHTML = id
+      ? `<img src="https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400"
+           onerror="this.parentNode.innerHTML='<span class=&quot;tiny&quot;>โหลดรูปไม่ได้ — เช็คว่าแชร์ไฟล์แล้ว</span>'">`
+      : `<span class="tiny">วางลิงก์ Drive เพื่อดูรูปปก</span>`;
+  },
+
+  renderLibList() {
+    if (!this.libAdmin.length) {
+      byId('libList').innerHTML = '<div class="card empty"><span class="e-ico">📚</span>ยังไม่มีเอกสารในคลัง เพิ่มอันแรกด้านบนได้เลย</div>';
+      return;
+    }
+    const N = this.libStaffN;
+    byId('libList').innerHTML = `<div class="card"><h3>📚 เอกสารในคลัง <span class="h-right">${this.libAdmin.length} รายการ • ${N} เจ้าหน้าที่</span></h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th></th><th>ชื่อ / หมวด</th><th class="num">เปิดดู</th><th class="num">รับทราบ</th><th></th></tr>
+        ${this.libAdmin.map(it => {
+          const cat = LIB_CAT[it.category] || { icon: '📄', label: it.category };
+          const thumb = it.file_id
+            ? `<img class="lib-thumb-sm" src="https://drive.google.com/thumbnail?id=${encodeURIComponent(it.file_id)}&sz=w200"
+                 onerror="this.parentNode.innerHTML='<span style=&quot;font-size:22px&quot;>${cat.icon}</span>'">`
+            : `<span style="font-size:22px">${cat.icon}</span>`;
+          return `<tr class="${+it.is_active ? '' : 'lib-hidden'}">
+            <td>${thumb}</td>
+            <td><b>${esc(it.title)}</b>${+it.is_active ? '' : ' <span class="chip chip-plain">ซ่อนอยู่</span>'}
+              <div class="tiny">${cat.icon} ${cat.label}${it.description ? ' — ' + esc(it.description) : ''}</div></td>
+            <td class="num">${it.views}/${N}</td>
+            <td class="num"><b style="color:${N && +it.acks >= N ? C_OK : 'inherit'}">${it.acks}/${N}</b></td>
+            <td style="white-space:nowrap;text-align:right">
+              <button class="link-btn" onclick="Admin.libEdit(${it.id})">แก้</button>
+              ${+it.is_active
+                ? `<button class="link-btn" style="color:var(--absent)" onclick="Admin.libHide(${it.id},0)">ซ่อน</button>`
+                : `<button class="link-btn" onclick="Admin.libHide(${it.id},1)">แสดง</button>`}
+            </td></tr>`;
+        }).join('')}
+      </table></div></div>`;
+  },
+
+  libResetForm() {
+    byId('lfId').value = ''; byId('lfTitle').value = ''; byId('lfUrl').value = ''; byId('lfDesc').value = '';
+    byId('lfCat').value = 'doc';
+    byId('lfHead').textContent = '➕ เพิ่มเอกสารเข้าคลัง';
+    byId('lfCancel').style.display = 'none';
+    this.libPreview();
+  },
+
+  libEdit(id) {
+    const it = this.libAdmin.find(x => x.id == id);
+    if (!it) return;
+    byId('lfId').value = it.id; byId('lfTitle').value = it.title; byId('lfUrl').value = it.url;
+    byId('lfDesc').value = it.description || ''; byId('lfCat').value = it.category;
+    byId('lfHead').textContent = '✏️ แก้ไขเอกสาร';
+    byId('lfCancel').style.display = '';
+    this.libPreview();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  async libSave() {
+    const body = {
+      id: +byId('lfId').value || 0,
+      title: byId('lfTitle').value.trim(),
+      category: byId('lfCat').value,
+      url: byId('lfUrl').value.trim(),
+      description: byId('lfDesc').value.trim(),
+    };
+    if (!body.title) return toast('กรอกชื่อเอกสารก่อนค่ะ', 'error');
+    if (!/^https?:\/\//i.test(body.url)) return toast('ลิงก์ต้องขึ้นต้น http:// หรือ https://', 'error');
+    const d = await App.api('library_save', body);
+    toast(d.message);
+    this.vDevelop();
+  },
+
+  async libHide(id, active) {
+    if (!active) {
+      const c = await Swal.fire({ icon: 'warning', title: 'ซ่อนเอกสารนี้?', text: 'เจ้าหน้าที่จะไม่เห็น แต่สถิติการอ่านยังเก็บไว้', showCancelButton: true, confirmButtonText: 'ซ่อน', cancelButtonText: 'ยกเลิก' });
+      if (!c.isConfirmed) return;
+    }
+    const d = await App.api('library_delete', { id, active });
+    toast(d.message);
+    this.vDevelop();
   },
 
   // =====================================================

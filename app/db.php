@@ -54,4 +54,12 @@ function ensure_admin(): void {
                        VALUES (?, ?, ?, 'admin', 'active')")
             ->execute([DEFAULT_ADMIN_USER, password_hash(DEFAULT_ADMIN_PASS, PASSWORD_DEFAULT), DEFAULT_ADMIN_NAME]);
     }
+
+    // ensure ตารางที่เพิ่มภายหลัง (DB เดิมที่ deploy ไปแล้วจะไม่มี) — schema.sql เป็น IF NOT EXISTS/INSERT IGNORE รันซ้ำปลอดภัย
+    try {
+        db()->query('SELECT 1 FROM library_items LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
 }

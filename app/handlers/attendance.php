@@ -32,6 +32,13 @@ function h_app_data(): never {
     $st->execute([$u['id']]);
     $history = $st->fetchAll();
 
+    // เอกสารในคลังความรู้ที่ยังไม่เปิดดู (badge หน้าหลัก)
+    $st = db()->prepare('SELECT COUNT(*) c FROM library_items i
+                         LEFT JOIN library_reads r ON r.item_id = i.id AND r.user_id = ?
+                         WHERE i.is_active = 1 AND r.id IS NULL');
+    $st->execute([$u['id']]);
+    $libUnread = (int)$st->fetch()['c'];
+
     ok([
         'user'     => public_user($u),
         'today'    => [
@@ -44,6 +51,7 @@ function h_app_data(): never {
         'quota'    => ['used' => $quotaUsed, 'max' => (int)setting('off_quota_month', '10')],
         'upcoming' => $upcoming,
         'history'  => $history,
+        'library_unread' => $libUnread,
         'settings' => client_settings(),
     ]);
 }
