@@ -569,31 +569,54 @@ const App = {
     this.quizSet = d.set;
     this.quizQuestions = d.questions;
     this.quizIdx = 0;
-    this.quizAnswers = [];
+    this.quizAnswers = new Array(d.questions.length).fill(null);
     this.renderQuizQuestion();
   },
 
   renderQuizQuestion() {
     const q = this.quizQuestions[this.quizIdx];
     const letters = ['ก', 'ข', 'ค', 'ง'];
+    const selected = this.quizAnswers[this.quizIdx];
+    const isLast = this.quizIdx === this.quizQuestions.length - 1;
     byId('view').innerHTML = `
       <div class="card">
         <div class="tiny">${esc(this.quizSet.title)} — ข้อ ${this.quizIdx + 1}/${this.quizQuestions.length}</div>
         <div class="quiz-q">${esc(q.question)}</div>
         <div class="quiz-opts">
-          ${q.choices.map((c, i) => `<button class="quiz-opt" onclick="App.quizAnswer(${i})">
+          ${q.choices.map((c, i) => `<button class="quiz-opt${selected === i ? ' selected' : ''}" onclick="App.quizSelect(${i})">
             <span class="quiz-opt-l">${letters[i]}</span>${esc(c)}</button>`).join('')}
         </div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:10px">
+        ${this.quizIdx > 0 ? `<button class="btn btn-ghost" onclick="App.quizPrev()">← ย้อนกลับ</button>` : ''}
+        <button class="btn btn-primary" style="flex:1" ${selected === null ? 'disabled' : ''}
+          onclick="App.${isLast ? 'quizFinish' : 'quizNext'}()">${isLast ? 'ส่งคำตอบ' : 'ถัดไป →'}</button>
       </div>
       <button class="btn btn-ghost btn-block" onclick="App.go('develop')">← ออกจากแบบทดสอบ</button>`;
   },
 
-  async quizAnswer(choiceIndex) {
-    this.quizAnswers.push({ question_id: this.quizQuestions[this.quizIdx].id, answer_index: choiceIndex });
-    this.quizIdx++;
-    if (this.quizIdx < this.quizQuestions.length) return this.renderQuizQuestion();
+  quizSelect(choiceIndex) {
+    this.quizAnswers[this.quizIdx] = choiceIndex;
+    this.renderQuizQuestion();
+  },
 
-    const d = await this.api('quiz_submit', { id: this.quizSet.id, answers: this.quizAnswers });
+  quizNext() {
+    if (this.quizIdx >= this.quizQuestions.length - 1) return;
+    this.quizIdx++;
+    this.renderQuizQuestion();
+  },
+
+  quizPrev() {
+    if (this.quizIdx <= 0) return;
+    this.quizIdx--;
+    this.renderQuizQuestion();
+  },
+
+  async quizFinish() {
+    const answers = this.quizQuestions
+      .map((q, i) => ({ question_id: q.id, answer_index: this.quizAnswers[i] }))
+      .filter(a => a.answer_index !== null);
+    const d = await this.api('quiz_submit', { id: this.quizSet.id, answers });
     byId('view').innerHTML = `
       <div class="card" style="text-align:center;padding:28px">
         <div style="font-size:44px">🎯</div>

@@ -39,7 +39,7 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 
 Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
 
-**⚠️ push GitHub ไม่ auto-deploy** — repo เป็น source control อย่างเดียว ไม่ได้ผูก webhook ต้อง deploy tarball เอง: `railway up` หรือ MCP `deploy` (`path=firecheck/`, service `8a5f15ef-d377-4437-80aa-b0fc0775d087`) ทุก deployment คอลัมน์ commit เป็น `-` เพราะเป็น tarball upload ไม่ใช่ GitHub-triggered — verify live ด้วย `curl https://sakpra-erawan.up.railway.app/index.php` ทุกครั้ง
+**⚠️ push GitHub ไม่ auto-deploy** — repo เป็น source control อย่างเดียว ไม่ได้ผูก webhook ต้อง deploy tarball เอง: `railway up` หรือ MCP `deploy` (`path=firecheck/`, service `8a5f15ef-d377-4437-80aa-b0fc0775d087`) ทุก deployment คอลัมน์ commit เป็น `-` เพราะเป็น tarball upload ไม่ใช่ GitHub-triggered — verify live ด้วย `curl https://sakpra-erawan.up.railway.app/index.php` ทุกครั้ง — ถ้า MCP `deploy`/`whoami` ค้าง `Unauthorized` (auth คนละชุดกับ CLI) ให้ใช้ `railway up` ตรงๆ ในเทอร์มินัลแทนได้เลย ไม่ต้อง re-login
 
 **⚠️ Cache-bust ตอนแก้ frontend** — `sw.js` เก็บ `assets/*` แบบ cache-first PWA ที่ติดตั้งแล้วจะเห็นของเก่าถ้าไม่เด้ง version ต้องแก้ **พร้อมกัน 2 ที่**: `?v=N` ใน `index.php` (css+js) **และ** `const CACHE = 'firecheck-vN'` + ASSETS `?v=N` ใน `sw.js` (activate จะล้าง cache เก่าให้)
 
