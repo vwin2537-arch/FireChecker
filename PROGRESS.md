@@ -1,8 +1,8 @@
 # PROGRESS.md — FireCheck
 
-## สถานะ: ✅ พัฒนาเสร็จครบ 5 เฟส — รอ deploy ขึ้น Railway
+## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://firecheck-app-production.up.railway.app
 
-อัปเดตล่าสุด: 2 ก.ค. 2026 (สร้างระบบทั้งหมดใน session เดียว)
+อัปเดตล่าสุด: 3 ก.ค. 2026 (push GitHub + deploy Railway สำเร็จ)
 
 ## ทำเสร็จแล้ว
 
@@ -19,11 +19,15 @@
 - Auto-setup: DB ว่าง → request แรกสร้างตาราง+แอดมินเอง ✓
 - Palette กราฟผ่าน dataviz validator (CVD-safe)
 
+## Deploy (3 ก.ค. 2026)
+
+- [x] GitHub: push ขึ้น https://github.com/vwin2537-arch/FireChecker.git
+- [x] Railway: project "firecheck" (id `0490e262-abfe-49c6-bd47-81cdd12ed7d1`) — service `firecheck-app` + `MySQL` + Volume `/data` + env (CRON_SECRET, UPLOAD_DIR, MySQL refs) ครบ → verify HTTP 200 จริงแล้ว → lesson 4
+- [x] Railway CLI skill/MCP ติดตั้งให้ Claude Code แล้ว (`railway setup agent -y`) — deploy รอบต่อไปสั่งตรงได้เลย
+
 ## รอทำต่อ (พี่วินต้องทำเอง / session หน้า)
 
-- [ ] สร้าง GitHub repo + push (ยังไม่มี remote)
-- [ ] Deploy Railway ตาม README (แอป + MySQL + Volume + CRON_SECRET)
-- [ ] เปลี่ยนรหัส admin ทันทีหลัง deploy (ตั้งค่า → ทั่วไป)
+- [ ] เปลี่ยนรหัส admin ทันทีหลัง deploy (ตั้งค่า → ทั่วไป) — login เริ่มต้น admin/admin1234
 - [ ] แก้พิกัดสถานีจริงในหน้าตั้งค่า (ค่าตอนนี้เป็นพิกัดอุทยานเอราวัณจากระบบเก่า: 14.37462, 99.14541)
 - [ ] ตั้ง LINE Bot (token + group id) + ตั้ง cron 08:30/17:30
 - [ ] เพิ่มรายชื่อเจ้าหน้าที่จริง แล้วให้ทุกคนลงทะเบียน
@@ -34,3 +38,4 @@
 - ระบบเดิม (GAS) ช้าเพราะสแกน Google Sheets ทั้งชีตทุก request + ส่งรูป base64 ผ่าน GAS → แก้ด้วย MySQL index + เก็บรูปใน Volume
 - ตัดระบบ "แผน 30 วัน + อนุมัติ" ของเดิมทิ้ง เปลี่ยนเป็น "จองวันหยุด" (กลับด้าน) — เบากว่ามาก เพราะ จนท. ไฟป่ามาทุกวัน
 - วันที่ +3 ในเทสอาจตรงวันอาทิตย์ — ระบบบล็อกถูกต้อง อย่าตกใจว่าเป็นบั๊ก
+- **[4] Railway deploy gotchas** (ดู CLAUDE.md → Deploy section สำหรับรายละเอียดเทคนิค): (a) `railway add --database` เปลี่ยน linked service เป็น DB ทันที — ตาม `railway up` ทันทีเสี่ยง deploy โค้ดทับ DB service ต้องสร้าง app service แยกด้วย `railway add --service` แล้วระบุ `--service` ชัดเจนทุกคำสั่ง (b) `railway volume add --service <name>` panic ในเวอร์ชัน CLI นี้ ต้องใช้ ID จริงแทนชื่อ (c) ไฟล์ที่ลบใน Dockerfile RUN layer (build time) ไม่ persist มาถึง container ที่รันจริงบน Railway — ต้องลบตอน runtime (ใน CMD) แทน

@@ -39,6 +39,10 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 
 Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
 
+**Live:** https://firecheck-app-production.up.railway.app — Railway project "firecheck" (`0490e262-abfe-49c6-bd47-81cdd12ed7d1`), service `firecheck-app` + `MySQL` + Volume `/data`
+
+**⚠️ Dockerfile CMD ห้ามย้าย `rm -f mpm_event.*` กลับไปเป็น build-time RUN** — เจอบั๊กจริงบน Railway: ไฟล์ที่ลบใน Docker build layer (RUN) ไม่ persist มาถึง container ตอนรันจริง (`mpm_event.load` กลับมาเป็นของ base image เดิมทุกครั้ง แม้ build log ยืนยันว่าลบสำเร็จ) ทำให้ Apache crash loop ด้วย `AH00534: More than one MPM loaded` ทางแก้ที่ใช้ได้จริงคือลบใน `CMD` (runtime, writable fs) เท่านั้น — ดู Dockerfile ปัจจุบัน
+
 ## ห้าม commit
 
 `credentials.json`, `token.pkl`, `*.env`, `config.env`, `*.csv` (อยู่ใน .gitignore แล้ว) — LINE token เก็บใน DB ผ่านหน้าตั้งค่า ไม่อยู่ในโค้ด
