@@ -14,4 +14,5 @@ RUN printf 'post_max_size=40M\nupload_max_filesize=20M\nmemory_limit=256M\n' \
 COPY . /var/www/html/
 
 # Railway กำหนดพอร์ตผ่าน $PORT
-CMD ["bash", "-c", "sed -i \"s/Listen 80/Listen ${PORT:-80}/\" /etc/apache2/ports.conf && sed -i \"s/:80>/:${PORT:-80}>/\" /etc/apache2/sites-available/000-default.conf && apache2-foreground"]
+# ลบ mpm_event/mpm_worker ตอนรัน (ไม่ใช่ตอน build) — บน Railway ไฟล์ที่ลบตอน build layer ไม่ persist มาถึง runtime
+CMD ["bash", "-c", "rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* && sed -i \"s/Listen 80/Listen ${PORT:-80}/\" /etc/apache2/ports.conf && sed -i \"s/:80>/:${PORT:-80}>/\" /etc/apache2/sites-available/000-default.conf && apache2-foreground"]
