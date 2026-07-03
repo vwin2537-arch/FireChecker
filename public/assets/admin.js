@@ -384,14 +384,25 @@ const Admin = {
   // =====================================================
   libAdmin: null,
   libStaffN: 0,
+  devTab: 'lib',
+
+  devSegHtml() {
+    const t = (v, l) => `<button class="${this.devTab === v ? 'active' : ''}" onclick="Admin.devSetTab('${v}')">${l}</button>`;
+    return `<div class="seg">
+      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}
+      <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
+    </div>`;
+  },
+
+  devSetTab(t) { this.devTab = t; this.vDevelop(); },
 
   async vDevelop() {
+    this.devTab === 'quiz' ? await this.vDevelopQuiz() : await this.vDevelopLib();
+  },
+
+  async vDevelopLib() {
     byId('view').innerHTML = `
-      <div class="seg">
-        <button class="active">📚 คลังความรู้</button>
-        <button disabled title="เร็วๆ นี้">📝 แบบทดสอบ</button>
-        <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
-      </div>
+      ${this.devSegHtml()}
       <div class="card"><h3 id="lfHead">➕ เพิ่มเอกสารเข้าคลัง</h3>
         <input type="hidden" id="lfId" value="">
         <div class="field"><label>ชื่อเอกสาร</label><input class="input" id="lfTitle" maxlength="200"></div>
@@ -503,6 +514,162 @@ const Admin = {
     const d = await App.api('library_delete', { id, active });
     toast(d.message);
     this.vDevelop();
+  },
+
+  // =====================================================
+  // แบบทดสอบ (โซนพัฒนาตัวเอง เฟส 2)
+  // =====================================================
+  quizAdmin: null,
+  quizForm: null,
+
+  async vDevelopQuiz() {
+    byId('view').innerHTML = `
+      ${this.devSegHtml()}
+      <div class="card"><h3 id="qfHead">➕ สร้างชุดคำถามใหม่</h3>
+        <input type="hidden" id="qfId" value="">
+        <div class="field"><label>ชื่อชุดคำถาม</label><input class="input" id="qfTitle" maxlength="200"></div>
+        <div class="field"><label>คำอธิบายสั้นๆ (ถ้ามี)</label><input class="input" id="qfDesc" maxlength="500"></div>
+        <div id="qfRows"></div>
+        <button class="btn btn-ghost btn-sm" onclick="Admin.quizAddQuestion()">+ เพิ่มคำถาม</button>
+        <div class="row" style="gap:8px;margin-top:14px">
+          <button class="btn btn-primary" onclick="Admin.quizSave()">บันทึก</button>
+          <button class="btn btn-ghost btn-sm" id="qfCancel" style="display:none" onclick="Admin.quizResetForm()">ยกเลิกแก้ไข</button>
+        </div>
+      </div>
+      <div id="quizList"><div class="card muted">กำลังโหลด...</div></div>`;
+    this.quizResetForm();
+    const d = await App.api('quiz_admin_list');
+    this.quizAdmin = d.sets;
+    this.renderQuizList();
+  },
+
+  quizResetForm() {
+    this.quizForm = { id: 0, questions: [{ question: '', choices: ['', '', '', ''], correct: 0 }] };
+    byId('qfId').value = ''; byId('qfTitle').value = ''; byId('qfDesc').value = '';
+    byId('qfHead').textContent = '➕ สร้างชุดคำถามใหม่';
+    byId('qfCancel').style.display = 'none';
+    this.renderQuizForm();
+  },
+
+  renderQuizForm() {
+    const L = ['ก', 'ข', 'ค', 'ง'];
+    byId('qfRows').innerHTML = this.quizForm.questions.map((q, i) => `
+      <div class="quiz-row">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <label class="tiny">คำถามข้อ ${i + 1}</label>
+          ${this.quizForm.questions.length > 1 ? `<button class="link-btn" style="color:var(--absent)" onclick="Admin.quizRemoveQuestion(${i})">ลบข้อนี้</button>` : ''}
+        </div>
+        <input class="input" id="qQ${i}" value="${esc(q.question)}" placeholder="พิมพ์คำถาม...">
+        <div class="tiny" style="margin:6px 0 2px">แตะวงกลมหน้าตัวเลือกที่ถูกต้อง</div>
+        <div class="grid-2">
+          ${[0, 1, 2, 3].map(j => `
+            <div class="field" style="margin-bottom:6px">
+              <label class="quiz-choice-label"><input type="radio" name="qCorrect${i}" value="${j}" ${q.correct === j ? 'checked' : ''}> ตัวเลือก ${L[j]}</label>
+              <input class="input" id="qC${i}_${j}" value="${esc(q.choices[j])}" placeholder="ตัวเลือกที่ ${L[j]}">
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  },
+
+  quizSyncFromDom() {
+    if (!this.quizForm) return;
+    this.quizForm.questions.forEach((q, i) => {
+      q.question = byId(`qQ${i}`)?.value ?? q.question;
+      q.choices = [0, 1, 2, 3].map(j => byId(`qC${i}_${j}`)?.value ?? q.choices[j]);
+      const checked = document.querySelector(`input[name="qCorrect${i}"]:checked`);
+      if (checked) q.correct = +checked.value;
+    });
+  },
+
+  quizAddQuestion() {
+    this.quizSyncFromDom();
+    this.quizForm.questions.push({ question: '', choices: ['', '', '', ''], correct: 0 });
+    this.renderQuizForm();
+  },
+
+  quizRemoveQuestion(i) {
+    this.quizSyncFromDom();
+    this.quizForm.questions.splice(i, 1);
+    this.renderQuizForm();
+  },
+
+  async quizEdit(id) {
+    const d = await App.api('quiz_set_get', { id });
+    this.quizForm = { id: d.set.id, questions: d.questions };
+    byId('qfId').value = d.set.id; byId('qfTitle').value = d.set.title; byId('qfDesc').value = d.set.description || '';
+    byId('qfHead').textContent = '✏️ แก้ไขชุดคำถาม';
+    byId('qfCancel').style.display = '';
+    this.renderQuizForm();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  async quizSave() {
+    this.quizSyncFromDom();
+    const body = {
+      id: +byId('qfId').value || 0,
+      title: byId('qfTitle').value.trim(),
+      description: byId('qfDesc').value.trim(),
+      questions: this.quizForm.questions,
+    };
+    if (!body.title) return toast('กรอกชื่อชุดคำถามก่อนค่ะ', 'error');
+    for (const q of body.questions) {
+      if (!q.question.trim()) return toast('กรอกคำถามให้ครบทุกข้อ', 'error');
+      if (q.choices.some(c => !c.trim())) return toast('กรอกตัวเลือกให้ครบ 4 ข้อในทุกคำถาม', 'error');
+    }
+    const d = await App.api('quiz_save', body);
+    toast(d.message);
+    this.vDevelopQuiz();
+  },
+
+  renderQuizList() {
+    if (!this.quizAdmin.length) {
+      byId('quizList').innerHTML = '<div class="card empty"><span class="e-ico">📝</span>ยังไม่มีชุดคำถาม เพิ่มอันแรกด้านบนได้เลย</div>';
+      return;
+    }
+    byId('quizList').innerHTML = `<div class="card"><h3>📝 ชุดคำถาม <span class="h-right">${this.quizAdmin.length} ชุด</span></h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>ชื่อชุด</th><th class="num">คำถาม</th><th class="num">คนทำแล้ว</th><th></th></tr>
+        ${this.quizAdmin.map(s => `<tr class="${+s.is_active ? '' : 'lib-hidden'}">
+          <td><b>${esc(s.title)}</b>${+s.is_active ? '' : ' <span class="chip chip-plain">ซ่อนอยู่</span>'}
+            ${s.description ? `<div class="tiny">${esc(s.description)}</div>` : ''}</td>
+          <td class="num">${s.question_count}</td>
+          <td class="num">${s.participants}</td>
+          <td style="white-space:nowrap;text-align:right">
+            <button class="link-btn" onclick="Admin.quizScores(${s.id})">คะแนน</button>
+            <button class="link-btn" onclick="Admin.quizEdit(${s.id})">แก้</button>
+            ${+s.is_active
+              ? `<button class="link-btn" style="color:var(--absent)" onclick="Admin.quizHide(${s.id},0)">ซ่อน</button>`
+              : `<button class="link-btn" onclick="Admin.quizHide(${s.id},1)">แสดง</button>`}
+          </td></tr>`).join('')}
+      </table></div></div>`;
+  },
+
+  async quizHide(id, active) {
+    if (!active) {
+      const c = await Swal.fire({ icon: 'warning', title: 'ซ่อนชุดคำถามนี้?', text: 'เจ้าหน้าที่จะไม่เห็น แต่คะแนนเก่ายังเก็บไว้', showCancelButton: true, confirmButtonText: 'ซ่อน', cancelButtonText: 'ยกเลิก' });
+      if (!c.isConfirmed) return;
+    }
+    const d = await App.api('quiz_delete', { id, active });
+    toast(d.message);
+    this.vDevelopQuiz();
+  },
+
+  async quizScores(id) {
+    const d = await App.api('quiz_admin_scores', { id });
+    const rowStyle = 'border-bottom:1px solid #eee;padding:7px 4px';
+    const rows = d.rows.length ? d.rows.map(r => `<tr>
+      <td style="${rowStyle};text-align:left">${esc(r.name)}</td>
+      <td style="${rowStyle};text-align:right">${r.attempts > 0 ? r.best_score + '/' + d.total : '—'}</td>
+      <td style="${rowStyle};text-align:right">${r.attempts}</td></tr>`).join('')
+      : `<tr><td colspan="3" style="padding:14px;color:#888">ยังไม่มีเจ้าหน้าที่</td></tr>`;
+    Swal.fire({
+      title: d.title,
+      html: `<table style="width:100%;font-size:13.5px;border-collapse:collapse">
+        <tr><th style="${rowStyle};text-align:left">ชื่อ</th><th style="${rowStyle};text-align:right">คะแนนสูงสุด</th><th style="${rowStyle};text-align:right">จำนวนครั้ง</th></tr>
+        ${rows}</table>`,
+      width: 420,
+      confirmButtonText: 'ปิด',
+    });
   },
 
   // =====================================================

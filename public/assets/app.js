@@ -446,15 +446,24 @@ const App = {
   // ---------- พัฒนาตัวเอง (hub) ----------
   libItems: null,
   libFilter: 'all',
+  devTab: 'lib',
+
+  devSegHtml() {
+    const t = (v, l) => `<button class="${this.devTab === v ? 'active' : ''}" onclick="App.devSetTab('${v}')">${l}</button>`;
+    return `<div class="seg" id="devSeg">
+      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}
+      <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
+    </div>`;
+  },
+
+  devSetTab(t) { this.devTab = t; this.vDevelop(); },
 
   async vDevelop() {
-    byId('view').innerHTML = `
-      <div class="seg" id="devSeg">
-        <button class="active">📚 คลังความรู้</button>
-        <button disabled title="เร็วๆ นี้">📝 แบบทดสอบ</button>
-        <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
-      </div>
-      <div id="libBox"><div class="card muted">กำลังโหลด...</div></div>`;
+    this.devTab === 'quiz' ? await this.vQuizList() : await this.vLibrary();
+  },
+
+  async vLibrary() {
+    byId('view').innerHTML = this.devSegHtml() + '<div id="libBox"><div class="card muted">กำลังโหลด...</div></div>';
     const d = await this.api('library_list');
     this.libItems = d.items;
     this.renderLib();
@@ -518,6 +527,83 @@ const App = {
     }
     toast('รับทราบแล้ว ขอบคุณค่ะ');
     this.renderLib();
+  },
+
+  // ---------- แบบทดสอบ ----------
+  quizSets: null,
+  quizSet: null, quizQuestions: null, quizIdx: 0, quizAnswers: null,
+
+  async vQuizList() {
+    byId('view').innerHTML = this.devSegHtml() + '<div id="quizBox"><div class="card muted">กำลังโหลด...</div></div>';
+    const d = await this.api('quiz_list');
+    this.quizSets = d.sets;
+    this.renderQuizList();
+  },
+
+  renderQuizList() {
+    if (!this.quizSets.length) {
+      byId('quizBox').innerHTML = '<div class="card empty"><span class="e-ico">📝</span>ยังไม่มีแบบทดสอบ<br>หัวหน้าสถานีจะเพิ่มให้เร็วๆ นี้ค่ะ</div>';
+      return;
+    }
+    byId('quizBox').innerHTML = `<div class="lib-grid">${this.quizSets.map(s => {
+      const scoreChip = s.attempts > 0
+        ? `<span class="chip chip-ok">คะแนนสูงสุด ${s.best_score}/${s.question_count}</span>`
+        : `<span class="chip chip-plain">ยังไม่เคยทำ</span>`;
+      return `<div class="lib-card">
+        <div class="lib-thumb noimg"><span class="lib-ico">📝</span></div>
+        <div class="lib-body">
+          <div class="lib-title">${esc(s.title)}</div>
+          ${s.description ? `<div class="lib-desc">${esc(s.description)}</div>` : ''}
+          <div class="tiny">${s.question_count} ข้อ${s.attempts > 0 ? ` • ทำแล้ว ${s.attempts} ครั้ง` : ''}</div>
+          <div class="lib-actions">
+            <button class="btn btn-primary btn-sm" onclick="App.quizStart(${s.id})">${s.attempts > 0 ? 'ทำอีกครั้ง' : 'เริ่มทำ'}</button>
+            ${scoreChip}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  },
+
+  async quizStart(id) {
+    const d = await this.api('quiz_get', { id });
+    this.quizSet = d.set;
+    this.quizQuestions = d.questions;
+    this.quizIdx = 0;
+    this.quizAnswers = [];
+    this.renderQuizQuestion();
+  },
+
+  renderQuizQuestion() {
+    const q = this.quizQuestions[this.quizIdx];
+    const letters = ['ก', 'ข', 'ค', 'ง'];
+    byId('view').innerHTML = `
+      <div class="card">
+        <div class="tiny">${esc(this.quizSet.title)} — ข้อ ${this.quizIdx + 1}/${this.quizQuestions.length}</div>
+        <div class="quiz-q">${esc(q.question)}</div>
+        <div class="quiz-opts">
+          ${q.choices.map((c, i) => `<button class="quiz-opt" onclick="App.quizAnswer(${i})">
+            <span class="quiz-opt-l">${letters[i]}</span>${esc(c)}</button>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-block" onclick="App.go('develop')">← ออกจากแบบทดสอบ</button>`;
+  },
+
+  async quizAnswer(choiceIndex) {
+    this.quizAnswers.push({ question_id: this.quizQuestions[this.quizIdx].id, answer_index: choiceIndex });
+    this.quizIdx++;
+    if (this.quizIdx < this.quizQuestions.length) return this.renderQuizQuestion();
+
+    const d = await this.api('quiz_submit', { id: this.quizSet.id, answers: this.quizAnswers });
+    byId('view').innerHTML = `
+      <div class="card" style="text-align:center;padding:28px">
+        <div style="font-size:44px">🎯</div>
+        <div style="font-size:15px;margin-top:6px">${esc(this.quizSet.title)}</div>
+        <div class="quiz-score">${d.score}/${d.total}</div>
+        <div class="row" style="gap:8px;justify-content:center;margin-top:14px">
+          <button class="btn btn-primary" onclick="App.quizStart(${this.quizSet.id})">ทำอีกครั้ง</button>
+          <button class="btn btn-ghost" onclick="App.go('develop')">กลับหน้ารายการ</button>
+        </div>
+      </div>`;
   },
 
   // ---------- ประวัติ ----------

@@ -95,6 +95,41 @@ CREATE TABLE IF NOT EXISTS library_reads (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- แบบทดสอบ (โซนพัฒนาตัวเอง เฟส 2) ----------
+CREATE TABLE IF NOT EXISTS quiz_sets (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  title       VARCHAR(200) NOT NULL,
+  description VARCHAR(500) NOT NULL DEFAULT '',
+  is_active   TINYINT(1)   NOT NULL DEFAULT 1,       -- 0 = ซ่อน (soft delete)
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  set_id        INT NOT NULL,
+  question      VARCHAR(500) NOT NULL,
+  choice1       VARCHAR(255) NOT NULL,
+  choice2       VARCHAR(255) NOT NULL,
+  choice3       VARCHAR(255) NOT NULL,
+  choice4       VARCHAR(255) NOT NULL,
+  correct_index TINYINT      NOT NULL,               -- 0-3
+  sort_order    INT          NOT NULL DEFAULT 0,
+  KEY idx_set (set_id),
+  FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  set_id     INT NOT NULL,
+  user_id    INT NOT NULL,
+  score      INT NOT NULL,
+  total      INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_set_user (set_id, user_id),
+  FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- ค่าตั้งต้น (แก้ได้จากหน้าตั้งค่าแอดมิน) ----------
 INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('station_name',     'สถานีควบคุมไฟป่าสลักพระ-เอราวัณ'),

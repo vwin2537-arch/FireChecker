@@ -14,6 +14,7 @@ require_once __DIR__ . '/../app/handlers/dayoffs.php';
 require_once __DIR__ . '/../app/handlers/admin.php';
 require_once __DIR__ . '/../app/handlers/line.php';
 require_once __DIR__ . '/../app/handlers/library.php';
+require_once __DIR__ . '/../app/handlers/quiz.php';
 
 const ACTIONS = [
     // auth
@@ -53,6 +54,16 @@ const ACTIONS = [
     'library_admin_list' => 'h_library_admin_list',
     'library_save'    => 'h_library_save',
     'library_delete'  => 'h_library_delete',
+    // แบบทดสอบ (staff)
+    'quiz_list'       => 'h_quiz_list',
+    'quiz_get'        => 'h_quiz_get',
+    'quiz_submit'     => 'h_quiz_submit',
+    // แบบทดสอบ (admin)
+    'quiz_admin_list'   => 'h_quiz_admin_list',
+    'quiz_set_get'      => 'h_quiz_set_get',
+    'quiz_admin_scores' => 'h_quiz_admin_scores',
+    'quiz_save'         => 'h_quiz_save',
+    'quiz_delete'       => 'h_quiz_delete',
     // cron (LINE Bot)
     'cron_report'     => 'h_cron_report',
 ];
