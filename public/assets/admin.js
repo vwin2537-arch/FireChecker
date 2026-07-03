@@ -62,51 +62,94 @@ const Admin = {
       `${esc(o.name)} (${o.n} วัน เดือน ${thaiMonth(o.ym)})`).join(', ')}</b>
       <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ดูปฏิทิน</button></div>`;
 
-    const holiday = d.today.is_holiday;
-    byId('view').innerHTML = `
-      ${alerts}
-      <div class="card" style="padding:14px 18px"><div class="row">
-        <div><div style="font-size:16px;font-weight:500">📍 วันนี้ — ${esc(d.today.thai_date)}</div>
-        <div class="tiny">${holiday ? 'วันอาทิตย์ วันหยุดสถานี' : 'อัปเดตล่าสุด ' + new Date().toTimeString().substr(0, 5) + ' น.'}</div></div>
-      </div></div>
-      ${holiday ? '<div class="card empty"><span class="e-ico">🌴</span>วันนี้วันหยุดสถานี ไม่มีการเช็คชื่อ</div>' : `
-      <div class="grid-4">
-        <div class="kpi k-ok"><div class="k-label">🟢 มาแล้ว</div><div class="k-value">${c.present}<span style="font-size:15px;color:var(--ink-3)">/${c.total}</span></div>
-          <div class="k-sub">ตรงเวลา ${c.ontime} คน</div></div>
-        <div class="kpi k-late"><div class="k-label">🟡 มาสาย</div><div class="k-value">${c.late}</div><div class="k-sub">หลัง ${d.settings.late_cutoff} น.</div></div>
-        <div class="kpi k-leave"><div class="k-label">🔵 ลา/หยุด</div><div class="k-value">${c.leave}</div><div class="k-sub">แจ้งล่วงหน้า</div></div>
-        <div class="kpi k-absent"><div class="k-label">🔴 ยังไม่มา</div><div class="k-value">${c.absent}</div><div class="k-sub">ไม่เช็คชื่อ+ไม่แจ้งลา</div></div>
-      </div>
-      <div class="card" style="margin-top:14px"><h3>👥 รายชื่อวันนี้</h3>
-        <div class="roster">${d.today.roster.map(r => `
-          <div class="roster-cell s-${r.state}">
-            <span class="dot dot-${r.state === 'ontime' ? 'ok' : r.state}"></span>
-            <div><div class="rc-name">${esc(r.name)}</div>
-            <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
-              r.state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
-          </div>`).join('')}</div>
-      </div>`}
+    // วันหยุดสถานี — ไม่มีการเช็คชื่อ โชว์แค่ส่วนวิเคราะห์
+    if (d.today.is_holiday) {
+      byId('view').innerHTML = `${alerts}
+        <div class="card" style="padding:14px 18px"><div style="font-size:16px;font-weight:500">📍 วันนี้ — ${esc(d.today.thai_date)}</div>
+          <div class="tiny">วันอาทิตย์ วันหยุดสถานี</div></div>
+        <div class="card empty"><span class="e-ico">🌴</span>วันนี้วันหยุดสถานี ไม่มีการเช็คชื่อ</div>
+        ${this.analyticsHtml(d)}`;
+      this.drawWeekday(d.weekday);
+      return;
+    }
 
-      <div class="grid-2-lg">
-        <div class="card"><h3>📈 แนวโน้ม 14 วันทำการ</h3><div class="chart-box"><canvas id="chTrend"></canvas></div></div>
-        <div class="card"><h3>📅 สถิติตามวันในสัปดาห์ <span class="h-right">8 สัปดาห์ล่าสุด</span></h3><div class="chart-box"><canvas id="chWeekday"></canvas></div></div>
+    const { total, present, leave, absent } = c;
+    const expected = total - leave;                                   // คนที่ต้องมา (หักคนลาออก)
+    const pct = expected > 0 ? Math.round(present / expected * 100) : 100;
+    const ribbon = total === 0 ? ''
+      : absent === 0
+        ? `<div class="dt-status ok">🎉 มาครบแล้ว — เช็คชื่อ ${present}/${expected} คน</div>`
+        : `<div class="dt-status warn">⛔ ยังไม่มา ${absent} คน จากที่ต้องมา ${expected} คน</div>`;
+
+    byId('view').innerHTML = `${alerts}
+      <div class="card dash-today">
+        <div class="dt-head">
+          <div><div class="dt-date">📍 วันนี้ — ${esc(d.today.thai_date)}</div>
+            <div class="tiny">อัปเดต ${new Date().toTimeString().substr(0, 5)} น. · เจ้าหน้าที่ ${total} คน${leave ? ` · ลา ${leave}` : ''}</div></div>
+          ${total ? `<div class="dt-pct"><div class="dt-pct-num">${pct}%</div><div class="tiny">มาแล้ว</div></div>` : ''}
+        </div>
+        ${total === 0 ? '<div class="empty"><span class="e-ico">👥</span>ยังไม่มีเจ้าหน้าที่ในระบบ</div>' : `
+        <div class="dt-body">
+          <div class="dt-donut"><canvas id="chToday"></canvas>
+            <div class="dt-center"><div class="dt-c-num">${present}<span>/${expected}</span></div><div class="dt-c-lbl">มาแล้ว</div></div>
+          </div>
+          <div class="dt-legend">
+            <div class="dt-leg s-ontime"><span class="dot dot-ok"></span>ตรงเวลา<b>${c.ontime}</b></div>
+            <div class="dt-leg s-late"><span class="dot dot-late"></span>มาสาย<b>${c.late}</b></div>
+            <div class="dt-leg s-leave"><span class="dot dot-leave"></span>ลา/หยุด<b>${leave}</b></div>
+            <div class="dt-leg s-absent"><span class="dot dot-absent"></span>ยังไม่มา<b>${absent}</b></div>
+          </div>
+        </div>
+        ${ribbon}`}
       </div>
 
+      ${total ? `<div class="card"><h3>👥 รายชื่อวันนี้</h3>
+        ${this.rosterGroup(d.today.roster, 'absent', '⛔', 'ยังไม่มา', 'มาครบแล้ว ไม่มีใครขาด 🎉')}
+        ${this.rosterGroup(d.today.roster, 'late', '🟡', 'มาสาย', '')}
+        ${this.rosterGroup(d.today.roster, 'leave', '🔵', 'ลา/หยุด', '')}
+        ${this.rosterGroup(d.today.roster, 'ontime', '🟢', 'มาแล้ว ตรงเวลา', '')}
+      </div>` : ''}
+
+      ${this.analyticsHtml(d)}`;
+
+    if (total) this.drawToday(c);
+    this.drawWeekday(d.weekday);
+  },
+
+  // รายชื่อแยกกลุ่มตามสถานะ (ยังไม่มา/สาย/ลา/มาแล้ว) — absent มี emptyMsg โชว์เมื่อมาครบ
+  rosterGroup(roster, state, icon, label, emptyMsg) {
+    const list = roster.filter(r => r.state === state);
+    const dotClass = state === 'ontime' ? 'ok' : state;
+    if (!list.length) {
+      return emptyMsg ? `<div class="rgroup rg-${state}">
+        <div class="rg-head"><span class="dot dot-${dotClass}"></span>${icon} ${label} <b>0</b></div>
+        <div class="rg-empty">${emptyMsg}</div></div>` : '';
+    }
+    return `<div class="rgroup rg-${state}">
+      <div class="rg-head"><span class="dot dot-${dotClass}"></span>${icon} ${label} <b>${list.length}</b></div>
+      <div class="roster">${list.map(r => `
+        <div class="roster-cell s-${state}">
+          <div><div class="rc-name">${esc(r.name)}</div>
+          <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
+            state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
+        </div>`).join('')}</div>
+    </div>`;
+  },
+
+  // ส่วนวิเคราะห์ด้านล่าง (อันดับความขยัน / สถิติรายวัน / กิจกรรมล่าสุด)
+  analyticsHtml(d) {
+    return `
       <div class="card">
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
         ${this.rankingHtml(d.ranking)}
       </div>
-
       <div class="grid-2-lg">
-        <div class="card"><h3>⚖️ สัปดาห์นี้ vs สัปดาห์ก่อน</h3>${this.weekCompareHtml(d.week_compare)}</div>
+        <div class="card"><h3>📅 สถิติตามวันในสัปดาห์ <span class="h-right">8 สัปดาห์ล่าสุด</span></h3><div class="chart-box"><canvas id="chWeekday"></canvas></div></div>
         <div class="card"><h3>🕐 กิจกรรมล่าสุด</h3>
           ${d.activity.length ? d.activity.map(a => `<div class="feed-item"><span>${a.icon}</span><span>${esc(a.text)}</span>
             <span class="f-time">${a.ts.substr(5, 11)}</span></div>`).join('') : '<div class="empty">ยังไม่มีกิจกรรม</div>'}
         </div>
       </div>`;
-
-    this.drawTrend(d.trend14);
-    this.drawWeekday(d.weekday);
   },
 
   rankingHtml(ranking) {
@@ -131,34 +174,20 @@ const Admin = {
       </table></div>`;
   },
 
-  weekCompareHtml(w) {
-    const diff = (a, b, invert = false) => {
-      const d = a - b;
-      if (!d) return '<span class="tiny">เท่าเดิม</span>';
-      const good = invert ? d < 0 : d > 0;
-      return `<span style="color:${good ? C_OK : C_ABSENT};font-size:13px">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
-    };
-    return `<div class="grid-4" style="grid-template-columns:repeat(3,1fr)">
-      <div class="kpi"><div class="k-label">มาทำงาน</div><div class="k-value">${w.this.total}</div><div class="k-sub">ก่อนหน้า ${w.last.total} ${diff(w.this.total, w.last.total)}</div></div>
-      <div class="kpi k-ok"><div class="k-label">ตรงเวลา</div><div class="k-value">${w.this.ontime}</div><div class="k-sub">ก่อนหน้า ${w.last.ontime} ${diff(w.this.ontime, w.last.ontime)}</div></div>
-      <div class="kpi k-late"><div class="k-label">สาย</div><div class="k-value">${w.this.late}</div><div class="k-sub">ก่อนหน้า ${w.last.late} ${diff(w.this.late, w.last.late, true)}</div></div>
-    </div>`;
-  },
-
-  drawTrend(trend) {
-    const el = byId('chTrend'); if (!el) return;
-    const mk = (label, key, color) => ({
-      label, data: trend.map(t => t[key]), backgroundColor: color,
-      borderColor: '#fff', borderWidth: 1, borderRadius: 4, stack: 's', maxBarThickness: 26,
-    });
+  // โดนัทองค์ประกอบการมาวันนี้ (ตรงเวลา/สาย/ลา/ยังไม่มา) — ตัวเลขกลางวงวางเป็น HTML ทับ
+  drawToday(c) {
+    const el = byId('chToday'); if (!el) return;
     this.charts.push(new Chart(el, {
-      type: 'bar',
-      data: { labels: trend.map(t => t.label), datasets: [
-        mk('ตรงเวลา', 'ontime', C_OK), mk('สาย', 'late', C_LATE),
-        mk('ลา/หยุด', 'leave', C_LEAVE), mk('ขาด', 'absent', C_ABSENT)] },
-      options: { ...CHART_BASE, scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Kanit', size: 10 } } },
-        y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Kanit', size: 11 } }, grid: { color: '#eef1ec' } } } },
+      type: 'doughnut',
+      data: { labels: ['ตรงเวลา', 'มาสาย', 'ลา/หยุด', 'ยังไม่มา'],
+        datasets: [{ data: [c.ontime, c.late, c.leave, c.absent],
+          backgroundColor: [C_OK, C_LATE, C_LEAVE, C_ABSENT], borderColor: '#fff', borderWidth: 2 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '70%',
+        plugins: { legend: { display: false },
+          tooltip: { bodyFont: { family: 'Kanit' }, titleFont: { family: 'Kanit' },
+            callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} คน` } } },
+      },
     }));
   },
 

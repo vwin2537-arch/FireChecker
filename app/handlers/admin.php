@@ -47,16 +47,6 @@ function h_admin_data(): never {
     $roster = $isHoliday ? [] : roster_for($today);
     $todayCounts = roster_counts($roster);
 
-    // ---------- แนวโน้ม 14 วันทำการล่าสุด ----------
-    $trend = [];
-    for ($d = new DateTime($today), $i = 0; count($trend) < 14 && $i < 25; $i++, $d->modify('-1 day')) {
-        $ymd = $d->format('Y-m-d');
-        if (is_station_holiday($ymd)) continue;
-        $c = roster_counts(roster_for($ymd));
-        $trend[] = ['date' => $ymd, 'label' => (int)date('j', strtotime($ymd)) . ' ' . THAI_MONTHS[(int)date('n', strtotime($ymd))]] + $c;
-    }
-    $trend = array_reverse($trend);
-
     // ---------- สถิติตามวันในสัปดาห์ (8 สัปดาห์ล่าสุด, จ-ส) ----------
     $st = db()->prepare(
         "SELECT DAYOFWEEK(work_date) dow,
@@ -91,18 +81,6 @@ function h_admin_data(): never {
     $st->execute([$today, $quota]);
     $overQuota = $st->fetchAll();
 
-    // ---------- เปรียบเทียบสัปดาห์นี้ / สัปดาห์ก่อน ----------
-    $monThis = date('Y-m-d', strtotime('monday this week'));
-    $monLast = date('Y-m-d', strtotime('monday last week'));
-    $wk = function (string $from, string $to): array {
-        $st = db()->prepare("SELECT COUNT(*) total, COALESCE(SUM(late=0),0) ontime, COALESCE(SUM(late=1),0) late_n
-                             FROM attendance WHERE work_date BETWEEN ? AND ?");
-        $st->execute([$from, $to]);
-        $r = $st->fetch();
-        return ['total' => (int)$r['total'], 'ontime' => (int)$r['ontime'], 'late' => (int)$r['late_n']];
-    };
-    $weekCompare = ['this' => $wk($monThis, $today), 'last' => $wk($monLast, date('Y-m-d', strtotime($monLast . ' +6 days')))];
-
     // ---------- กิจกรรมล่าสุด ----------
     $activity = [];
     $st = db()->query(
@@ -136,11 +114,9 @@ function h_admin_data(): never {
             'date' => $today, 'thai_date' => thai_date($today), 'is_holiday' => $isHoliday,
             'counts' => $todayCounts, 'roster' => array_values($roster),
         ],
-        'trend14'      => $trend,
         'weekday'      => $weekday,
         'ranking'      => $ranking,
         'over_quota'   => $overQuota,
-        'week_compare' => $weekCompare,
         'activity'     => $activity,
         'pending_users'=> $pending,
         'settings'     => client_settings(),

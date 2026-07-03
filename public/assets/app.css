@@ -203,6 +203,40 @@ input, select, textarea { font-family: inherit; }
 .roster-cell.s-ontime { background:var(--ok-bg); } .roster-cell.s-late { background:var(--late-bg); }
 .roster-cell.s-leave { background:var(--leave-bg); } .roster-cell.s-absent { background:var(--absent-bg); }
 
+/* ---------- dashboard: บล็อกวันนี้ (พระเอก) ---------- */
+.dash-today .dt-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.dash-today .dt-date { font-size:16px; font-weight:500; }
+.dash-today .dt-pct { text-align:right; flex-shrink:0; }
+.dash-today .dt-pct-num { font-size:26px; font-weight:600; color:var(--green-700); line-height:1; font-variant-numeric:tabular-nums; }
+.dt-body { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:14px; }
+.dt-donut { position:relative; width:164px; height:164px; flex-shrink:0; margin:0 auto; }
+.dt-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+.dt-c-num { font-size:34px; font-weight:600; line-height:1; color:var(--green-900); font-variant-numeric:tabular-nums; }
+.dt-c-num span { font-size:17px; color:var(--ink-3); font-weight:400; }
+.dt-c-lbl { font-size:12px; color:var(--ink-2); margin-top:2px; }
+.dt-legend { flex:1; min-width:190px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.dt-leg { display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; background:var(--surface); font-size:13px; }
+.dt-leg b { margin-left:auto; font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; }
+.dt-leg.s-ontime { background:var(--ok-bg); } .dt-leg.s-ontime b { color:var(--ok); }
+.dt-leg.s-late   { background:var(--late-bg); } .dt-leg.s-late b { color:var(--late); }
+.dt-leg.s-leave  { background:var(--leave-bg); } .dt-leg.s-leave b { color:var(--leave); }
+.dt-leg.s-absent { background:var(--absent-bg); } .dt-leg.s-absent b { color:var(--absent); }
+.dt-status { margin-top:14px; padding:10px 14px; border-radius:12px; font-size:14px; font-weight:500; text-align:center; }
+.dt-status.ok   { background:var(--ok-bg); color:var(--ok); }
+.dt-status.warn { background:var(--absent-bg); color:var(--absent); }
+
+/* รายชื่อวันนี้ แยกกลุ่มตามสถานะ */
+.rgroup { margin-top:16px; }
+.rgroup:first-of-type { margin-top:4px; }
+.rgroup .rg-head { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:500;
+  margin-bottom:8px; padding-left:10px; border-left:3px solid var(--line); }
+.rgroup .rg-head b { font-weight:600; }
+.rgroup.rg-absent .rg-head { border-color:var(--absent); color:var(--absent); }
+.rgroup.rg-late   .rg-head { border-color:var(--late); }
+.rgroup.rg-leave  .rg-head { border-color:var(--leave); }
+.rgroup.rg-ontime .rg-head { border-color:var(--ok); }
+.rgroup .rg-empty { font-size:13px; color:var(--ok); padding:0 0 2px 13px; }
+
 /* ---------- tables ---------- */
 .tbl-wrap { overflow-x:auto; margin:0 -18px; padding:0 18px; }
 table.tbl { width:100%; border-collapse:collapse; font-size:13.5px; min-width:560px; }
