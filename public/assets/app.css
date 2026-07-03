@@ -106,7 +106,8 @@ input, select, textarea { font-family: inherit; }
 
 /* ---------- bottom nav ---------- */
 .bottom-nav { position:fixed; bottom:0; left:0; right:0; z-index:40;
-  background:rgba(255,255,255,.94); backdrop-filter:blur(12px); border-top:1px solid var(--line);
+  background:#fff; border-top:1px solid var(--line); transform:translateZ(0);
+  box-shadow:0 -2px 12px rgba(16,40,25,.06);
   display:flex; justify-content:space-around; padding:6px 4px calc(6px + env(safe-area-inset-bottom));
   max-width:520px; margin:0 auto; border-radius:18px 18px 0 0; }
 .shell-wide + .bottom-nav, .bottom-nav.wide { max-width:1080px; }
@@ -125,6 +126,15 @@ input, select, textarea { font-family: inherit; }
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .grid-4 { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
 @media (min-width:760px) { .grid-4 { grid-template-columns:repeat(4,1fr); } .grid-2-lg { display:grid; grid-template-columns:1fr 1fr; gap:14px; } }
+
+/* ---------- report filter bar ---------- */
+.rpt-filter { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:end; }
+.rpt-filter .rpt-full { grid-column:1 / -1; }
+.rpt-filter .input, .rpt-filter .select { min-width:0; }
+@media (min-width:560px) {
+  .rpt-filter { grid-template-columns:1fr 1fr auto auto; }
+  .rpt-filter .rpt-full { grid-column:auto; }
+}
 
 /* ---------- clock & check-in ---------- */
 .clock-card { text-align:center; padding:22px 18px; }

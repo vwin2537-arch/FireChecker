@@ -183,12 +183,12 @@ const Admin = {
     const mStart = todayStr().substr(0, 8) + '01';
     byId('view').innerHTML = `
       <div class="card"><h3>📋 รายงานการเช็คชื่อ</h3>
-        <div class="grid-2" style="grid-template-columns:1fr 1fr auto auto;align-items:end;gap:8px">
-          <div class="field" style="margin:0"><label>จาก</label><input type="date" class="input" id="rpFrom" value="${mStart}"></div>
-          <div class="field" style="margin:0"><label>ถึง</label><input type="date" class="input" id="rpTo" value="${todayStr()}"></div>
-          <div class="field" style="margin:0"><label>คน</label><select class="select" id="rpUser">
+        <div class="rpt-filter">
+          <div class="field" style="margin:0;min-width:0"><label>จาก</label><input type="date" class="input" id="rpFrom" value="${mStart}"></div>
+          <div class="field" style="margin:0;min-width:0"><label>ถึง</label><input type="date" class="input" id="rpTo" value="${todayStr()}"></div>
+          <div class="field rpt-full" style="margin:0;min-width:0"><label>คน</label><select class="select" id="rpUser">
             <option value="0">ทุกคน</option>${users.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
-          <button class="btn btn-primary" onclick="Admin.loadReport()">ดู</button>
+          <button class="btn btn-primary rpt-full" onclick="Admin.loadReport()">ดู</button>
         </div>
       </div>
       <div id="rpOut"></div>`;
