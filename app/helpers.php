@@ -3,11 +3,35 @@
 // FireCheck — Helper functions
 // =====================================================
 
-/** ส่ง JSON response แล้วจบ request */
+/** จองงานให้รันหลังส่ง response แล้ว (client ไม่ต้องรอ) — ใช้กับงานช้า เช่น อัปโหลด Drive */
+function after_response(callable $fn): void {
+    $GLOBALS['_after_response'][] = $fn;
+}
+
+/** ส่ง JSON response แล้วจบ request — ถ้ามีงานค้างจาก after_response() จะปิด connection ก่อนแล้วค่อยทำ */
 function json_out(array $data, int $code = 200): never {
+    $body = json_encode($data, JSON_UNESCAPED_UNICODE);
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+
+    $jobs = $GLOBALS['_after_response'] ?? [];
+    if (!$jobs) {
+        echo $body;
+        exit;
+    }
+
+    // ปิด connection ให้ client รับคำตอบทันที (Content-Length + Connection: close) แล้วค่อยทำงานต่อ
+    ignore_user_abort(true);
+    header('Connection: close');
+    header('Content-Length: ' . strlen($body));
+    echo $body;
+    while (ob_get_level() > 0) ob_end_flush();
+    flush();
+    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+
+    foreach ($jobs as $fn) {
+        try { $fn(); } catch (Throwable $e) { error_log('[FireCheck after_response] ' . $e->getMessage()); }
+    }
     exit;
 }
 

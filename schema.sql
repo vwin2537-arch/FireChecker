@@ -130,6 +130,21 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- คิวส่งสำเนารูปเช็คชื่อขึ้น Google Drive ----------
+-- เช็คอินสำเร็จก่อนเสมอ แล้วค่อยอัปโหลดเบื้องหลัง — pending จะถูก retry จนสำเร็จ (เพดาน 30 ครั้ง → error)
+CREATE TABLE IF NOT EXISTS drive_queue (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  local_path VARCHAR(255) NOT NULL,                  -- path สัมพัทธ์ใน UPLOAD_DIR
+  fname      VARCHAR(255) NOT NULL,                  -- ชื่อไฟล์ปลายทางบน Drive เช่น 0745_สมชาย.jpg
+  work_date  DATE NOT NULL,                          -- ใช้ตั้งชื่อโฟลเดอร์รายวัน (ปี พ.ศ.)
+  status     ENUM('pending','done','error') NOT NULL DEFAULT 'pending',
+  tries      INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  done_at    DATETIME NULL,
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- ค่าตั้งต้น (แก้ได้จากหน้าตั้งค่าแอดมิน) ----------
 INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('station_name',     'สถานีควบคุมไฟป่าสลักพระ-เอราวัณ'),
@@ -146,4 +161,6 @@ INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('off_quota_month',  '10'),
   ('sunday_off',       '1'),
   ('line_token',       ''),
-  ('line_group_id',    '');
+  ('line_group_id',    ''),
+  ('gdrive_client_id',     ''),
+  ('gdrive_client_secret', '');

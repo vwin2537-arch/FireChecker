@@ -715,7 +715,55 @@ const Admin = {
         </div>
         <div class="tiny" style="margin-top:8px">สรุปอัตโนมัติ: ตั้ง cron เรียก <code>php cron/report.php morning</code> (08:30) และ <code>evening</code> (17:30) — ดูวิธีใน README</div>
       </div>
+      <div class="card"><h3>🖼️ สำเนารูปเช็คชื่อขึ้น Google Drive</h3>
+        ${I('gdrive_client_id', 'Client ID')}${I('gdrive_client_secret', 'Client Secret', 'password')}
+        <div id="gdriveStatus" class="tiny">กำลังตรวจสถานะ...</div>
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveConnect()">🔗 เชื่อมต่อ Google Drive</button>
+          <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveTest()">ทดสอบ + ส่งรูปค้าง</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.gdriveDisconnect()">ยกเลิกการเชื่อมต่อ</button>
+        </div>
+        <div class="tiny" style="margin-top:8px">รูปเซลฟี่เช็คอินจะถูกสำเนาขึ้น Drive อัตโนมัติ แยกโฟลเดอร์รายวัน (ปี พ.ศ.) — เช็คอินไม่ต้องรอ Drive ถ้าส่งพลาดระบบ retry ให้เอง</div>
+      </div>
       <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
+    this.gdriveRefreshStatus();
+  },
+
+  async gdriveRefreshStatus() {
+    const el = byId('gdriveStatus');
+    if (!el) return;
+    const d = await App.api('gdrive_status', {}, { soft: true });
+    if (!d.ok) { el.textContent = 'ตรวจสถานะไม่สำเร็จ'; return; }
+    el.innerHTML = d.connected
+      ? `✅ เชื่อมต่อแล้ว${d.root_id ? ` — <a href="https://drive.google.com/drive/folders/${d.root_id}" target="_blank" rel="noopener">เปิดโฟลเดอร์ "${esc(d.root_name)}"</a>` : ''}
+         <br>คิวรูป: รอส่ง ${d.pending} • ส่งแล้ว ${d.done} • ล้มเหลว ${d.error}
+         ${d.last_error ? `<br>⚠️ ปัญหาล่าสุด: ${esc(d.last_error)}` : ''}`
+      : `⛔ ยังไม่ได้เชื่อมต่อ — ตอนสร้าง OAuth client ใน Google Cloud ให้ใส่ Redirect URI:<br><code>${esc(d.redirect_uri)}</code>`;
+  },
+
+  async gdriveConnect() {
+    await this.saveSettings();   // เซฟ Client ID/Secret ก่อนพาไปหน้าอนุญาต Google
+    const d = await App.api('gdrive_auth_url');
+    location.href = d.url;
+  },
+
+  async gdriveTest() {
+    const d = await App.api('gdrive_test');
+    Swal.fire({ icon: 'success', title: d.message,
+      html: `<a href="${d.root_url}" target="_blank" rel="noopener">เปิดโฟลเดอร์บน Google Drive</a>
+        <div class="tiny" style="margin-top:6px">รูปค้างรอส่ง: ${d.pending} รูป</div>`,
+      confirmButtonText: 'ปิด' });
+    this.gdriveRefreshStatus();
+  },
+
+  async gdriveDisconnect() {
+    const c = await Swal.fire({ icon: 'warning', title: 'ยกเลิกการเชื่อมต่อ Google Drive?',
+      text: 'รูปที่อัปโหลดไปแล้วยังอยู่ใน Drive — รูปใหม่จะไม่ถูกส่งจนกว่าจะเชื่อมต่ออีกครั้ง',
+      showCancelButton: true, confirmButtonText: 'ยกเลิกการเชื่อมต่อ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    const d = await App.api('gdrive_disconnect');
+    toast(d.message);
+    this.gdriveRefreshStatus();
   },
 
   useHere() {
@@ -729,7 +777,8 @@ const Admin = {
   async saveSettings() {
     const keys = ['selfie_required', 'checkout_enabled', 'gps_enforce', 'sunday_off',
       'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
-      'gps_lat', 'gps_lng', 'gps_radius_m', 'off_quota_month', 'station_name', 'line_token', 'line_group_id'];
+      'gps_lat', 'gps_lng', 'gps_radius_m', 'off_quota_month', 'station_name', 'line_token', 'line_group_id',
+      'gdrive_client_id', 'gdrive_client_secret'];
     const settings = {};
     keys.forEach(k => {
       const el = byId('st_' + k);

@@ -751,7 +751,7 @@ function captureSelfie() {
     inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'user';
     inp.onchange = async () => {
       if (!inp.files[0]) return resolve(null);
-      resolve(await compressImage(inp.files[0]));
+      resolve(await compressImage(inp.files[0], 1000, 0.6));   // เซลฟี่เอาพอเห็นหน้า ไม่ต้องชัดมาก — ไฟล์เล็ก ส่งขึ้น Drive เร็ว
     };
     inp.oncancel = () => resolve(null);
     inp.click();

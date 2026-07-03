@@ -39,6 +39,7 @@ function roster_counts(array $roster): array {
 
 function h_admin_data(): never {
     require_admin();
+    gdrive_kick_if_stale();   // ถือโอกาสไล่คิวรูปค้างขึ้น Drive (ทำหลังส่ง response)
     $today = date('Y-m-d');
     $isHoliday = is_station_holiday($today);
 
@@ -296,6 +297,7 @@ const EDITABLE_SETTINGS = [
     'gps_lat', 'gps_lng', 'gps_radius_m', 'gps_enforce',
     'selfie_required', 'checkout_enabled', 'off_quota_month', 'sunday_off',
     'line_token', 'line_group_id',
+    'gdrive_client_id', 'gdrive_client_secret',
 ];
 
 function h_settings_get(): never {

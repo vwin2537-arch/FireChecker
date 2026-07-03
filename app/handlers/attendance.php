@@ -39,6 +39,8 @@ function h_app_data(): never {
     $st->execute([$u['id']]);
     $libUnread = (int)$st->fetch()['c'];
 
+    gdrive_kick_if_stale();   // ถือโอกาสไล่คิวรูปค้าง (ทำหลังส่ง response, ไม่หน่วงหน้าแอป)
+
     ok([
         'user'     => public_user($u),
         'today'    => [
@@ -124,6 +126,9 @@ function h_checkin(): never {
     db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path)
                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)')
         ->execute([$u['id'], $today, $late, $lat, $lng, $dist, $selfiePath]);
+
+    // สำเนารูปขึ้น Google Drive เบื้องหลัง (ไม่หน่วงเช็คอิน — คิว retry จนสำเร็จ)
+    if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'], $today);
 
     ok([
         'late'    => (bool)$late,

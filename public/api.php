@@ -15,6 +15,7 @@ require_once __DIR__ . '/../app/handlers/admin.php';
 require_once __DIR__ . '/../app/handlers/line.php';
 require_once __DIR__ . '/../app/handlers/library.php';
 require_once __DIR__ . '/../app/handlers/quiz.php';
+require_once __DIR__ . '/../app/drive.php';
 
 const ACTIONS = [
     // auth
@@ -64,6 +65,11 @@ const ACTIONS = [
     'quiz_admin_scores' => 'h_quiz_admin_scores',
     'quiz_save'         => 'h_quiz_save',
     'quiz_delete'       => 'h_quiz_delete',
+    // Google Drive (admin)
+    'gdrive_auth_url'   => 'h_gdrive_auth_url',
+    'gdrive_status'     => 'h_gdrive_status',
+    'gdrive_test'       => 'h_gdrive_test',
+    'gdrive_disconnect' => 'h_gdrive_disconnect',
     // cron (LINE Bot)
     'cron_report'     => 'h_cron_report',
 ];
