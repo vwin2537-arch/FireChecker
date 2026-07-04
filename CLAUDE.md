@@ -38,9 +38,9 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 ## Google Drive selfie sync (สำเนารูปเช็คอินขึ้น Drive)
 
 - **ไฟล์:** `app/drive.php` (ท่อ Drive + คิว + OAuth handlers `h_gdrive_*`), `public/oauth.php` (OAuth callback — ไม่มี auth header พึ่ง `gdrive_oauth_state` ที่หมดอายุ 10 นาที กัน CSRF)
-- **flow:** `h_checkin` เซฟรูปลง Volume แล้วเรียก `gdrive_enqueue()` (แค่ insert `drive_queue` + `after_response('gdrive_process_queue')` ไม่แตะ network) → เช็คอินตอบทันที → คิวอัปโหลดหลังปิด connection แล้ว
-- **retry:** `gdrive_process_queue()` อัปโหลดทีละ ≤3 รายการ, fail → `tries+1` (เพดาน 30 → status `error`); `gdrive_kick_if_stale()` แปะใน `h_app_data`+`h_admin_data` ไล่คิวค้างถ้าห่างรอบก่อน >60 วิ (throttle ด้วย setting `gdrive_last_run`)
-- **after_response()** (helpers.php) — งานช้าต้องผ่านตัวนี้เท่านั้น: ปิด connection ด้วย `Content-Length`+`Connection: close`+`ob_end_flush`+`fastcgi_finish_request()` แล้วค่อยรัน job (client ไม่รอ) — อย่ารัน curl คาใน request handler
+- **flow:** `h_checkin` เซฟรูปลง Volume แล้วเรียก `gdrive_enqueue()` (insert `drive_queue` + แตกโปรเซส worker `cron/drive.php` ผ่าน `gdrive_spawn_worker()` ไม่แตะ network) → เช็คอินตอบทันที → worker อัปโหลดเบื้องหลัง
+- **retry:** `gdrive_process_queue()` อัปโหลดทีละ ≤3 รายการ, fail → `tries+1` (เพดาน 30 → status `error`); worker `cron/drive.php` มี `flock` กันรันซ้อน; `gdrive_kick_if_stale()` ใน `h_app_data`+`h_admin_data` แตก worker ไล่คิวค้างถ้าห่างรอบก่อน >60 วิ (throttle ด้วย `gdrive_last_run`)
+- **⚠️ อย่ารัน curl คาใน request** — เดิมใช้ `after_response()` (helpers.php) ปิด connection ด้วย `Content-Length`+`Connection: close`+`fastcgi_finish_request()` แต่ **`fastcgi_finish_request()` ไม่มีบน Apache mod_php** (prod เป็น `php:8.3-apache` prefork) จึง**เลิกใช้ เปลี่ยนเป็นแตกโปรเซส CLI แยก** (`nohup php cron/drive.php &`) — ถ้า server ปิด `exec` → `gdrive_enqueue` fallback อัป inline สั้นๆ (`after_response` ยังอยู่ใน helpers แต่ไม่มีใครเรียกแล้ว)
 - **scope `drive.file`** = แอปเห็นเฉพาะไฟล์/โฟลเดอร์ที่ตัวเองสร้าง → สร้างโฟลเดอร์ราก "รูปเช็คชื่อสถานีไฟป่า" เอง (id เก็บใน `gdrive_root_id`) แล้วให้พี่วินลากไปวางเอง — **เข้าถึงโฟลเดอร์ที่ผู้ใช้มีอยู่ก่อนไม่ได้** (ตั้งใจ แลกกับความปลอดภัย + ไม่ติด verification)
 - **โฟลเดอร์รายวัน** ชื่อปี พ.ศ. `2569-mm-dd` (cache id วันละครั้งใน `gdrive_day_cache`); ชื่อไฟล์ `Hi_ชื่อจริง.jpg`
 - **settings ที่เกี่ยว (ห้าม hardcode):** `gdrive_client_id`/`gdrive_client_secret` (แอดมินกรอก, อยู่ใน EDITABLE_SETTINGS), `gdrive_refresh_token`/`gdrive_access_token`/`gdrive_access_exp`/`gdrive_root_id`/`gdrive_day_cache`/`gdrive_oauth_state`/`gdrive_last_run` (ระบบเซ็ตเอง) — เหมือน LINE token ไม่อยู่ในโค้ด
@@ -57,6 +57,12 @@ Railway + Dockerfile (ดูขั้นตอนละเอียดใน REA
 **Live:** https://sakpra-erawan.up.railway.app — Railway project "firecheck" (`0490e262-abfe-49c6-bd47-81cdd12ed7d1`), service `firecheck-app` + `MySQL` + Volume `/data` (domain renamed from the default `firecheck-app-production.up.railway.app` for staff usability; `firecheck.up.railway.app` was already taken by someone else)
 
 **⚠️ Dockerfile CMD ห้ามย้าย `rm -f mpm_event.*` กลับไปเป็น build-time RUN** — เจอบั๊กจริงบน Railway: ไฟล์ที่ลบใน Docker build layer (RUN) ไม่ persist มาถึง container ตอนรันจริง (`mpm_event.load` กลับมาเป็นของ base image เดิมทุกครั้ง แม้ build log ยืนยันว่าลบสำเร็จ) ทำให้ Apache crash loop ด้วย `AH00534: More than one MPM loaded` ทางแก้ที่ใช้ได้จริงคือลบใน `CMD` (runtime, writable fs) เท่านั้น — ดู Dockerfile ปัจจุบัน
+
+**⚠️ Volume ต้อง chown ให้ www-data ใน CMD (runtime)** — `/data/uploads` ตอน Volume mount เป็นของ root แต่ Apache รันเป็น www-data → `save_photo()` mkdir ไม่ได้ = Permission denied → selfie เซฟไม่ได้เลย ต้อง `mkdir -p "$UPLOAD_DIR" && chown -R www-data:www-data "$UPLOAD_DIR"` ใน `CMD` (runtime เพราะ Volume mount ตอน runtime เหมือนบั๊ก mpm) — ดู PROGRESS lesson 8
+
+**⚠️ display_errors ต้อง Off บน prod** — base image เปิด display_errors → PHP warning ใดๆ ถูกพ่นหน้า JSON body → `res.json()` พังฝั่ง client = **"การเชื่อมต่อขัดข้อง"** (สัญญาณ: HTTP ยัง 200 แต่ content-type กลายเป็น `text/html` + body ขึ้นต้น `<br>`) ตั้ง `display_errors=Off`+`log_errors=On` ใน `firecheck.ini` (warning ไปลง Railway deploy log แทน) — ดู PROGRESS lesson 8
+
+**⚠️ MySQL บน Railway เป็น UTC** — SQL `NOW()`/`CURRENT_TIMESTAMP` เก็บเวลา UTC → เวลาเช็คอินเพี้ยน -7 ชม. `db.php` ตั้ง `PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone='+07:00'"` ทุกการเชื่อมต่อ (คอลัมน์เวลาเป็น DATETIME ล้วน ไม่มี TIMESTAMP → ตั้ง tz ไม่กระทบค่าที่เก็บไว้แล้ว มีผลเฉพาะ write ใหม่) — ดู PROGRESS lesson 9
 
 ## ห้าม commit
 
