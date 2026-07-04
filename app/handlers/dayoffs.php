@@ -91,10 +91,19 @@ function dayoff_insert(int $userId, array $dates, string $type, string $note, bo
 }
 
 function h_dayoff_add(): never {
-    $u = require_user();
-    $r = dayoff_insert((int)$u['id'], (array)param('dates', []), (string)param('type', 'dayoff'),
-                       mb_substr(trim((string)param('note', '')), 0, 255), false);
+    $u    = require_user();
+    $type = (string)param('type', 'dayoff');
+    $note = mb_substr(trim((string)param('note', '')), 0, 255);
+    $r = dayoff_insert((int)$u['id'], (array)param('dates', []), $type, $note, false);
     if (!$r['added'] && $r['skipped']) fail('จองไม่สำเร็จ: ' . $r['skipped'][0][1]);
+
+    // แจ้งเข้ากลุ่ม LINE ทันที (async ผ่านคิว) เมื่อยื่นลาป่วย/ลากิจ — หัวหน้ารู้ทันทีไม่ต้องรอรายงานเช้า/เย็น
+    if ($r['added'] && ($type === 'sick' || $type === 'personal')) {
+        $dates = implode(', ', array_map(fn($d) => thai_date($d, false), $r['added']));
+        line_enqueue("🔔 มีคำขอลา\n• {$u['name']} — " . OFF_TYPES[$type] . " {$dates}"
+                   . ($note !== '' ? "\n📝 {$note}" : '')
+                   . ($r['pending'] ? "\n⏳ รออนุมัติจากหัวหน้าสถานี" : ''));
+    }
 
     $msg = 'บันทึกแล้ว ' . count($r['added']) . ' วัน';
     if ($r['over_quota']) $msg .= ' ⚠️ เกินโควต้าเดือนละ ' . setting('off_quota_month', '10') . ' วัน — ระบบแจ้งหัวหน้าสถานีแล้ว';
