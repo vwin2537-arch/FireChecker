@@ -292,8 +292,11 @@ const Admin = {
     this.aYm = this.aYm || ymNow();
     const [d, ul] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list')]);
     const staff = ul.users.filter(u => u.role === 'staff' && u.status === 'active');
+    const single = !!this.aUser;
+    const shown = single ? d.day_offs.filter(o => o.user_id == this.aUser) : d.day_offs;
     const byDate = {};
-    d.day_offs.forEach(o => (byDate[o.off_date] = byDate[o.off_date] || []).push(o));
+    shown.forEach(o => (byDate[o.off_date] = byDate[o.off_date] || []).push(o));
+    this.aByDate = byDate;
 
     byId('view').innerHTML = `
       <div class="card">
@@ -302,15 +305,15 @@ const Admin = {
           <span class="cal-title">ปฏิทินวันหยุด — ${thaiMonth(this.aYm)}</span>
           <button class="cal-nav" onclick="Admin.aMove(1)">›</button>
         </div>
-        <div id="aCalList">${Object.keys(byDate).sort().map(ds => `
-          <div class="list-row"><span class="dot dot-leave"></span>
-            <div class="lr-main"><div class="lr-title">${thaiDate(ds)}</div>
-              <div class="lr-sub">${byDate[ds].map(o =>
-                `${esc(o.name)} (${offLabel(o.type)})${+o.over_quota ? ' ⚠️' : ''}
-                 <button class="link-btn" style="color:var(--absent);font-size:12px" onclick="Admin.delOff(${o.id})">ลบ</button>`).join(' • ')}</div></div>
-            <span class="chip chip-leave">${byDate[ds].length} คน</span>
-          </div>`).join('') || '<div class="empty"><span class="e-ico">🌿</span>เดือนนี้ไม่มีวันหยุด/ลา</div>'}
-        </div>
+        <div class="field" style="margin-bottom:10px"><label>ดูของ</label>
+          <select class="select" onchange="Admin.aSetUser(this.value)">
+            <option value="">— ทุกคน (ภาพรวม) —</option>
+            ${staff.map(u => `<option value="${u.id}"${this.aUser == u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
+          </select></div>
+        <div class="cal-grid">${['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map(x => `<div class="cal-dow">${x}</div>`).join('')}${this.heatCells(byDate, staff.length, single)}</div>
+        <div class="tiny" style="margin-top:8px">${single
+          ? '🟠 ลาป่วย • 🟣 ลากิจ • 🔵 วันหยุด • แตะวันเพื่อดู/ลบ'
+          : 'ยิ่งเข้ม = หยุดกันเยอะ • ตัวเลข = จำนวนคนหยุด • ⚠️ = มีเกินโควต้า • แตะวันเพื่อดูรายชื่อ/ลบ'}</div>
       </div>
       <div class="card"><h3>➕ บันทึกลาแทนเจ้าหน้าที่ <span class="h-right">เช่น โทรมาลาป่วยตอนเช้า</span></h3>
         <div class="field"><label>เจ้าหน้าที่</label><select class="select" id="aoUser">
@@ -324,6 +327,52 @@ const Admin = {
         <button class="btn btn-primary btn-block" onclick="Admin.addOff()">บันทึก</button>
       </div>`;
   },
+
+  // ช่องปฏิทิน — ทุกคน: ไล่สีตามจำนวนคนหยุด / รายคน: สีตามประเภทการลา
+  heatCells(byDate, staffTotal, single) {
+    const TYPE_COLOR = { sick: '#d97706', personal: '#7c3aed', dayoff: '#2563eb' };
+    const TYPE_SHORT = { sick: 'ป่วย', personal: 'กิจ', dayoff: 'หยุด' };
+    const [Y, M] = this.aYm.split('-').map(Number);
+    const first = new Date(Y, M - 1, 1), days = new Date(Y, M, 0).getDate();
+    const today = todayStr();
+    let cells = '';
+    for (let i = 0; i < first.getDay(); i++) cells += '<div class="cal-day other"></div>';
+    for (let dd = 1; dd <= days; dd++) {
+      const ds = `${Y}-${String(M).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+      const dow = new Date(Y, M - 1, dd).getDay();
+      const items = byDate[ds] || [];
+      const n = items.length;
+      const over = items.some(o => +o.over_quota);
+      const cls = ['cal-day']; if (dow === 0) cls.push('sun'); if (ds === today) cls.push('today');
+      let style = '', badge = '';
+      if (n && single) {                       // รายคน — สีตามประเภท
+        style = `background:${TYPE_COLOR[items[0].type] || '#2563eb'};border-color:transparent;color:#fff`;
+        badge = `<span class="cd-badge" style="color:#fff">${TYPE_SHORT[items[0].type] || ''}${over ? '⚠️' : ''}</span>`;
+      } else if (n) {                          // ทุกคน — ไล่สีตามจำนวน
+        const t = staffTotal ? Math.min(1, n / staffTotal) : 1, dark = t > 0.5;
+        style = `background:rgba(37,99,235,${(0.15 + t * 0.75).toFixed(2)});border-color:transparent${dark ? ';color:#fff' : ''}`;
+        badge = `<span class="cd-badge"${dark ? ' style="color:#fff"' : ''}>${n}${over ? '⚠️' : ''}</span>`;
+      }
+      const click = n ? `onclick="Admin.dayDetail('${ds}')"` : '';
+      cells += `<div class="${cls.join(' ')}" style="${style}" ${click}>${dd}${badge}</div>`;
+    }
+    return cells;
+  },
+
+  // แตะวันในปฏิทิน → รายชื่อคนหยุดวันนั้น + ปุ่มลบ
+  dayDetail(ds) {
+    const list = this.aByDate[ds] || [];
+    Swal.fire({
+      title: thaiDate(ds), showConfirmButton: false, showCloseButton: true,
+      html: list.map(o =>
+        `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+          <span>${esc(o.name)} <span class="tiny">(${offLabel(o.type)})${+o.over_quota ? ' ⚠️เกินโควต้า' : ''}</span></span>
+          <button class="link-btn" style="color:var(--absent);font-size:13px" onclick="Admin.delOff(${o.id})">ลบ</button>
+        </div>`).join('') || 'ไม่มีข้อมูล',
+    });
+  },
+
+  aSetUser(v) { this.aUser = v; this.vDayoff(); },
 
   aMove(dir) {
     const [Y, M] = this.aYm.split('-').map(Number);
