@@ -2,7 +2,7 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 4 ก.ค. 2026 — แก้บั๊กเช็คอิน iOS ค้าง (ถ่ายเซลฟี่ก่อน GPS → lesson 10) + ปฏิทินวันหยุดฝั่งแอดมิน (heatmap ทั้งเดือน + filter รายคน, deploy v12) + **เชื่อม LINE Bot + cron (Google Apps Script) เสร็จ ทดสอบเด้งเข้ากลุ่มจริง**. **ต่อไป: เฟส 2 ระบบอนุมัติลา** (requirement ล็อกแล้ว ดู "รอทำต่อ")
+อัปเดตล่าสุด: 5 ก.ค. 2026 — **เฟส 2 ระบบอนุมัติลา เสร็จ + deploy (v15)**: อนุมัติ/ปฏิเสธลาป่วย-ลากิจ, auto-approve @ deadline, LINE เด้ง async ตอนยื่น/ยกเลิก/อนุมัติ, บังคับ note, ป๊อบอัพวันหยุดสวยขึ้น (ดูรายละเอียดใต้ "เฟส 2"). รายละเอียด technical → CLAUDE.md "ระบบอนุมัติลา". (test log เก่า 2-4 ก.ค. ย้ายไป PROGRESS_ARCHIVE.md)
 
 ## ทำเสร็จแล้ว
 
@@ -16,25 +16,7 @@
 - [x] **ปฏิทินวันหยุดฝั่งแอดมิน** (4 ก.ค. 2026) แท็บวันหยุดเป็นปฏิทิน grid ทั้งเดือน — ทุกคน: heatmap ไล่สีตามจำนวนคนหยุด / เลือกรายคน: สีตามประเภทลา (🟠ป่วย/🟣กิจ/🔵หยุด) แตะวันดูรายชื่อ+ลบ — reuse ปฏิทิน จนท. ไม่แตะ backend (`dayoff_month`)
 - [x] **สำเนารูปเซลฟี่ขึ้น Google Drive** (4 ก.ค. 2026) เช็คอินสำเร็จทันทีไม่รอ Drive → คิว `drive_queue` อัปโหลดเบื้องหลังหลังส่ง response (retry จนสำเร็จ เพดาน 30 ครั้ง) → แยกโฟลเดอร์รายวัน ปี พ.ศ. (`2569-07-04`) ชื่อไฟล์ `เวลา_ชื่อ.jpg` — OAuth scope `drive.file` แอดมินเชื่อมเองครั้งเดียว (คู่มือ `SETUP_GDRIVE.md`) — ย่อรูปเซลฟี่เหลือ 1000px q0.6 ให้ไฟล์เล็ก + เปิดสวิตช์ `selfie_required` บน production แล้ว → lesson 7
 
-## ทดสอบแล้ว (2 ก.ค. 2026, local: PHP 8.5 + MySQL 9.6)
-
-- API ครบทุก endpoint ผ่าน curl: login/register/approve, checkin (ใกล้=ผ่าน, ไกล=บล็อก, ซ้ำ=บล็อก, ไม่มี GPS=บล็อก), จองวันหยุด (อาทิตย์/อดีต/ซ้ำ=บล็อก, เกินโควต้า=flag), settings, sec checks (401/403)
-- E2E ผ่าน Playwright + Chrome จริง: login → เช็คอิน (mock GPS) → ปฏิทิน → dashboard — **0 console error** + screenshot ทุกหน้า
-- Auto-setup: DB ว่าง → request แรกสร้างตาราง+แอดมินเอง ✓
-- Palette กราฟผ่าน dataviz validator (CVD-safe)
-
-## ทดสอบแล้ว — แบบทดสอบ (3 ก.ค. 2026, local: PHP 8.4 + MySQL 9.6)
-
-- API ครบทุก endpoint ผ่าน curl: quiz_save (สร้าง/แก้ไข แทนที่คำถามทั้งชุด), quiz_get (ไม่หลุด correct_index ไปฝั่ง client), quiz_submit (คิดคะแนนถูกต้อง ทำซ้ำได้), quiz_admin_scores (คะแนนสูงสุด+จำนวนครั้งต่อคน), quiz_delete (ซ่อน/แสดง เก็บประวัติคะแนนไว้), validation (ตัวเลือกไม่ครบ 4 = fail)
-- E2E ผ่าน Playwright: แอดมินสร้างชุดคำถาม 2 ข้อ → จนท. ทำ (ตอบทีละข้อ, tap-to-advance) → เห็นคะแนนสรุปท้าย 2/2 → แอดมินดูตารางคะแนน — **0 console/page error**
-- เจอบั๊ก UI ระหว่างเทส: ตาราง `.tbl`/`.tbl-wrap` (มี min-width:560px + negative margin trick) ใช้ใน Swal popup ไม่ได้ ต้องทำตาราง inline-style แยกสำหรับ modal — แก้แล้ว ดู lesson learned
-- **(3 ก.ค. 2026 รอบ 2)** เปลี่ยน flow เป็นเลือกคำตอบ→ไฮไลท์เขียวค้าง→ปุ่มย้อนกลับ/ถัดไปแก้คำตอบได้→ปุ่ม "ส่งคำตอบ" ที่ข้อสุดท้ายเท่านั้นถึงคิดคะแนน (เดิม tap-to-advance ทันที) — เทส E2E ผ่าน Playwright ครบ: ปุ่มถัดไป/ส่งคำตอบ disabled จนกว่าจะเลือก, ย้อนกลับแล้วคำตอบเดิมยังไฮไลท์, แก้คำตอบซ้ำได้ก่อนส่งจริง
-
-## ทดสอบแล้ว — Google Drive selfie sync (4 ก.ค. 2026, local: PHP + MySQL)
-
-- curl: checkin ไม่มี selfie เมื่อ `selfie_required=1` = fail / มี selfie = ผ่าน + คิวถูกสร้าง; checkin ตอบใน 0.01 วิ แม้ตั้ง gdrive creds ปลอม (พิสูจน์ว่าไม่ block เพราะ Drive) — คิว retry เพิ่ม tries ทุกรอบ kick ตอน error
-- E2E Playwright: staff เช็คอินถ่ายเซลฟี่ผ่าน filechooser (ดัก `captureSelfie()`) → เช็คอินสำเร็จ → คิว drive_queue มี row + ไฟล์อยู่ Volume; การ์ด Drive ในหน้าตั้งค่าโชว์สถานะ/คิว/last_error ถูกต้อง; oauth.php state มั่ว = "ลิงก์หมดอายุ", endpoint ไม่มี token = 401
-- **verified บน production แล้ว (4 ก.ค. 2026):** เช็คอินจริง → `gdrive_status` โชว์ `done:1, error:0` = รูปเซลฟี่อัปขึ้น Drive สำเร็จ (แต่ต้องแก้ Volume permission ก่อน selfie ถึงจะเซฟได้ → lesson 8)
+> test log เก่า (2-4 ก.ค.: API/checkin, แบบทดสอบ, Google Drive sync) ย้ายไป **PROGRESS_ARCHIVE.md**
 
 ## Deploy (3 ก.ค. 2026)
 
@@ -105,6 +87,8 @@
 - **[8] "การเชื่อมต่อขัดข้อง" ตอนเช็คชื่อ = PHP warning พ่นใส่ JSON** (ดู CLAUDE.md → Deploy gotchas): ต้นเหตุจริง `save_photo()` `mkdir()` บน Volume **Permission denied** (`/data/uploads` เป็นของ root, Apache = www-data) → selfie ไม่เคยเซฟลง prod ได้เลย + `display_errors` เปิดอยู่ → warning HTML ขึ้นหน้า JSON → `res.json()` พัง (HTTP ยัง 200, content-type flip เป็น text/html, body ขึ้นต้น `<br>`). แก้ 2 จุดใน Dockerfile: (a) CMD `chown www-data $UPLOAD_DIR` ตอน runtime (b) `display_errors=Off`+`log_errors=On`. **บทเรียน debug:** รอบแรกเดาผิดว่าเป็น `after_response`/mod_php แล้ว deploy ทั้งที่ยังไม่เห็น response ดิบ → เสีย 1 deploy; ต้อง**ดู raw response body ก่อนแก้เสมอ** (200+text/html+`<br>` = warning corruption)
 - **[10] เช็คอิน iOS ค้าง = user-activation หมดตอนเปิดกล้อง** (ดู CLAUDE.md → Logic สำคัญ): iOS/WebKit บังคับ file-input `.click()` (เปิดกล้องเซลฟี่) ต้องอยู่ในจังหวะ transient user-activation ของการกดสด — เดิม `doCheckin` หา GPS ก่อน (await + permission dialog กิน activation) แล้วค่อย `captureSelfie()` → `.click()` no-op เงียบ ไม่มี timeout → ค้างตลอด ปุ่มค้าง disabled. **Chrome iOS เจอเหมือนกัน** (WebKit เดียวกัน ไม่ใช่บั๊ก Safari เฉพาะ). แก้: **สลับถ่ายเซลฟี่ก่อน GPS** (GPS grant แล้วไม่ต้อง activation + มี timeout 12s กันค้าง) + ห่อ try/finally ปลดล็อกปุ่มเสมอ. บทเรียน: อย่ามี `await` คั่นก่อน op ที่ต้อง user-activation (camera/getUserMedia/window.open)
 - **[9] เวลาเช็คอินเพี้ยน -7 ชม. = MySQL บน Railway เป็น UTC** (ดู CLAUDE.md → Deploy gotchas): `time_in` เขียนด้วย SQL `NOW()` → เก็บ UTC แสดงดิบ. แก้ด้วย `SET time_zone='+07:00'` ตอนต่อ PDO (db.php) — คอลัมน์ DATETIME ล้วนไม่กระทบของเก่า, row ก่อนแก้ต้อง `+ INTERVAL 7 HOUR` เอง (ทำผ่าน `railway connect MySQL` สำหรับ row 4 ก.ค.)
+- **[11] "ปฏิเสธลาทั้งหมด" = false alarm ไม่ใช่บั๊ก** (5 ก.ค.): reproduce แล้ว reject ลบเฉพาะ id ที่กด + ดู prod DB จริง (id ครบไม่หาย, ทุกแถว approved, line_queue ว่าง). ต้นเหตุ = `leave_auto_approve()` ย้ายคำขอที่เลย deadline (หรือ backfill ข้อมูลเก่า) ออกจากการ์ด pending เงียบๆ → พอกดปฏิเสธอันสุดท้าย การ์ดว่าง = ดูเหมือนปฏิเสธหมด. **ทดสอบระบบลาต้องใช้คำขอใหม่ off_date ≥ วันนี้+2 (ยัง pending จริง)**
+- **[12] เทส local timezone/PHP 8.5** (5 ก.ค.): (a) bash `php -r date()` ไม่ตั้ง TZ = system TZ ≠ server (`Asia/Bangkok`) วันคลาด 1 วัน → "+2" กลายเป็น "+1" ถูกบล็อก; ใส่ `date_default_timezone_set('Asia/Bangkok')` ในสคริปต์เทสวันที่เสมอ (b) local PHP 8.5 เตือน `PDO::MYSQL_ATTR_INIT_COMMAND` deprecated + display_errors ON → warning ปน JSON (lesson 8 ซ้ำ); เทสต้องรัน `php -d display_errors=0` (prod 8.3 + firecheck.ini ปิดอยู่แล้ว ไม่กระทบ)
 
 ## Deploy (4 ก.ค. 2026 — bugfix)
 
