@@ -189,8 +189,23 @@ input, select, textarea { font-family: inherit; }
 .sc-z3     { animation:sc-zzz 3s ease-in-out infinite 2s; }
 .sc-cl     { animation:sc-cloud 5s ease-in-out infinite alternate; }
 
+/* ฉากเด้ง pop ตอนเพิ่งเช็คชื่อสำเร็จ */
+@keyframes sc-pop { 0%{transform:scale(.3);opacity:0} 60%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} }
+.scene.pop { animation:sc-pop .5s cubic-bezier(.2,.85,.3,1.3) both; }
+
+/* คอนเฟตติพิกเซลฉลองเช็คชื่อตรงเวลา */
+.confetti-layer { position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden; }
+.confetti { position:absolute; top:-14px; image-rendering:pixelated;
+  animation:sc-fall linear forwards; }
+@keyframes sc-fall {
+  0%   { transform:translateY(-14px) rotate(0);     opacity:1; }
+  100% { transform:translateY(104vh)  rotate(680deg); opacity:1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scene svg * { animation:none !important; }
+  .scene.pop { animation:none !important; }
+  .confetti-layer { display:none !important; }
 }
 
 /* ---------- status chips ---------- */

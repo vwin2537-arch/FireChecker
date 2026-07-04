@@ -178,8 +178,31 @@ const App = {
        history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
   },
 
-  /** ฉากพิกเซล SVG ตามสถานะ (beach = วันหยุด, work = เช็คแล้ว, rest = วันลา) — ขยับด้วย CSS */
-  scene(kind) {
+  /** คอนเฟตติพิกเซลฉลองเช็คชื่อตรงเวลา (สร้าง overlay ชั่วคราว ลบเองใน 2.4 วิ) */
+  celebrate() {
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const layer = document.createElement('div');
+    layer.className = 'confetti-layer';
+    const colors = ['#16a34a', '#ea580c', '#ffd84d', '#38bdf8', '#ffffff', '#2f9e44'];
+    for (let i = 0; i < 44; i++) {
+      const p = document.createElement('i');
+      p.className = 'confetti';
+      const size = (6 + Math.random() * 6).toFixed(1);
+      p.style.left = (Math.random() * 100).toFixed(1) + '%';
+      p.style.width = p.style.height = size + 'px';
+      p.style.background = colors[i % colors.length];
+      p.style.animationDuration = (1.1 + Math.random() * 0.9).toFixed(2) + 's';
+      p.style.animationDelay = (Math.random() * 0.35).toFixed(2) + 's';
+      if (Math.random() < 0.3) p.style.borderRadius = '50%';
+      layer.appendChild(p);
+    }
+    document.body.appendChild(layer);
+    setTimeout(() => layer.remove(), 2400);
+  },
+
+  /** ฉากพิกเซล SVG ตามสถานะ (beach = วันหยุด, work = เช็คแล้ว, rest = วันลา) — ขยับด้วย CSS
+   *  pop=true ให้ฉากเด้งเข้ามา (ใช้ตอนเพิ่งเช็คชื่อสำเร็จ) */
+  scene(kind, pop) {
     const svg = {
       beach: `<svg viewBox="0 0 48 48">
         <rect width="48" height="48" fill="#bfe6ff"/><rect width="48" height="18" fill="#a9dcff"/>
@@ -233,7 +256,7 @@ const App = {
         <text class="sc-z3" x="24" y="16" font-size="8" fill="#7a8aa8" font-family="monospace">Z</text>
       </svg>`
     }[kind];
-    return `<div class="scene">${svg}</div>`;
+    return `<div class="scene${pop ? ' pop' : ''}">${svg}</div>`;
   },
 
   // ---------- หน้าหลัก ----------
@@ -247,8 +270,9 @@ const App = {
         <div class="db-sub">พักผ่อนเต็มที่ แล้วพบกันพรุ่งนี้ค่ะ</div></div>`;
     } else if (t.attendance) {
       const a = t.attendance;
+      const pop = this.justCheckedIn; this.justCheckedIn = false;
       stateHtml = `<div class="done-badge">
-        ${this.scene('work')}
+        ${this.scene('work', pop)}
         <div class="db-title">เช็คชื่อแล้ว ${a.time_in.substr(11, 5)} น.</div>
         <div class="db-sub"><span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'มาสาย' : 'ตรงเวลา'}</span></div>
       </div>`;
@@ -367,8 +391,11 @@ const App = {
       if (!c.isConfirmed) return;
 
       const d = await this.api('checkin', { lat: pos?.lat ?? null, lng: pos?.lng ?? null, selfie });
+      const onTime = !d.late;
+      if (onTime) this.justCheckedIn = true;   // ให้ฉากคนทำงานเด้ง pop ตอนเรนเดอร์ใหม่
       await Swal.fire({ icon: d.late ? 'warning' : 'success', title: d.message, text: 'เวลา ' + d.time_in + ' น.', confirmButtonText: 'ตกลง' });
       this.refreshStaff();
+      if (onTime) this.celebrate();   // โปรยคอนเฟตติทับฉากคนทำงาน — เฉพาะมาตรงเวลา
     } finally {
       btn.disabled = false;   // จบทางไหนก็ปลดล็อกปุ่มเสมอ ไม่ให้ค้าง disabled อีก
     }
