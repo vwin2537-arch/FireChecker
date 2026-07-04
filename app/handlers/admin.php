@@ -40,6 +40,7 @@ function roster_counts(array $roster): array {
 function h_admin_data(): never {
     require_admin();
     gdrive_kick_if_stale();   // ถือโอกาสไล่คิวรูปค้างขึ้น Drive (ทำหลังส่ง response)
+    leave_auto_approve();     // backstop: ล็อกคำขอลาที่เลย deadline (เผื่อ cron ไม่ทัน)
     $today = date('Y-m-d');
     $isHoliday = is_station_holiday($today);
 
@@ -109,6 +110,9 @@ function h_admin_data(): never {
     // ---------- ผู้ใช้รออนุมัติ ----------
     $pending = db()->query("SELECT id, name, position FROM users WHERE status = 'pending' ORDER BY created_at")->fetchAll();
 
+    // ---------- คำขอลารออนุมัติ (badge + แถบเตือน) ----------
+    $pendingLeaves = leave_pending_list();
+
     ok([
         'today' => [
             'date' => $today, 'thai_date' => thai_date($today), 'is_holiday' => $isHoliday,
@@ -119,6 +123,7 @@ function h_admin_data(): never {
         'over_quota'   => $overQuota,
         'activity'     => $activity,
         'pending_users'=> $pending,
+        'pending_leaves'=> $pendingLeaves,
         'settings'     => client_settings(),
         'score_mode'   => setting('checkout_enabled', '0') === '1' ? 'full' : 'checkin_only',
     ]);

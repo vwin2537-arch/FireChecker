@@ -236,7 +236,7 @@ const App = {
         ${d.upcoming.slice(0, 5).map(o => `
           <div class="list-row"><span class="dot dot-leave"></span>
             <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)}</div>
-            <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️ เกินโควต้า' : ''}</div></div>
+            <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️ เกินโควต้า' : ''}${o.status === 'pending' ? ' ⏳ รออนุมัติ' : ''}</div></div>
           </div>`).join('')}</div>` : ''}
 
       ${this.historyCard(d.history.slice(0, 5), 'ประวัติล่าสุด')}
@@ -448,7 +448,7 @@ const App = {
     byId('myOffs').innerHTML = rows.length ? rows.map(o => `
       <div class="list-row"><span class="dot dot-leave"></span>
         <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)}</div>
-          <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️' : ''}</div></div>
+          <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️' : ''}${o.status === 'pending' ? ' ⏳ รออนุมัติ' : ''}</div></div>
         <button class="btn btn-danger-ghost btn-sm" onclick="App.cancelOff(${o.id})">ยกเลิก</button>
       </div>`).join('')
       : '<div class="empty"><span class="e-ico">📭</span>ยังไม่มีวันหยุดที่จองไว้</div>';

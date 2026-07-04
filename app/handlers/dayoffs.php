@@ -6,6 +6,35 @@
 
 const OFF_TYPES = ['dayoff' => 'วันหยุด', 'sick' => 'ลาป่วย', 'personal' => 'ลากิจ'];
 
+// ---------- เส้นแบ่งอนุมัติลา (นิยามครั้งเดียว ใช้ทั้ง insert / auto-approve / reject) ----------
+// คำขอลา (ป่วย/กิจ) ที่ off_date ตั้งแต่ "วันนี้+2" ขึ้นไป = ยัง pending ปฏิเสธได้
+// ต่ำกว่านั้น = เลย deadline "00:00 ของวันก่อนวันลา" → อนุมัติอัตโนมัติ ปฏิเสธไม่ได้
+function leave_lock_cutoff(): string { return date('Y-m-d', strtotime('+2 day')); }
+function leave_still_pending(string $offDate): bool { return $offDate >= leave_lock_cutoff(); }
+
+/** สถานะเริ่มต้นของรายการลาตามประเภท+วันที่ (dayoff = approved เสมอ) */
+function leave_initial_status(string $type, string $offDate): string {
+    return ($type === 'dayoff' || !leave_still_pending($offDate)) ? 'approved' : 'pending';
+}
+
+/** ล็อกคำขอที่เลย deadline แล้ว → approved (ปฏิเสธไม่ได้อีก) — เรียกก่อนสร้างรายการ pending เสมอ */
+function leave_auto_approve(): void {
+    db()->prepare("UPDATE day_offs SET status = 'approved'
+                   WHERE status = 'pending' AND off_date < ?")
+        ->execute([leave_lock_cutoff()]);
+}
+
+/** รายการลาที่รออนุมัติ (เรียงตามวันลา) — เติม off_thai ให้ frontend/LINE ใช้ */
+function leave_pending_list(): array {
+    $rows = db()->query(
+        "SELECT o.id, o.user_id, o.off_date, o.type, o.note, u.name
+         FROM day_offs o JOIN users u ON u.id = o.user_id
+         WHERE o.status = 'pending' AND u.status = 'active'
+         ORDER BY o.off_date, u.name")->fetchAll();
+    foreach ($rows as &$r) $r['off_thai'] = thai_date($r['off_date'], false);
+    return $rows;
+}
+
 /** นับวันหยุดประเภท dayoff ของ user ในเดือนที่กำหนด */
 function dayoff_count(int $userId, string $ym): int {
     $st = db()->prepare("SELECT COUNT(*) c FROM day_offs
@@ -23,13 +52,17 @@ function dayoff_insert(int $userId, array $dates, string $type, string $note, bo
 
     $today  = date('Y-m-d');
     $quota  = (int)setting('off_quota_month', '10');
-    $added = $skipped = $overQuota = [];
+    $added = $skipped = $overQuota = $pending = [];
 
     foreach (array_unique((array)$dates) as $d) {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$d)) { $skipped[] = [$d, 'รูปแบบวันที่ผิด']; continue; }
         // เจ้าหน้าที่จองได้ตั้งแต่วันนี้ขึ้นไป / แอดมินบันทึกย้อนหลังได้ (เช่น โทรมาลาป่วย)
         if (!$isAdmin && $d < $today)          { $skipped[] = [$d, 'เป็นวันที่ผ่านมาแล้ว']; continue; }
         if (is_station_holiday($d))            { $skipped[] = [$d, 'เป็นวันอาทิตย์ (หยุดอยู่แล้ว)']; continue; }
+        // ลากิจต้องแจ้งล่วงหน้าอย่างน้อย 2 วัน (เฉพาะเจ้าหน้าที่ — แอดมินบันทึกแทน/ย้อนหลังได้)
+        if (!$isAdmin && $type === 'personal' && !leave_still_pending($d)) {
+            $skipped[] = [$d, 'ลากิจต้องแจ้งล่วงหน้าอย่างน้อย 2 วัน']; continue;
+        }
 
         $st = db()->prepare('SELECT id FROM attendance WHERE user_id = ? AND work_date = ?');
         $st->execute([$userId, $d]);
@@ -46,12 +79,15 @@ function dayoff_insert(int $userId, array $dates, string $type, string $note, bo
             if (dayoff_count($userId, $ym) + 1 > $quota) $isOver = 1;
         }
 
-        db()->prepare('INSERT INTO day_offs (user_id, off_date, type, note, over_quota) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$userId, $d, $type, $note, $isOver]);
+        // แอดมินบันทึกลาแทน = อนุมัติในตัวทันที (ไม่ต้องรออนุมัติเอง) / เจ้าหน้าที่ยื่นเอง = ตามกฎ deadline
+        $status = $isAdmin ? 'approved' : leave_initial_status($type, $d);
+        db()->prepare('INSERT INTO day_offs (user_id, off_date, type, status, note, over_quota) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$userId, $d, $type, $status, $note, $isOver]);
         $added[] = $d;
         if ($isOver) $overQuota[] = $d;
+        if ($status === 'pending') $pending[] = $d;
     }
-    return ['added' => $added, 'skipped' => $skipped, 'over_quota' => $overQuota];
+    return ['added' => $added, 'skipped' => $skipped, 'over_quota' => $overQuota, 'pending' => $pending];
 }
 
 function h_dayoff_add(): never {
@@ -62,6 +98,7 @@ function h_dayoff_add(): never {
 
     $msg = 'บันทึกแล้ว ' . count($r['added']) . ' วัน';
     if ($r['over_quota']) $msg .= ' ⚠️ เกินโควต้าเดือนละ ' . setting('off_quota_month', '10') . ' วัน — ระบบแจ้งหัวหน้าสถานีแล้ว';
+    if ($r['pending'])    $msg .= ' ⏳ รออนุมัติจากหัวหน้าสถานี ' . count($r['pending']) . ' วัน';
     ok($r + ['message' => $msg]);
 }
 
@@ -84,7 +121,7 @@ function h_dayoff_month(): never {
     $ym = preg_match('/^\d{4}-\d{2}$/', (string)param('ym')) ? param('ym') : date('Y-m');
 
     $st = db()->prepare(
-        "SELECT o.id, o.user_id, o.off_date, o.type, o.note, o.over_quota, u.name
+        "SELECT o.id, o.user_id, o.off_date, o.type, o.status, o.note, o.over_quota, u.name
          FROM day_offs o JOIN users u ON u.id = o.user_id
          WHERE DATE_FORMAT(o.off_date,'%Y-%m') = ? AND u.status = 'active'
          ORDER BY o.off_date, u.name");
@@ -113,4 +150,50 @@ function h_dayoff_admin_del(): never {
     $st = db()->prepare('DELETE FROM day_offs WHERE id = ?');
     $st->execute([(int)param('id')]);
     $st->rowCount() ? ok(['message' => 'ลบรายการแล้ว']) : fail('ไม่พบรายการนี้');
+}
+
+// ---------- อนุมัติลา (เฟส 2) ----------
+
+/** รายการคำขอลารออนุมัติ — ล็อกรายการที่เลย deadline ก่อนคืน list เสมอ */
+function h_leave_pending(): never {
+    require_admin();
+    leave_auto_approve();
+    ok(['pending' => leave_pending_list()]);
+}
+
+function h_leave_approve(): never {
+    require_admin();
+    leave_auto_approve();
+    $id = (int)param('id');
+    $st = db()->prepare(
+        "SELECT o.*, u.name FROM day_offs o JOIN users u ON u.id = o.user_id
+         WHERE o.id = ? AND o.status = 'pending'");
+    $st->execute([$id]);
+    $off = $st->fetch();
+    if (!$off) fail('ไม่พบคำขอ หรืออนุมัติ/เลยกำหนดไปแล้ว');
+
+    db()->prepare("UPDATE day_offs SET status = 'approved' WHERE id = ?")->execute([$id]);
+
+    // แจ้งเข้ากลุ่ม LINE แบบ async (ไม่ push คาใน request — ผ่านคิว line_queue + worker)
+    $text = "✅ อนุมัติการลา\n• {$off['name']} — " . OFF_TYPES[$off['type']] . ' ' . thai_date($off['off_date'], false)
+          . ($off['note'] !== '' ? "\n📝 {$off['note']}" : '');
+    line_enqueue($text);
+    ok(['message' => 'อนุมัติแล้ว — แจ้งเข้ากลุ่ม LINE ให้เรียบร้อย']);
+}
+
+function h_leave_reject(): never {
+    require_admin();
+    leave_auto_approve();
+    $id = (int)param('id');
+    $st = db()->prepare("SELECT * FROM day_offs WHERE id = ? AND status = 'pending'");
+    $st->execute([$id]);
+    $off = $st->fetch();
+    if (!$off) fail('ไม่พบคำขอ หรืออนุมัติไปแล้ว');
+    if (!leave_still_pending($off['off_date'])) {
+        db()->prepare("UPDATE day_offs SET status = 'approved' WHERE id = ?")->execute([$id]);
+        fail('เลยกำหนดปฏิเสธแล้ว (ระบบอนุมัติอัตโนมัติเมื่อ 00:00 ของวันก่อนวันลา)');
+    }
+    // ปฏิเสธ = ลบ row ทิ้ง → กลับเป็นวันทำงาน (เจ้าหน้าที่ขอใหม่วันเดิมได้)
+    db()->prepare('DELETE FROM day_offs WHERE id = ?')->execute([$id]);
+    ok(['message' => 'ปฏิเสธแล้ว — ลบคำขอออก กลับเป็นวันทำงาน']);
 }

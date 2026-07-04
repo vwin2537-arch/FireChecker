@@ -26,6 +26,7 @@ function build_report(string $type): ?string {
         if ($c['leave']) { $lines[] = ''; $lines[] = '🔵 ลา/หยุด ' . $c['leave'] . ' คน:'; array_push($lines, ...$names('leave')); }
         if ($c['absent']){ $lines[] = ''; $lines[] = '🔴 ยังไม่เช็คชื่อ ' . $c['absent'] . ' คน:'; array_push($lines, ...$names('absent')); }
         if (!$c['late'] && !$c['absent']) { $lines[] = ''; $lines[] = '🎉 มาครบ ตรงเวลาทุกคน'; }
+        array_push($lines, ...report_pending_leaves());
         return implode("\n", $lines);
     }
 
@@ -40,7 +41,50 @@ function build_report(string $type): ?string {
         $lines[] = '📝 ส่งรายงานแล้ว ' . count($sent) . '/' . $c['present'] . ' คน';
         if ($notSent) { $lines[] = '⏳ ยังไม่ส่งรายงาน:'; array_push($lines, ...array_map(fn($r) => '• ' . $r['name'], array_values($notSent))); }
     }
+    array_push($lines, ...report_pending_leaves());
     return implode("\n", $lines);
+}
+
+/** ต่อท้ายรายการลารออนุมัติในรายงาน (เช้า+เย็น) — เรียกหลัง leave_auto_approve แล้วเท่านั้น */
+function report_pending_leaves(): array {
+    $pending = leave_pending_list();
+    if (!$pending) return [];
+    $lines = ['', '⏳ รออนุมัติลา ' . count($pending) . ' รายการ:'];
+    foreach ($pending as $p) $lines[] = '• ' . $p['name'] . ' — ' . OFF_TYPES[$p['type']] . ' ' . $p['off_thai'];
+    return $lines;
+}
+
+// ---------- คิวแจ้งเตือน LINE แบบ async (ไม่ push คาใน request — เหมือน drive_queue) ----------
+
+/** ต่อคิวข้อความ แล้วแตกโปรเซส worker ส่งเบื้องหลัง (fallback ส่ง inline ถ้า server ปิด exec) */
+function line_enqueue(string $text): void {
+    db()->prepare('INSERT INTO line_queue (text) VALUES (?)')->execute([mb_substr($text, 0, 4900)]);
+    if (!line_spawn_worker()) line_process_queue(5);
+}
+
+/** แตกโปรเซส CLI มาไล่คิว LINE (ไม่บล็อก request) — คืน false ถ้า server ปิด exec() */
+function line_spawn_worker(): bool {
+    if (!function_exists('exec')) return false;
+    $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+    if (in_array('exec', $disabled, true)) return false;
+    exec('nohup php ' . escapeshellarg(__DIR__ . '/../../cron/line_worker.php') . ' > /dev/null 2>&1 &', $_out, $code);
+    return $code === 0;
+}
+
+/** ส่งข้อความในคิวทีละ ≤$limit รายการ — fail แล้ว tries+1 (เพดาน 10 → error) */
+function line_process_queue(int $limit = 5): void {
+    $rows = db()->query("SELECT * FROM line_queue WHERE status = 'pending' ORDER BY id LIMIT " . max(1, $limit))->fetchAll();
+    foreach ($rows as $r) {
+        [$sent, $detail] = line_push($r['text']);
+        if ($sent) {
+            db()->prepare("UPDATE line_queue SET status = 'done', done_at = NOW() WHERE id = ?")->execute([$r['id']]);
+        } else {
+            $tries  = (int)$r['tries'] + 1;
+            $status = $tries >= 10 ? 'error' : 'pending';
+            db()->prepare('UPDATE line_queue SET tries = ?, last_error = ?, status = ? WHERE id = ?')
+                ->execute([$tries, mb_substr($detail, 0, 255), $status, $r['id']]);
+        }
+    }
 }
 
 /** push ข้อความเข้ากลุ่ม LINE — คืน [success, detail] */
@@ -66,6 +110,9 @@ function line_push(string $text): array {
 
 function run_line_report(string $type, bool $force = false): array {
     if (!in_array($type, ['morning', 'evening'], true)) return ['ok' => false, 'error' => 'type ต้องเป็น morning หรือ evening'];
+
+    leave_auto_approve();       // ล็อกคำขอลาที่เลย deadline ก่อนสรุป (รันแม้เป็นวันหยุดสถานี)
+    line_process_queue(10);     // ระบายคิวแจ้งเตือน LINE ที่ค้าง (เผื่อ worker เดิมแตกไม่สำเร็จ)
 
     $today = date('Y-m-d');
     $text  = build_report($type);

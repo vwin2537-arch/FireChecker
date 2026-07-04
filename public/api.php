@@ -47,6 +47,9 @@ const ACTIONS = [
     'settings_save'   => 'h_settings_save',
     'dayoff_admin_add'=> 'h_dayoff_admin_add',
     'dayoff_admin_del'=> 'h_dayoff_admin_del',
+    'leave_pending'   => 'h_leave_pending',
+    'leave_approve'   => 'h_leave_approve',
+    'leave_reject'    => 'h_leave_reject',
     // คลังความรู้ (staff)
     'library_list'    => 'h_library_list',
     'library_view'    => 'h_library_view',

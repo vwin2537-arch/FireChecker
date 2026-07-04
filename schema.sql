@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS day_offs (
   off_date   DATE NOT NULL,
   -- dayoff = วันหยุดจองล่วงหน้า, sick = ลาป่วย, personal = ลากิจ
   type       ENUM('dayoff','sick','personal') NOT NULL DEFAULT 'dayoff',
+  -- approved = ยืนยันแล้ว (dayoff เสมอ + ลาป่วย/กิจที่เลย deadline), pending = ลาป่วย/กิจล่วงหน้า รอหัวหน้าอนุมัติ
+  -- ปฏิเสธ = ลบ row ทิ้ง (ไม่เก็บสถานะ rejected) → กลับเป็นวันทำงาน
+  status     ENUM('pending','approved') NOT NULL DEFAULT 'approved',
   note       VARCHAR(255) NOT NULL DEFAULT '',
   over_quota TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +140,19 @@ CREATE TABLE IF NOT EXISTS drive_queue (
   local_path VARCHAR(255) NOT NULL,                  -- path สัมพัทธ์ใน UPLOAD_DIR
   fname      VARCHAR(255) NOT NULL,                  -- ชื่อไฟล์ปลายทางบน Drive เช่น 0745_สมชาย.jpg
   work_date  DATE NOT NULL,                          -- ใช้ตั้งชื่อโฟลเดอร์รายวัน (ปี พ.ศ.)
+  status     ENUM('pending','done','error') NOT NULL DEFAULT 'pending',
+  tries      INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  done_at    DATETIME NULL,
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- คิวแจ้งเตือนเข้ากลุ่ม LINE (async — ไม่ push คาใน request) ----------
+-- ใช้ตอนแอดมินอนุมัติคำขอลา → enqueue แล้วแตกโปรเซส worker ส่งเบื้องหลัง (เหมือน drive_queue)
+CREATE TABLE IF NOT EXISTS line_queue (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  text       TEXT NOT NULL,
   status     ENUM('pending','done','error') NOT NULL DEFAULT 'pending',
   tries      INT NOT NULL DEFAULT 0,
   last_error VARCHAR(255) NOT NULL DEFAULT '',

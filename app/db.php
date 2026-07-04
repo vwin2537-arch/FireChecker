@@ -76,6 +76,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM line_queue LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
     // แอดมินเพิ่มแค่ชื่อ-สกุล (username = NULL จนกว่าจะลงทะเบียน) → ต้อง ALTER ให้ nullable
@@ -86,5 +92,16 @@ function ensure_admin(): void {
     )->fetchColumn();
     if ($nullable === 'NO') {
         db()->exec("ALTER TABLE users MODIFY username VARCHAR(50) NULL");
+    }
+
+    // migrate: day_offs.status เพิ่มภายหลัง (ระบบอนุมัติลา เฟส 2) — DB เดิมที่ deploy ไปแล้วยังไม่มีคอลัมน์นี้
+    // probe information_schema ก่อน ALTER ไม่รันซ้ำทุก request; DEFAULT 'approved' backfill row เก่าให้ถูก
+    $hasStatus = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'day_offs' AND COLUMN_NAME = 'status'"
+    )->fetchColumn();
+    if (!(int)$hasStatus) {
+        db()->exec("ALTER TABLE day_offs
+                    ADD COLUMN status ENUM('pending','approved') NOT NULL DEFAULT 'approved' AFTER type");
     }
 }

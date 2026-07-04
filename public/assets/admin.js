@@ -58,6 +58,8 @@ const Admin = {
     let alerts = '';
     if (d.pending_users.length) alerts += `<div class="alert-bar">👤 มีเจ้าหน้าที่รออนุมัติ <b>${d.pending_users.length} คน</b>
       <button class="btn btn-sm btn-primary" onclick="Admin.go('users')">ไปอนุมัติ</button></div>`;
+    if ((d.pending_leaves || []).length) alerts += `<div class="alert-bar">📝 มีคำขอลารออนุมัติ <b>${d.pending_leaves.length} รายการ</b>
+      <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ไปอนุมัติ</button></div>`;
     if (d.over_quota.length) alerts += `<div class="alert-bar">⚠️ วันหยุดเกินโควต้า: <b>${d.over_quota.map(o =>
       `${esc(o.name)} (${o.n} วัน เดือน ${thaiMonth(o.ym)})`).join(', ')}</b>
       <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ดูปฏิทิน</button></div>`;
@@ -290,8 +292,18 @@ const Admin = {
   aYm: null,
   async vDayoff() {
     this.aYm = this.aYm || ymNow();
-    const [d, ul] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list')]);
+    const [d, ul, lp] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list'), App.api('leave_pending')]);
     const staff = ul.users.filter(u => u.role === 'staff' && u.status === 'active');
+    const pend = lp.pending || [];
+    const pendCard = pend.length ? `<div class="card" style="border:1.5px solid #fed7aa">
+      <h3>📝 คำขอลารออนุมัติ (${pend.length})</h3>
+      ${pend.map(p => `<div class="list-row">
+        <div class="lr-main"><div class="lr-title">${esc(p.name)} <span style="color:${p.type === 'sick' ? '#d97706' : '#7c3aed'}">• ${offLabel(p.type)}</span></div>
+          <div class="lr-sub">${p.off_thai}${p.note ? ' — ' + esc(p.note) : ''}</div></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="Admin.leaveAct('leave_approve',${p.id})">อนุมัติ</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.leaveAct('leave_reject',${p.id})">ปฏิเสธ</button>
+        </div></div>`).join('')}</div>` : '';
     const single = !!this.aUser;
     const shown = single ? d.day_offs.filter(o => o.user_id == this.aUser) : d.day_offs;
     const byDate = {};
@@ -299,6 +311,7 @@ const Admin = {
     this.aByDate = byDate;
 
     byId('view').innerHTML = `
+      ${pendCard}
       <div class="card">
         <div class="cal-head">
           <button class="cal-nav" onclick="Admin.aMove(-1)">‹</button>
@@ -452,6 +465,17 @@ const Admin = {
     const d = await App.api(action, { id });
     toast(d.message);
     this.vUsers();
+  },
+
+  async leaveAct(action, id) {
+    if (action === 'leave_reject') {
+      const c = await Swal.fire({ icon: 'warning', title: 'ปฏิเสธคำขอลานี้?', text: 'คำขอจะถูกลบ เจ้าหน้าที่ต้องยื่นใหม่ถ้าต้องการ', showCancelButton: true, confirmButtonText: 'ปฏิเสธ', cancelButtonText: 'ไม่' });
+      if (!c.isConfirmed) return;
+    }
+    const d = await App.api(action, { id });
+    toast(d.message);
+    App.adminData = await App.api('admin_data');   // refresh badge บนแดชบอร์ด
+    this.vDayoff();
   },
 
   // =====================================================
