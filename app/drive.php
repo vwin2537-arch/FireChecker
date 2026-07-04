@@ -136,15 +136,29 @@ function gdrive_enqueue(string $localPath, string $userName, string $workDate): 
     $fname = date('Hi') . '_' . $clean . '.' . $ext;
     db()->prepare('INSERT INTO drive_queue (local_path, fname, work_date) VALUES (?, ?, ?)')
         ->execute([$localPath, $fname, $workDate]);
-    after_response('gdrive_process_queue');
+    // แตกโปรเซสอัปโหลดแยกออกไป — เช็คอินตอบทันที; ถ้าแตกไม่ได้ค่อยอัปแบบรอสั้นๆ ในคำขอนี้
+    if (!gdrive_spawn_worker()) gdrive_process_queue(3);
 }
 
-/** สั่ง process คิวหลัง response ถ้ามีงานค้างและห่างจากรอบก่อน >60 วิ (เรียกได้จาก endpoint ที่มีคนเข้าบ่อย) */
+/** ถ้ามีงานค้าง ให้แตกโปรเซสมาไล่ (ห่างรอบก่อน >60 วิ กันเด้งถี่) — เรียกจาก endpoint ที่คนเข้าบ่อย */
 function gdrive_kick_if_stale(): void {
     if (!gdrive_configured()) return;
     if (time() - (int)setting('gdrive_last_run', '0') < 60) return;
     $n = db()->query("SELECT COUNT(*) c FROM drive_queue WHERE status = 'pending'")->fetch()['c'];
-    if ((int)$n > 0) after_response('gdrive_process_queue');
+    if ((int)$n > 0) {
+        save_setting('gdrive_last_run', (string)time()); // กันหน้าแอปเด้ง worker ซ้ำถี่
+        gdrive_spawn_worker();                            // ไม่ fallback inline ที่นี่ — กัน app_data ช้า
+    }
+}
+
+/** แตกโปรเซส CLI มาไล่คิว Drive (ไม่บล็อก request) — คืน false ถ้า server ปิด exec() */
+function gdrive_spawn_worker(): bool {
+    if (!function_exists('exec')) return false;
+    $disabled = array_map('trim', explode(',', strtolower((string)ini_get('disable_functions'))));
+    if (in_array('exec', $disabled, true)) return false;
+    $cmd = 'nohup php ' . escapeshellarg(__DIR__ . '/../cron/drive.php') . ' > /dev/null 2>&1 &';
+    exec($cmd, $_out, $code);
+    return $code === 0;
 }
 
 /** อัปโหลดงานค้างทีละไม่เกิน $limit รายการ — รันหลังส่ง response แล้วเท่านั้น */
