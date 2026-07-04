@@ -58,6 +58,12 @@
 - **Playwright + Chrome จริง (headless): ALL PASS + 0 console error** — staff เห็น tag "⏳ รออนุมัติ" / admin แดชบอร์ดมีแถบเตือน + แท็บวันหยุดมีการ์ดคำขอ → คลิกอนุมัติ การ์ดอัปเดตเหลือ (1) → คลิกปฏิเสธ Swal ยืนยัน การ์ดหาย (กัน frontend-bug hotspot ตาม lesson 5/6/10)
 - ⚠️ local PHP 8.5 เตือน `PDO::MYSQL_ATTR_INIT_COMMAND` deprecated (prod PHP 8.3 ไม่เจอ) — display_errors=Off บน prod ซับไว้อยู่แล้ว ไม่กระทบ แต่ถ้าอนาคตอัป PHP 8.5 ควรเปลี่ยนเป็น `Pdo\Mysql::ATTR_INIT_COMMAND`
 
+## เฟส 2 — ปรับหลัง feedback พี่วิน (5 ก.ค. 2026)
+
+- **หน้าวันหยุด จนท. โฟกัสของตัวเอง (v14):** ปฏิทินตัด badge นับทีม ("หยุด N") เหลือแค่ไฮไลต์วันตัวเอง / ตัดการ์ด "ใครหยุดบ้าง" / "วันหยุดของฉัน" ผูกเดือนที่ดูอยู่ (เปลี่ยนเดือน→ตาม) วันอดีต read-only — Playwright ผ่าน 0 error (commit `5e2e6bb`)
+- **LINE เด้งทันทีตอน จนท. ยื่นลาป่วย/ลากิจ (async ผ่าน line_queue):** หัวหน้ารู้ทันทีไม่ต้องรอรายงานเช้า/เย็น — วันหยุด(dayoff) เงียบ, admin บันทึกแทนเงียบ — verify: personal/sick → enqueue ข้อความครบ / dayoff → ไม่ enqueue (commit `74c3fab`, deploy แล้ว)
+- **สอบสวน "ปฏิเสธลาทั้งหมด" (พี่วินรายงาน) = ไม่ใช่บั๊ก** — reproduce แล้ว reject ลบเฉพาะ id ที่กด (backend+UI+DB ตรงกัน). ดู prod DB จริง (พี่วินอนุมัติ read-only): day_offs id 1-7 อยู่ครบไม่มีลบ, ทุกแถว approved (เพ็ญนภา 5 รายการสร้างก่อน deploy เฟส 2 → backfill approved / วรุณ sick → auto-approved ตอนข้ามวัน), line_queue ว่าง = ไม่เคยกดอนุมัติสำเร็จ → **ภาพ "ปฏิเสธหมด" คือการ์ด pending ว่างเพราะ auto-approve ย้ายออก ไม่ใช่การลบ** — บทเรียน: auto-approve ทำให้คำขอหลุดจากการ์ดเงียบๆ ทดสอบต้องใช้คำขอใหม่ off_date ≥ วันนี้+2
+
 ## รอทำต่อ (พี่วินต้องทำเอง / session หน้า)
 
 - [ ] ⚠️ **เปลี่ยนรหัส admin อีกครั้ง** — รหัสเดิม `admin1234` เปลี่ยนไปแล้ว (login ไม่ผ่าน) แต่รหัสปัจจุบันพี่วินบอกมุกตอน debug 4 ก.ค. → ควรเปลี่ยนใหม่ (ตั้งค่า → 🔑)
