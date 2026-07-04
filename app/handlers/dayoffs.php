@@ -94,6 +94,8 @@ function h_dayoff_add(): never {
     $u    = require_user();
     $type = (string)param('type', 'dayoff');
     $note = mb_substr(trim((string)param('note', '')), 0, 255);
+    // ลาป่วย/ลากิจ ต้องระบุเหตุผลเสมอ (วันหยุดจองล่วงหน้าไม่บังคับ)
+    if (($type === 'sick' || $type === 'personal') && $note === '') fail('กรุณาระบุเหตุผลการลา');
     $r = dayoff_insert((int)$u['id'], (array)param('dates', []), $type, $note, false);
     if (!$r['added'] && $r['skipped']) fail('จองไม่สำเร็จ: ' . $r['skipped'][0][1]);
 
@@ -121,6 +123,10 @@ function h_dayoff_cancel(): never {
     if ($off['off_date'] < date('Y-m-d')) fail('ยกเลิกวันที่ผ่านมาแล้วไม่ได้');
 
     db()->prepare('DELETE FROM day_offs WHERE id = ?')->execute([$id]);
+    // แจ้งเข้ากลุ่ม LINE เมื่อยกเลิกลาป่วย/ลากิจ (async) — หัวหน้ารู้ว่าคำขอถูกถอน
+    if ($off['type'] === 'sick' || $off['type'] === 'personal') {
+        line_enqueue("❌ ยกเลิกคำขอลา\n• {$u['name']} — " . OFF_TYPES[$off['type']] . ' ' . thai_date($off['off_date'], false));
+    }
     ok(['message' => 'ยกเลิกวันหยุดแล้ว']);
 }
 

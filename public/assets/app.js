@@ -349,12 +349,12 @@ const App = {
         <h3>🗓️ จองวันหยุด / แจ้งลา</h3>
         <div id="calBox"></div>
         <div class="field" style="margin-top:12px"><label>ประเภท</label>
-          <select class="select" id="offType">
+          <select class="select" id="offType" onchange="App.onOffTypeChange()">
             <option value="dayoff">วันหยุด (นับโควต้า)</option>
             <option value="sick">ลาป่วย</option>
             <option value="personal">ลากิจ</option>
           </select></div>
-        <div class="field"><label>หมายเหตุ (ถ้ามี)</label><input class="input" id="offNote" maxlength="255"></div>
+        <div class="field"><label id="offNoteLabel">หมายเหตุ (ถ้ามี)</label><input class="input" id="offNote" maxlength="255" placeholder=""></div>
         <button class="btn btn-primary btn-block" id="btnBook" onclick="App.submitDayoff()" disabled>เลือกวันในปฏิทินก่อน</button>
       </div>
       <div class="card"><h3>📌 วันหยุดของฉัน</h3><div id="myOffs"></div></div>`;
@@ -414,9 +414,20 @@ const App = {
     btn.textContent = this.calSel.size ? `บันทึก ${this.calSel.size} วัน` : 'เลือกวันในปฏิทินก่อน';
   },
 
+  onOffTypeChange() {
+    const need = ['sick', 'personal'].includes(byId('offType').value);
+    byId('offNoteLabel').innerHTML = need ? 'เหตุผลการลา <span style="color:var(--absent)">*</span>' : 'หมายเหตุ (ถ้ามี)';
+    byId('offNote').placeholder = need ? 'เช่น ไม่สบาย ปวดหัว / ไปธุระราชการ' : '';
+  },
+
   async submitDayoff() {
+    const type = byId('offType').value, note = byId('offNote').value.trim();
+    if (['sick', 'personal'].includes(type) && !note) {
+      byId('offNote').focus();
+      return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผลการลา', text: 'ลาป่วย/ลากิจ ต้องกรอกเหตุผลก่อนส่ง', confirmButtonText: 'ตกลง' });
+    }
     const d = await this.api('dayoff_add', {
-      dates: [...this.calSel], type: byId('offType').value, note: byId('offNote').value.trim(),
+      dates: [...this.calSel], type, note,
     });
     let html = `บันทึกแล้ว ${d.added.length} วัน`;
     if (d.over_quota.length) html += `<br><b style="color:#d97706">⚠️ เกินโควต้า ${d.over_quota.length} วัน — แจ้งหัวหน้าสถานีแล้ว</b>`;
