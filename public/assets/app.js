@@ -357,17 +357,15 @@ const App = {
         <div class="field"><label>หมายเหตุ (ถ้ามี)</label><input class="input" id="offNote" maxlength="255"></div>
         <button class="btn btn-primary btn-block" id="btnBook" onclick="App.submitDayoff()" disabled>เลือกวันในปฏิทินก่อน</button>
       </div>
-      <div class="card"><h3>👥 ใครหยุดบ้างเดือนนี้</h3><div id="teamOff" class="muted">กำลังโหลด...</div></div>
-      <div class="card"><h3>📌 รายการของฉัน</h3><div id="myOffs"></div></div>`;
+      <div class="card"><h3>📌 วันหยุดของฉัน</h3><div id="myOffs"></div></div>`;
     await this.loadCal();
-    this.renderMyOffs();
   },
 
   async loadCal() {
     const d = await this.api('dayoff_month', { ym: this.calYm });
     this.teamOffs = d.day_offs;
     this.renderCal();
-    this.renderTeamOff();
+    this.renderMyOffs();
   },
 
   renderCal() {
@@ -376,8 +374,6 @@ const App = {
     const today = todayStr();
     const mine = new Set(this.data.upcoming.map(o => o.off_date)
       .concat(this.teamOffs.filter(o => o.user_id == this.user.id).map(o => o.off_date)));
-    const counts = {};
-    this.teamOffs.forEach(o => { counts[o.off_date] = (counts[o.off_date] || 0) + 1; });
 
     let cells = '';
     for (let i = 0; i < first.getDay(); i++) cells += '<div class="cal-day other"></div>';
@@ -391,8 +387,7 @@ const App = {
       if (mine.has(ds)) cls.push('mine');
       if (this.calSel.has(ds)) cls.push('sel');
       const clickable = ds >= today && !(dow === 0 && this.data.settings.sunday_off) && !mine.has(ds);
-      cells += `<button class="${cls.join(' ')}" ${clickable ? `onclick="App.toggleDay('${ds}')"` : 'disabled'}>
-        ${d}${counts[ds] ? `<span class="cd-badge">หยุด ${counts[ds]}</span>` : ''}</button>`;
+      cells += `<button class="${cls.join(' ')}" ${clickable ? `onclick="App.toggleDay('${ds}')"` : 'disabled'}>${d}</button>`;
     }
     byId('calBox').innerHTML = `
       <div class="cal-head">
@@ -431,27 +426,18 @@ const App = {
     this.vDayoff();
   },
 
-  renderTeamOff() {
-    const byDate = {};
-    this.teamOffs.forEach(o => (byDate[o.off_date] = byDate[o.off_date] || []).push(o));
-    const dates = Object.keys(byDate).filter(d => d >= todayStr()).sort().slice(0, 10);
-    byId('teamOff').innerHTML = dates.length ? dates.map(d => `
-      <div class="list-row"><span class="dot dot-leave"></span>
-        <div class="lr-main"><div class="lr-title">${thaiDate(d)}</div>
-        <div class="lr-sub">${byDate[d].map(o => esc(o.name) + ' (' + offLabel(o.type) + ')').join(', ')}</div></div>
-      </div>`).join('')
-      : '<div class="empty"><span class="e-ico">🌿</span>เดือนนี้ยังไม่มีใครจองวันหยุด</div>';
-  },
-
   renderMyOffs() {
-    const rows = this.data.upcoming;
+    // เฉพาะวันหยุดของฉันในเดือนที่ดูอยู่ในปฏิทิน (เปลี่ยนเดือน → รายการตาม)
+    const today = todayStr();
+    const rows = (this.teamOffs || []).filter(o => o.user_id == this.user.id)
+      .sort((a, b) => a.off_date.localeCompare(b.off_date));
     byId('myOffs').innerHTML = rows.length ? rows.map(o => `
       <div class="list-row"><span class="dot dot-leave"></span>
         <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)}</div>
           <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️' : ''}${o.status === 'pending' ? ' ⏳ รออนุมัติ' : ''}</div></div>
-        <button class="btn btn-danger-ghost btn-sm" onclick="App.cancelOff(${o.id})">ยกเลิก</button>
+        ${o.off_date >= today ? `<button class="btn btn-danger-ghost btn-sm" onclick="App.cancelOff(${o.id})">ยกเลิก</button>` : ''}
       </div>`).join('')
-      : '<div class="empty"><span class="e-ico">📭</span>ยังไม่มีวันหยุดที่จองไว้</div>';
+      : '<div class="empty"><span class="e-ico">📭</span>เดือนนี้ยังไม่มีวันหยุดของคุณ</div>';
   },
 
   async cancelOff(id) {
