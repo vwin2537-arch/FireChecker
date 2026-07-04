@@ -429,10 +429,15 @@ const App = {
     const d = await this.api('dayoff_add', {
       dates: [...this.calSel], type, note,
     });
-    let html = `บันทึกแล้ว ${d.added.length} วัน`;
-    if (d.over_quota.length) html += `<br><b style="color:#d97706">⚠️ เกินโควต้า ${d.over_quota.length} วัน — แจ้งหัวหน้าสถานีแล้ว</b>`;
-    if (d.skipped.length) html += `<br><span style="font-size:13px;color:#888">ข้าม: ${d.skipped.map(s => `${thaiDate(s[0], false)} (${s[1]})`).join(', ')}</span>`;
-    await Swal.fire({ icon: 'success', title: 'เรียบร้อย', html, confirmButtonText: 'ตกลง' });
+    const isLeave = type === 'sick' || type === 'personal';
+    let html = `<div style="text-align:left;font-family:Kanit;font-weight:300;font-size:14.5px;line-height:1.65">`;
+    html += `<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:var(--leave);display:inline-block"></span> ${offLabel(type)} • <b>${d.added.length} วัน</b></div>`;
+    if (d.pending.length) html += `<div style="margin-top:12px;padding:11px 13px;background:var(--leave-bg);border-radius:12px;color:var(--leave);font-weight:400">🔔 แจ้งหัวหน้าสถานีทาง LINE แล้ว<br><span style="font-weight:300">⏳ รออนุมัติ ${d.pending.length} วัน</span></div>`;
+    else if (isLeave) html += `<div style="margin-top:12px;padding:11px 13px;background:var(--ok-bg);border-radius:12px;color:var(--ok);font-weight:400">🔔 แจ้งหัวหน้าสถานีทาง LINE แล้ว</div>`;
+    if (d.over_quota.length) html += `<div style="margin-top:10px;color:var(--late)">⚠️ เกินโควต้า ${d.over_quota.length} วัน — แจ้งหัวหน้าแล้ว</div>`;
+    if (d.skipped.length) html += `<div style="margin-top:10px;font-size:12.5px;color:var(--ink-3)">ข้าม: ${d.skipped.map(s => `${thaiDate(s[0], false)} (${s[1]})`).join(', ')}</div>`;
+    html += `</div>`;
+    await Swal.fire({ icon: 'success', title: 'ส่งคำขอแล้ว', html, confirmButtonText: 'ตกลง' });
     this.data = await this.api('app_data');
     this.vDayoff();
   },
@@ -446,18 +451,21 @@ const App = {
       <div class="list-row"><span class="dot dot-leave"></span>
         <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)}</div>
           <div class="lr-sub">${offLabel(o.type)}${o.note ? ' — ' + esc(o.note) : ''}${+o.over_quota ? ' ⚠️' : ''}${o.status === 'pending' ? ' ⏳ รออนุมัติ' : ''}</div></div>
-        ${o.off_date >= today ? `<button class="btn btn-danger-ghost btn-sm" onclick="App.cancelOff(${o.id})">ยกเลิก</button>` : ''}
+        ${o.off_date >= today ? `<button class="btn btn-danger-ghost btn-sm" onclick="App.cancelOff(${o.id}, '${o.type}')">ยกเลิก</button>` : ''}
       </div>`).join('')
       : '<div class="empty"><span class="e-ico">📭</span>เดือนนี้ยังไม่มีวันหยุดของคุณ</div>';
   },
 
-  async cancelOff(id) {
-    const c = await Swal.fire({ icon: 'warning', title: 'ยกเลิกวันหยุดนี้?', showCancelButton: true, confirmButtonText: 'ยกเลิกวันหยุด', cancelButtonText: 'ไม่' });
+  async cancelOff(id, type) {
+    const isLeave = type === 'sick' || type === 'personal';
+    const c = await Swal.fire({ icon: 'warning', title: 'ยกเลิกรายการนี้?',
+      text: isLeave ? 'ระบบจะแจ้งหัวหน้าสถานีทาง LINE ด้วย' : '',
+      showCancelButton: true, confirmButtonText: isLeave ? 'ยกเลิกการลา' : 'ยกเลิกวันหยุด', cancelButtonText: 'ไม่' });
     if (!c.isConfirmed) return;
     await this.api('dayoff_cancel', { id });
-    toast('ยกเลิกแล้ว');
     this.data = await this.api('app_data');
     this.vDayoff();
+    toast(isLeave ? 'ยกเลิกแล้ว — แจ้งหัวหน้าทาง LINE แล้ว' : 'ยกเลิกแล้ว');
   },
 
   // ---------- พัฒนาตัวเอง (hub) ----------
