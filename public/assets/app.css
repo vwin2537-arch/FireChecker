@@ -162,6 +162,37 @@ input, select, textarea { font-family: inherit; }
 .done-badge .db-title { font-size:19px; font-weight:600; margin-top:4px; }
 .done-badge .db-sub { font-size:13px; color:var(--ink-2); }
 
+/* ---------- ฉากพิกเซล (pixel diorama หน้าหลัก) ---------- */
+.scene { width:112px; height:112px; margin:2px auto 8px; border-radius:16px; overflow:hidden;
+  box-shadow:inset 0 0 0 3px rgba(255,255,255,.6), 0 3px 10px rgba(16,40,25,.12); image-rendering:pixelated; }
+.scene svg { display:block; width:100%; height:100%; }
+.scene svg * { shape-rendering:crispEdges; }
+
+@keyframes sc-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(1px)} }
+@keyframes sc-bob2  { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(0)} }
+@keyframes sc-sway  { 0%,100%{transform:rotate(-4deg)}   50%{transform:rotate(4deg)} }
+@keyframes sc-sun   { 0%,100%{transform:scale(1)}        50%{transform:scale(1.08)} }
+@keyframes sc-rake  { 0%,100%{transform:rotate(-18deg)}  50%{transform:rotate(12deg)} }
+@keyframes sc-breathe { 0%,100%{transform:scaleY(1)}     50%{transform:scaleY(1.06)} }
+@keyframes sc-zzz   { 0%{opacity:0;transform:translate(0,0) scale(.6)} 30%{opacity:1}
+  100%{opacity:0;transform:translate(6px,-14px) scale(1)} }
+@keyframes sc-cloud { 0%{transform:translateX(0)} 100%{transform:translateX(8px)} }
+
+.sc-wave1  { animation:sc-bob 2.4s ease-in-out infinite; transform-origin:center; }
+.sc-wave2  { animation:sc-bob2 2.4s ease-in-out infinite; }
+.sc-palm   { animation:sc-sway 3.2s ease-in-out infinite; transform-origin:24px 40px; }
+.sc-sun    { animation:sc-sun 3s ease-in-out infinite; transform-origin:38px 11px; }
+.sc-arm    { animation:sc-rake 1.5s ease-in-out infinite; transform-origin:29px 27px; }
+.sc-blanket{ animation:sc-breathe 3s ease-in-out infinite; transform-origin:center bottom; }
+.sc-z1     { animation:sc-zzz 3s ease-in-out infinite; }
+.sc-z2     { animation:sc-zzz 3s ease-in-out infinite 1s; }
+.sc-z3     { animation:sc-zzz 3s ease-in-out infinite 2s; }
+.sc-cl     { animation:sc-cloud 5s ease-in-out infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene svg * { animation:none !important; }
+}
+
 /* ---------- status chips ---------- */
 .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:12.5px; font-weight:500; }
 .chip::before { content:''; width:8px; height:8px; border-radius:50%; background:currentColor; }

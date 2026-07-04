@@ -178,19 +178,77 @@ const App = {
        history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
   },
 
+  /** ฉากพิกเซล SVG ตามสถานะ (beach = วันหยุด, work = เช็คแล้ว, rest = วันลา) — ขยับด้วย CSS */
+  scene(kind) {
+    const svg = {
+      beach: `<svg viewBox="0 0 48 48">
+        <rect width="48" height="48" fill="#bfe6ff"/><rect width="48" height="18" fill="#a9dcff"/>
+        <g class="sc-sun"><rect x="35" y="7" width="8" height="8" fill="#ffd84d"/>
+          <rect x="34" y="9" width="10" height="4" fill="#ffd84d"/><rect x="37" y="6" width="4" height="10" fill="#ffd84d"/></g>
+        <g class="sc-cl"><rect x="6" y="8" width="10" height="3" fill="#fff"/><rect x="8" y="6" width="6" height="3" fill="#fff"/></g>
+        <rect y="24" width="48" height="12" fill="#38bdf8"/>
+        <g class="sc-wave1"><rect y="24" width="48" height="2" fill="#7dd3fc"/>
+          <rect x="4" y="27" width="6" height="1" fill="#e0f6ff"/><rect x="20" y="29" width="7" height="1" fill="#e0f6ff"/>
+          <rect x="36" y="27" width="6" height="1" fill="#e0f6ff"/></g>
+        <rect y="36" width="48" height="12" fill="#f5e0a3"/><rect y="36" width="48" height="2" fill="#ffeec2"/>
+        <rect x="6" y="42" width="3" height="1" fill="#e8cd82"/><rect x="30" y="44" width="4" height="1" fill="#e8cd82"/>
+        <g class="sc-palm"><rect x="23" y="24" width="3" height="16" fill="#a26b3a"/><rect x="22" y="30" width="3" height="10" fill="#8a5628"/>
+          <rect x="24" y="24" width="2" height="6" fill="#b97b45"/>
+          <rect x="16" y="21" width="8" height="3" fill="#2f9e44"/><rect x="13" y="23" width="6" height="3" fill="#37b24d"/>
+          <rect x="24" y="21" width="9" height="3" fill="#2f9e44"/><rect x="30" y="23" width="6" height="3" fill="#37b24d"/>
+          <rect x="21" y="17" width="6" height="4" fill="#40c057"/><rect x="19" y="19" width="10" height="3" fill="#37b24d"/>
+          <rect x="22" y="23" width="2" height="2" fill="#6b3f1d"/><rect x="25" y="23" width="2" height="2" fill="#6b3f1d"/></g>
+      </svg>`,
+      work: `<svg viewBox="0 0 48 48">
+        <rect width="48" height="48" fill="#cdeafd"/><rect y="30" width="48" height="18" fill="#8fd06a"/>
+        <rect y="30" width="48" height="2" fill="#a7de85"/>
+        <g class="sc-sun"><rect x="36" y="6" width="7" height="7" fill="#ffe066"/></g>
+        <rect x="7" y="28" width="2" height="4" fill="#7a4a22"/><rect x="4" y="20" width="8" height="4" fill="#2f9e44"/>
+        <rect x="5" y="23" width="6" height="4" fill="#37b24d"/><rect x="6" y="16" width="4" height="4" fill="#40c057"/>
+        <rect x="30" y="40" width="16" height="3" fill="#c98b4d"/><rect x="30" y="40" width="16" height="1" fill="#d99e63"/>
+        <rect x="22" y="36" width="3" height="6" fill="#3b5f2a"/><rect x="26" y="36" width="3" height="6" fill="#3b5f2a"/>
+        <rect x="22" y="42" width="3" height="2" fill="#4a3520"/><rect x="26" y="42" width="3" height="2" fill="#4a3520"/>
+        <rect x="21" y="27" width="9" height="10" fill="#2f7d32"/><rect x="21" y="27" width="9" height="2" fill="#37933a"/>
+        <rect x="23" y="19" width="6" height="6" fill="#f2c99a"/>
+        <rect x="24" y="21" width="1" height="1" fill="#3b2a1a"/><rect x="26" y="21" width="1" height="1" fill="#3b2a1a"/>
+        <rect x="24" y="23" width="3" height="1" fill="#d99a72"/>
+        <rect x="20" y="18" width="11" height="2" fill="#7a4e26"/><rect x="22" y="15" width="7" height="3" fill="#a06a34"/>
+        <g class="sc-arm"><rect x="28" y="27" width="3" height="9" fill="#f2c99a"/><rect x="30" y="12" width="2" height="24" fill="#7a4a22"/>
+          <rect x="27" y="11" width="8" height="2" fill="#5c5c5c"/><rect x="27" y="13" width="1" height="2" fill="#5c5c5c"/>
+          <rect x="30" y="13" width="1" height="2" fill="#5c5c5c"/><rect x="33" y="13" width="1" height="2" fill="#5c5c5c"/></g>
+      </svg>`,
+      rest: `<svg viewBox="0 0 48 48">
+        <rect width="48" height="48" fill="#e7ecf5"/><rect y="34" width="48" height="14" fill="#d3d9e6"/>
+        <rect x="30" y="6" width="12" height="12" fill="#cfe0ff"/>
+        <rect x="30" y="6" width="12" height="12" fill="none" stroke="#b6c4dd" stroke-width="1"/>
+        <rect x="35" y="9" width="5" height="5" fill="#ffe9a8"/><rect x="34" y="10" width="2" height="3" fill="#f7dd8f"/>
+        <rect x="6" y="30" width="34" height="4" fill="#9c6b3f"/><rect x="6" y="33" width="4" height="8" fill="#7a5230"/>
+        <rect x="36" y="33" width="4" height="8" fill="#7a5230"/>
+        <rect x="8" y="26" width="10" height="6" fill="#fff"/><rect x="8" y="26" width="10" height="2" fill="#eef1f6"/>
+        <rect x="12" y="22" width="6" height="6" fill="#f2c99a"/><rect x="12" y="22" width="6" height="2" fill="#3b2a1a"/>
+        <g class="sc-blanket"><rect x="16" y="26" width="22" height="8" fill="#3f7fbf"/>
+          <rect x="16" y="26" width="22" height="2" fill="#5b97d6"/><rect x="16" y="30" width="22" height="1" fill="#356fa8"/></g>
+        <text class="sc-z1" x="20" y="20" font-size="6" fill="#7a8aa8" font-family="monospace">z</text>
+        <text class="sc-z2" x="22" y="18" font-size="7" fill="#7a8aa8" font-family="monospace">z</text>
+        <text class="sc-z3" x="24" y="16" font-size="8" fill="#7a8aa8" font-family="monospace">Z</text>
+      </svg>`
+    }[kind];
+    return `<div class="scene">${svg}</div>`;
+  },
+
   // ---------- หน้าหลัก ----------
   vHome() {
     const d = this.data, t = d.today, s = d.settings;
     let stateHtml = '';
 
     if (t.is_holiday) {
-      stateHtml = `<div class="done-badge"><span class="db-ico">🌴</span>
+      stateHtml = `<div class="done-badge">${this.scene('beach')}
         <div class="db-title">วันอาทิตย์ — วันหยุดสถานี</div>
         <div class="db-sub">พักผ่อนเต็มที่ แล้วพบกันพรุ่งนี้ค่ะ</div></div>`;
     } else if (t.attendance) {
       const a = t.attendance;
       stateHtml = `<div class="done-badge">
-        <span class="db-ico">${+a.late ? '🟡' : '✅'}</span>
+        ${this.scene('work')}
         <div class="db-title">เช็คชื่อแล้ว ${a.time_in.substr(11, 5)} น.</div>
         <div class="db-sub"><span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'มาสาย' : 'ตรงเวลา'}</span></div>
       </div>`;
@@ -201,7 +259,7 @@ const App = {
       }
     } else if (t.day_off) {
       const label = { dayoff: 'วันหยุด', sick: 'ลาป่วย', personal: 'ลากิจ' }[t.day_off.type];
-      stateHtml = `<div class="done-badge"><span class="db-ico">🔵</span>
+      stateHtml = `<div class="done-badge">${this.scene('rest')}
         <div class="db-title">วันนี้คุณแจ้ง${label}ไว้</div>
         <div class="db-sub">ถ้ามาทำงาน ให้ยกเลิกที่แท็บ "วันหยุด" ก่อนเช็คชื่อ</div></div>`;
     } else {
