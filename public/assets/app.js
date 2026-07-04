@@ -102,6 +102,8 @@ const App = {
         <div class="field"><label>ชื่อ-สกุล</label>
           <select class="select" id="rUser">${d.users.map(u =>
             `<option value="${u.id}">${esc(u.name)}${u.position ? ' — ' + esc(u.position) : ''}</option>`).join('')}</select></div>
+        <div class="field"><label>ตั้งชื่อผู้ใช้ (a-z, 0-9 — ไว้ใช้เข้าระบบ)</label>
+          <input class="input" id="rUname" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></div>
         <div class="field"><label>ตั้งรหัสผ่าน (6 ตัวขึ้นไป)</label>
           <input class="input" id="rPass" type="password" minlength="6" required></div>
         <div class="field"><label>ยืนยันรหัสผ่าน</label>
@@ -113,9 +115,22 @@ const App = {
       </div>`;
     byId('regForm').onsubmit = async (e) => {
       e.preventDefault();
-      if (byId('rPass').value !== byId('rPass2').value) return toast('รหัสผ่านไม่ตรงกัน', 'error');
-      const d2 = await this.api('register', { user_id: +byId('rUser').value, password: byId('rPass').value });
-      await Swal.fire({ icon: 'success', title: 'ลงทะเบียนแล้ว', text: d2.message, confirmButtonText: 'ตกลง' });
+      const uname = byId('rUname').value.trim(), pass = byId('rPass').value;
+      if (pass !== byId('rPass2').value) return toast('รหัสผ่านไม่ตรงกัน', 'error');
+      await this.api('register', { user_id: +byId('rUser').value, username: uname, password: pass });
+      // ย้ำ user/pass ให้เจ้าหน้าที่จดไว้ (แอดมินไม่ต้องมาบอกทีละคน)
+      await Swal.fire({
+        icon: 'success', title: 'ลงทะเบียนเรียบร้อย',
+        html: `<div style="text-align:left;font-size:15px;line-height:1.9">
+                 <b>จดข้อมูลนี้ไว้สำหรับเข้าระบบครั้งต่อไป 📝</b>
+                 <div style="background:#f1f5f9;border-radius:10px;padding:12px 14px;margin-top:10px">
+                   ชื่อผู้ใช้: <b style="color:#0f766e">${esc(uname)}</b><br>
+                   รหัสผ่าน: <b style="color:#0f766e">${esc(pass)}</b>
+                 </div>
+                 <div style="margin-top:10px;color:#64748b;font-size:13px">เข้าใช้งานได้เลย ไม่ต้องรออนุมัติ</div>
+               </div>`,
+        confirmButtonText: 'จดแล้ว เข้าสู่ระบบ',
+      });
       this.renderAuth();
     };
   },

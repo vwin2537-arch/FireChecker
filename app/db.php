@@ -76,4 +76,15 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+
+    // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
+    // แอดมินเพิ่มแค่ชื่อ-สกุล (username = NULL จนกว่าจะลงทะเบียน) → ต้อง ALTER ให้ nullable
+    // (probe information_schema ก่อน ALTER ไม่รันซ้ำทุก request; UNIQUE index เดิมคงอยู่ MySQL ยอม NULL หลายแถว)
+    $nullable = db()->query(
+        "SELECT IS_NULLABLE FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'"
+    )->fetchColumn();
+    if ($nullable === 'NO') {
+        db()->exec("ALTER TABLE users MODIFY username VARCHAR(50) NULL");
+    }
 }

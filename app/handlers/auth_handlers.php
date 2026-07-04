@@ -39,16 +39,29 @@ function h_register_list(): never {
 
 function h_register(): never {
     $userId   = (int)param('user_id');
+    $username = trim((string)param('username'));
     $password = (string)param('password');
+    if (!preg_match('/^[a-zA-Z0-9_.-]{3,30}$/', $username)) fail('ชื่อผู้ใช้ต้องเป็น a-z 0-9 . _ - ยาว 3-30 ตัว');
     if (mb_strlen($password) < 6) fail('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');
 
     $st = db()->prepare("SELECT id FROM users WHERE id = ? AND status = 'unregistered'");
     $st->execute([$userId]);
     if (!$st->fetch()) fail('ไม่พบบัญชีนี้ หรือลงทะเบียนไปแล้ว');
 
-    db()->prepare("UPDATE users SET password_hash = ?, status = 'pending' WHERE id = ?")
-        ->execute([password_hash($password, PASSWORD_DEFAULT), $userId]);
-    ok(['message' => 'ลงทะเบียนแล้ว รอผู้ดูแลระบบอนุมัติ']);
+    // เช็คชื่อผู้ใช้ซ้ำ (ยกเว้นตัวเอง) — pre-check + catch 23000 กัน race
+    $st = db()->prepare('SELECT id FROM users WHERE username = ? AND id <> ?');
+    $st->execute([$username, $userId]);
+    if ($st->fetch()) fail('ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองตั้งชื่ออื่น');
+
+    // ลงทะเบียนเสร็จใช้ได้เลย ไม่ต้องรออนุมัติ (status = active)
+    try {
+        db()->prepare("UPDATE users SET username = ?, password_hash = ?, status = 'active' WHERE id = ?")
+            ->execute([$username, password_hash($password, PASSWORD_DEFAULT), $userId]);
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') === '23000') fail('ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองตั้งชื่ออื่น');
+        throw $e;
+    }
+    ok(['message' => 'ลงทะเบียนเรียบร้อย เข้าใช้งานได้เลย']);
 }
 
 function h_change_password(): never {

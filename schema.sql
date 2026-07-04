@@ -7,7 +7,7 @@ SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS users (
   id            INT AUTO_INCREMENT PRIMARY KEY,
-  username      VARCHAR(50)  NOT NULL UNIQUE,
+  username      VARCHAR(50)  NULL UNIQUE,   -- เจ้าหน้าที่ตั้งเองตอนลงทะเบียน (แอดมินเพิ่มแค่ชื่อ-สกุล → username = NULL จนกว่าจะลงทะเบียน)
   password_hash VARCHAR(255) NULL,
   name          VARCHAR(100) NOT NULL,
   position      VARCHAR(100) NOT NULL DEFAULT '',

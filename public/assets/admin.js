@@ -366,20 +366,17 @@ const Admin = {
         </div>`).join('')}</div>` : ''}
 
       <div class="card"><h3>➕ เพิ่มเจ้าหน้าที่ใหม่</h3>
-        <div class="grid-2">
-          <div class="field"><label>ชื่อผู้ใช้ (a-z, 0-9)</label><input class="input" id="nuUser" autocapitalize="none"></div>
-          <div class="field"><label>ชื่อ-สกุล</label><input class="input" id="nuName"></div>
-        </div>
+        <div class="field"><label>ชื่อ-สกุล</label><input class="input" id="nuName"></div>
         <div class="field"><label>ตำแหน่ง</label><input class="input" id="nuPos" placeholder="เช่น พนักงานดับไฟป่า"></div>
         <button class="btn btn-primary btn-block" onclick="Admin.addUser()">เพิ่ม</button>
-        <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งรหัสผ่าน → พี่กดอนุมัติ</div>
+        <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย</div>
       </div>
 
       <div class="card"><h3>👥 เจ้าหน้าที่ทั้งหมด (${staff.length})</h3>
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>ชื่อ</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
           ${staff.map(u => `<tr>
-            <td><b>${esc(u.name)}</b><div class="tiny">@${esc(u.username)} ${esc(u.position || '')}</div></td>
+            <td><b>${esc(u.name)}</b><div class="tiny">${u.username ? '@' + esc(u.username) + ' ' : ''}${esc(u.position || '')}</div></td>
             <td>${{ active: '<span class="chip chip-ok">ใช้งาน</span>', unregistered: '<span class="chip chip-plain">ยังไม่ลงทะเบียน</span>',
                    disabled: '<span class="chip chip-absent">ปิดใช้งาน</span>' }[u.status] || u.status}</td>
             <td class="num">${u.quota_used}/${d.quota_max}</td>
@@ -393,7 +390,7 @@ const Admin = {
   },
 
   async addUser() {
-    const d = await App.api('user_add', { username: byId('nuUser').value.trim(), name: byId('nuName').value.trim(), position: byId('nuPos').value.trim() });
+    const d = await App.api('user_add', { name: byId('nuName').value.trim(), position: byId('nuPos').value.trim() });
     await Swal.fire({ icon: 'success', title: 'เพิ่มแล้ว', text: d.message, confirmButtonText: 'ตกลง' });
     this.vUsers();
   },

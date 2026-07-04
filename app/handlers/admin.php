@@ -211,19 +211,14 @@ function h_users_list(): never {
 
 function h_user_add(): never {
     require_admin();
-    $username = trim((string)param('username'));
     $name     = trim((string)param('name'));
     $position = mb_substr(trim((string)param('position', '')), 0, 100);
-    if (!preg_match('/^[a-zA-Z0-9_.-]{3,30}$/', $username)) fail('ชื่อผู้ใช้ต้องเป็น a-z 0-9 . _ - ยาว 3-30 ตัว');
     if ($name === '') fail('กรอกชื่อ-สกุล');
 
-    $st = db()->prepare('SELECT id FROM users WHERE username = ?');
-    $st->execute([$username]);
-    if ($st->fetch()) fail('ชื่อผู้ใช้นี้มีอยู่แล้ว');
-
-    db()->prepare("INSERT INTO users (username, name, position, role, status) VALUES (?, ?, ?, 'staff', 'unregistered')")
-        ->execute([$username, $name, $position]);
-    ok(['message' => "เพิ่ม {$name} แล้ว — ให้เจ้าตัวเปิดหน้าเว็บ กด \"ลงทะเบียน\" เพื่อตั้งรหัสผ่าน"]);
+    // แอดมินเพิ่มแค่ชื่อ-สกุล — ชื่อผู้ใช้ (username) เจ้าหน้าที่ตั้งเองตอนลงทะเบียน (username = NULL ไปก่อน)
+    db()->prepare("INSERT INTO users (name, position, role, status) VALUES (?, ?, 'staff', 'unregistered')")
+        ->execute([$name, $position]);
+    ok(['message' => "เพิ่ม {$name} แล้ว — ให้เจ้าตัวเปิดหน้าเว็บ กด \"ลงทะเบียน\" เลือกชื่อ แล้วตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย"]);
 }
 
 function set_user_status(int $id, string $status, bool $clearPass = false): void {
