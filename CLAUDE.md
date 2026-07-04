@@ -27,6 +27,7 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 
 ## Logic สำคัญที่พลาดง่าย
 
+- **เช็คอิน iOS (`doCheckin` app.js):** ต้อง `captureSelfie()` (เปิดกล้อง) **ก่อน** `await getPosition()` เสมอ — iOS/WebKit บังคับ file-input `.click()` อยู่ในจังหวะกดสด (transient user-activation) ถ้ามี `await` คั่นก่อน กล้องจะไม่เปิด ค้างเงียบ ไม่มี timeout ปุ่มค้าง disabled (Chrome iOS เจอด้วย = WebKit เดียวกัน) — flow ถูก: เซลฟี่ → GPS → ยืนยัน, ห่อ try/finally ปลดล็อกปุ่มเสมอ → ดู PROGRESS lesson 10
 - **สถานะรายวัน** คำนวณสดใน `roster_for()` (admin.php): มี attendance → ontime/late, มี day_off → leave, ไม่มีทั้งคู่ → absent
 - **วันอาทิตย์** = วันหยุดสถานี (`is_station_holiday`) — ไม่นับ absent, จอง day_off ไม่ได้, cron ไม่ส่งรายงาน
 - **โควต้า** นับเฉพาะ `type='dayoff'` — ลาป่วย/ลากิจไม่นับ; จองเกินได้แต่ flag `over_quota=1` → เด้ง alert หน้าแอดมิน

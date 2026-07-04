@@ -2,7 +2,7 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 4 ก.ค. 2026 (ปรับ flow ลงทะเบียนเจ้าหน้าที่: แอดมินเพิ่มแค่ชื่อ-สกุล → เจ้าหน้าที่ตั้ง username+password เอง + popup ย้ำให้จด + ลงทะเบียนเสร็จใช้ได้เลย ตัดขั้นตอนรออนุมัติ → deploy รอบ 6 + verify prod migration ครบ)
+อัปเดตล่าสุด: 4 ก.ค. 2026 — แก้บั๊กเช็คอิน iOS ค้าง (ถ่ายเซลฟี่ก่อน GPS → lesson 10) + ปฏิทินวันหยุดฝั่งแอดมิน (heatmap ทั้งเดือน + filter รายคน) → deploy v12. **กำลังเริ่มเฟส 2 ระบบอนุมัติลา** (requirement ล็อกแล้ว ดู "รอทำต่อ")
 
 ## ทำเสร็จแล้ว
 
@@ -13,6 +13,7 @@
 - [x] **เฟส 5** LINE Bot สรุปเช้า/เย็น (กันส่งซ้ำ, ปุ่มทดสอบ, รองรับ cron 2 ทาง) + Dockerfile Railway + README คู่มือ deploy
 - [x] **โซนพัฒนาตัวเอง เฟส 1 — คลังความรู้** แอดมินเพิ่มลิงก์เอกสาร/สไลด์/ข่าว — จนท. เปิดดู + กดรับทราบ + badge แจ้งเตือนเอกสารใหม่
 - [x] **โซนพัฒนาตัวเอง เฟส 2 — แบบทดสอบ** แอดมินสร้างชุดคำถามหลายตัวเลือก (4 ตัวเลือก) — จนท. ทำได้ไม่จำกัดครั้ง ตอบทีละข้อ เห็นคะแนนสรุปท้าย — แอดมินดูคะแนนสูงสุด/จำนวนครั้งของทุกคนต่อชุด (ยังไม่ผูกกับคลังความรู้, ยังไม่มี badge แจ้งเตือน — ตามที่ตกลงกันไว้)
+- [x] **ปฏิทินวันหยุดฝั่งแอดมิน** (4 ก.ค. 2026) แท็บวันหยุดเป็นปฏิทิน grid ทั้งเดือน — ทุกคน: heatmap ไล่สีตามจำนวนคนหยุด / เลือกรายคน: สีตามประเภทลา (🟠ป่วย/🟣กิจ/🔵หยุด) แตะวันดูรายชื่อ+ลบ — reuse ปฏิทิน จนท. ไม่แตะ backend (`dayoff_month`)
 - [x] **สำเนารูปเซลฟี่ขึ้น Google Drive** (4 ก.ค. 2026) เช็คอินสำเร็จทันทีไม่รอ Drive → คิว `drive_queue` อัปโหลดเบื้องหลังหลังส่ง response (retry จนสำเร็จ เพดาน 30 ครั้ง) → แยกโฟลเดอร์รายวัน ปี พ.ศ. (`2569-07-04`) ชื่อไฟล์ `เวลา_ชื่อ.jpg` — OAuth scope `drive.file` แอดมินเชื่อมเองครั้งเดียว (คู่มือ `SETUP_GDRIVE.md`) — ย่อรูปเซลฟี่เหลือ 1000px q0.6 ให้ไฟล์เล็ก + เปิดสวิตช์ `selfie_required` บน production แล้ว → lesson 7
 
 ## ทดสอบแล้ว (2 ก.ค. 2026, local: PHP 8.5 + MySQL 9.6)
@@ -57,6 +58,16 @@
 - [ ] เข้าไปสร้างชุดคำถามจริงในหน้าแอดมิน → พัฒนา → แบบทดสอบ (ตอนนี้ยังไม่มีชุดคำถามในระบบจริง — มีแค่ชุดทดสอบที่สร้างไว้ตอนเทส local)
 - [ ] โซนพัฒนาตัวเอง เฟส 3 — กายภาพ (ยังไม่คุยรายละเอียด รอคุยแผนตอนถึงคิว)
 
+### เฟส 2 — ระบบอนุมัติลา (requirement ล็อก 4 ก.ค. 2026 — ยังไม่เริ่มโค้ด)
+- ขอบเขต: อนุมัติเฉพาะ **ลาป่วย(sick) + ลากิจ(personal)** — `dayoff` (จองวันหยุดนับโควต้า) จองได้เลยเหมือนเดิม ไม่แตะ
+- กติกา: ลากิจขอล่วงหน้า **≥2 วัน** / ลาป่วยกดได้ตลอด+ย้อนหลัง
+- สถานะ: `pending` = ลาไปก่อน (นับ leave ใน roster ทันที) / reject = **ลบ row ทิ้ง** → กลับเป็นวันทำงาน (ขอใหม่วันเดิมได้ เลี่ยง UNIQUE) / auto-approve @ **00:00 ของวันก่อน off_date** (เลยแล้วแอดมินปฏิเสธไม่ได้)
+- ลาป่วยวันนี้/ย้อนหลัง = เลย deadline → **อนุมัติทันที ปฏิเสธไม่ได้** แอดมินแค่รับรู้ (ลาป่วยล่วงหน้ายัง pending)
+- schema: เพิ่มคอลัมน์ `status` ใน `day_offs` (dayoff default approved, sick/personal = pending)
+- auto-approve: cron รอบเช้าที่มีอยู่ + lazy check ตอน render เป็น backstop (pending นับ leave อยู่แล้ว → auto แค่ล็อกไม่ให้ปฏิเสธ ไม่กระทบตาราง)
+- แจ้งแอดมิน: badge ตัวเลขในแอป (ทันที) + **แนบในรายงาน LINE รอบเช้า** (ห้าม push ตอน submit — curl คาใน web request พังตาม lesson 7/8 ต้อง async)
+- + หน้าอนุมัติฝั่งแอดมิน (list คำขอ pending + ปุ่มอนุมัติ/ปฏิเสธ) + roster ต้องเช็ค status (rejected ไม่นับลา)
+
 ## Lesson learned
 
 - ระบบเดิม (GAS) ช้าเพราะสแกน Google Sheets ทั้งชีตทุก request + ส่งรูป base64 ผ่าน GAS → แก้ด้วย MySQL index + เก็บรูปใน Volume
@@ -67,8 +78,11 @@
 - **[6] `.tbl`/`.tbl-wrap` ใช้ใน Swal popup ไม่ได้** — คลาสนี้ออกแบบมาสำหรับตารางกว้างที่ bleed ขอบ `.card` (มี `min-width:560px` + negative margin `-18px` อิงกับ padding ของ `.card`) พอเอาไปใส่ใน `Swal.fire({html})` ซึ่งไม่มี padding บริบทเดียวกัน ตารางจะเพี้ยน/ตัดขาด (เจอตอนทำหน้าดูคะแนนแบบทดสอบ) — ถ้าต้องโชว์ตารางใน Swal ให้เขียน inline-style เองแยกจาก `.tbl` เดิม
 - **[7] Google Drive selfie sync** (ดู CLAUDE.md → Google Drive section สำหรับรายละเอียดเทคนิค): (a) ใช้ OAuth scope `drive.file` (non-sensitive → ไม่ติดด่าน verification ของ Google) แต่แลกกับที่แอปเห็นเฉพาะไฟล์/โฟลเดอร์ที่ตัวเองสร้าง — เข้าถึงโฟลเดอร์ที่พี่วินมีอยู่แล้วไม่ได้ จึงสร้างโฟลเดอร์รากเองแล้วให้พี่วินลากไปวางในที่ที่ต้องการ (id ไม่เปลี่ยน) (b) งานช้าอย่าง upload อย่ารันคาใน request — ~~ใช้ `after_response()`~~ **(⚠️ 4 ก.ค. เลิกใช้ after_response แล้ว เพราะ `fastcgi_finish_request()` ไม่มีบน Apache mod_php → เปลี่ยนเป็นแตกโปรเซส worker `cron/drive.php` แยก ดู lesson 8)** (c) OAuth setup 3 กับดักที่พี่วินเจอจริงตอน onboard: ต้อง **Publish App** (ไม่งั้น "Access blocked" + refresh token หมดใน 7 วัน), ต้อง **Enable Google Drive API** ในโปรเจค (ไม่งั้น HTTP 403 ตอนสร้างโฟลเดอร์), Client Secret ช่องเป็น password พี่วินมองไม่เห็น → วางสลับ/ไม่ครบง่าย = "invalid client secret" — คู่มือครบใน `SETUP_GDRIVE.md`
 - **[8] "การเชื่อมต่อขัดข้อง" ตอนเช็คชื่อ = PHP warning พ่นใส่ JSON** (ดู CLAUDE.md → Deploy gotchas): ต้นเหตุจริง `save_photo()` `mkdir()` บน Volume **Permission denied** (`/data/uploads` เป็นของ root, Apache = www-data) → selfie ไม่เคยเซฟลง prod ได้เลย + `display_errors` เปิดอยู่ → warning HTML ขึ้นหน้า JSON → `res.json()` พัง (HTTP ยัง 200, content-type flip เป็น text/html, body ขึ้นต้น `<br>`). แก้ 2 จุดใน Dockerfile: (a) CMD `chown www-data $UPLOAD_DIR` ตอน runtime (b) `display_errors=Off`+`log_errors=On`. **บทเรียน debug:** รอบแรกเดาผิดว่าเป็น `after_response`/mod_php แล้ว deploy ทั้งที่ยังไม่เห็น response ดิบ → เสีย 1 deploy; ต้อง**ดู raw response body ก่อนแก้เสมอ** (200+text/html+`<br>` = warning corruption)
+- **[10] เช็คอิน iOS ค้าง = user-activation หมดตอนเปิดกล้อง** (ดู CLAUDE.md → Logic สำคัญ): iOS/WebKit บังคับ file-input `.click()` (เปิดกล้องเซลฟี่) ต้องอยู่ในจังหวะ transient user-activation ของการกดสด — เดิม `doCheckin` หา GPS ก่อน (await + permission dialog กิน activation) แล้วค่อย `captureSelfie()` → `.click()` no-op เงียบ ไม่มี timeout → ค้างตลอด ปุ่มค้าง disabled. **Chrome iOS เจอเหมือนกัน** (WebKit เดียวกัน ไม่ใช่บั๊ก Safari เฉพาะ). แก้: **สลับถ่ายเซลฟี่ก่อน GPS** (GPS grant แล้วไม่ต้อง activation + มี timeout 12s กันค้าง) + ห่อ try/finally ปลดล็อกปุ่มเสมอ. บทเรียน: อย่ามี `await` คั่นก่อน op ที่ต้อง user-activation (camera/getUserMedia/window.open)
 - **[9] เวลาเช็คอินเพี้ยน -7 ชม. = MySQL บน Railway เป็น UTC** (ดู CLAUDE.md → Deploy gotchas): `time_in` เขียนด้วย SQL `NOW()` → เก็บ UTC แสดงดิบ. แก้ด้วย `SET time_zone='+07:00'` ตอนต่อ PDO (db.php) — คอลัมน์ DATETIME ล้วนไม่กระทบของเก่า, row ก่อนแก้ต้อง `+ INTERVAL 7 HOUR` เอง (ทำผ่าน `railway connect MySQL` สำหรับ row 4 ก.ค.)
 
 ## Deploy (4 ก.ค. 2026 — bugfix)
 
 - [x] **redeploy รอบ 6-8** แก้ lesson 8+9: (6) worker Drive แทน after_response, (7) Volume chown + display_errors=Off → verify prod: checkin ตอบ JSON สะอาด (content-type application/json, ok=true) + `gdrive_status done:1`, (8) timezone +07:00 → verify row ใหม่เวลาถูก — ทุกรอบ `railway up` (MCP ยัง Unauthorized) + commit+push `main` (`2a49de6`)
+- [x] **redeploy รอบ 9 (v10)** แก้บั๊กเช็คอิน iOS ค้าง → ถ่ายเซลฟี่ก่อนหา GPS + surface error.code → lesson 10 — verify: พี่วินเทส iPhone จริง ถ่ายรูป+เช็คชื่อผ่าน (commit `f3e51a5`)
+- [x] **redeploy รอบ 10-11 (v11-12)** ปฏิทินวันหยุดแอดมิน heatmap + filter รายคน — verify logic ใน node + พี่วินดูจริงผ่านทั้ง 2 โหมด (commit `df674c4`) — `railway up` ทุกรอบ
