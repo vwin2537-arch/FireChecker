@@ -64,6 +64,13 @@
 - **LINE เด้งทันทีตอน จนท. ยื่นลาป่วย/ลากิจ (async ผ่าน line_queue):** หัวหน้ารู้ทันทีไม่ต้องรอรายงานเช้า/เย็น — วันหยุด(dayoff) เงียบ, admin บันทึกแทนเงียบ — verify: personal/sick → enqueue ข้อความครบ / dayoff → ไม่ enqueue (commit `74c3fab`, deploy แล้ว)
 - **สอบสวน "ปฏิเสธลาทั้งหมด" (พี่วินรายงาน) = ไม่ใช่บั๊ก** — reproduce แล้ว reject ลบเฉพาะ id ที่กด (backend+UI+DB ตรงกัน). ดู prod DB จริง (พี่วินอนุมัติ read-only): day_offs id 1-7 อยู่ครบไม่มีลบ, ทุกแถว approved (เพ็ญนภา 5 รายการสร้างก่อน deploy เฟส 2 → backfill approved / วรุณ sick → auto-approved ตอนข้ามวัน), line_queue ว่าง = ไม่เคยกดอนุมัติสำเร็จ → **ภาพ "ปฏิเสธหมด" คือการ์ด pending ว่างเพราะ auto-approve ย้ายออก ไม่ใช่การลบ** — บทเรียน: auto-approve ทำให้คำขอหลุดจากการ์ดเงียบๆ ทดสอบต้องใช้คำขอใหม่ off_date ≥ วันนี้+2
 
+## เฟส 2 — รอบเสริม feedback พี่วิน (5 ก.ค. 2026, v15 deploy แล้ว)
+
+- **บังคับหมายเหตุเมื่อลาป่วย/ลากิจ** — backend reject note ว่าง (dayoff ไม่บังคับ) + ฟอร์ม จนท. label ขึ้น "เหตุผลการลา *" + placeholder + กันฝั่ง client ก่อนส่ง
+- **แจ้ง LINE ตอนยกเลิกลา** — `dayoff_cancel` enqueue ❌ สำหรับลาป่วย/ลากิจ (dayoff เงียบ)
+- **ป๊อบอัพวันหยุดสวยขึ้น (ฝั่ง จนท.)** — ยื่นสำเร็จ = การ์ดโชว์ประเภท/จำนวนวัน + "🔔 แจ้งหัวหน้าทาง LINE แล้ว" + รออนุมัติ / ยกเลิก = confirm เตือนว่าจะแจ้ง LINE + toast ยืนยัน (ฝั่งแอดมินคง toast มุมบนแบบไม่บล็อก เหมาะกดหลายรายการ)
+- verify: backend 4 เคส (note บังคับ/ไม่บังคับ + cancel enqueue) + Playwright 3 ชุด ALL PASS 0 error (note UX, ฟลว์ยื่น→ป๊อบอัพ→ยกเลิก, admin approve/reject regression) — commit `01eecc1`+`c1b6fe4`
+
 ## รอทำต่อ (พี่วินต้องทำเอง / session หน้า)
 
 - [ ] ⚠️ **เปลี่ยนรหัส admin อีกครั้ง** — รหัสเดิม `admin1234` เปลี่ยนไปแล้ว (login ไม่ผ่าน) แต่รหัสปัจจุบันพี่วินบอกมุกตอน debug 4 ก.ค. → ควรเปลี่ยนใหม่ (ตั้งค่า → 🔑)
