@@ -1,6 +1,6 @@
 // FireCheck service worker — cache แค่ asset คงที่ / API วิ่งตรงเสมอ
-const CACHE = 'firecheck-v8';
-const ASSETS = ['assets/app.css?v=8', 'assets/app.js?v=8', 'assets/admin.js?v=8', 'icon-192.png'];
+const CACHE = 'firecheck-v10';
+const ASSETS = ['assets/app.css?v=10', 'assets/app.js?v=10', 'assets/admin.js?v=10', 'icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

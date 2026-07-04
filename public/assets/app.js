@@ -276,39 +276,44 @@ const App = {
   async doCheckin() {
     const s = this.data.settings;
     const btn = byId('btnCheckin'); btn.disabled = true;
-
-    let pos = null;
     try {
-      Swal.fire({ title: 'กำลังหาตำแหน่ง GPS...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-      pos = await getPosition();
-      Swal.close();
-    } catch {
-      Swal.close();
-      if (s.gps_enforce) {
-        await Swal.fire({ icon: 'error', title: 'ไม่พบตำแหน่ง GPS', text: 'กรุณาเปิดการเข้าถึงตำแหน่ง (Location) แล้วลองใหม่', confirmButtonText: 'ตกลง' });
-        btn.disabled = false; return;
+      // 1) ถ่ายเซลฟี่ก่อน — iOS/WebKit บังคับ inp.click() ต้องอยู่ในจังหวะ "กดสด" (transient activation)
+      //    ห้ามมี await คั่นก่อนบรรทัดนี้ ไม่งั้นสิทธิ์กดหมด กล้องจะไม่เปิด → ค้าง (เดิมหา GPS ก่อนเลยพัง)
+      let selfie = null;
+      if (s.selfie_required) {
+        selfie = await captureSelfie();
+        if (!selfie) return;   // ผู้ใช้ยกเลิก
       }
-    }
 
-    let selfie = null;
-    if (s.selfie_required) {
-      selfie = await captureSelfie();
-      if (!selfie) { btn.disabled = false; return; }
-    }
+      // 2) หา GPS ทีหลัง — permission grant แล้วไม่ต้องขอ activation ซ้ำ และมี timeout 12s กันค้างเงียบ
+      let pos = null;
+      try {
+        Swal.fire({ title: 'กำลังหาตำแหน่ง GPS...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        pos = await getPosition();
+        Swal.close();
+      } catch (err) {
+        Swal.close();
+        if (s.gps_enforce) {
+          await Swal.fire({ icon: 'error', title: 'ไม่พบตำแหน่ง GPS', html: gpsErrorMessage(err), confirmButtonText: 'ตกลง' });
+          return;
+        }
+      }
 
-    const dist = pos ? Math.round(haversine(pos.lat, pos.lng, s.gps_lat, s.gps_lng)) : null;
-    const c = await Swal.fire({
-      icon: 'question', title: 'ยืนยันเช็คชื่อ?',
-      html: dist !== null ? `คุณอยู่ห่างสถานี <b>${dist.toLocaleString()} ม.</b>` : 'ไม่มีพิกัด GPS',
-      showCancelButton: true, confirmButtonText: 'เช็คชื่อเลย', cancelButtonText: 'ยกเลิก',
-    });
-    if (!c.isConfirmed) { btn.disabled = false; return; }
+      // 3) ยืนยัน + ส่ง
+      const dist = pos ? Math.round(haversine(pos.lat, pos.lng, s.gps_lat, s.gps_lng)) : null;
+      const c = await Swal.fire({
+        icon: 'question', title: 'ยืนยันเช็คชื่อ?',
+        html: dist !== null ? `คุณอยู่ห่างสถานี <b>${dist.toLocaleString()} ม.</b>` : 'ไม่มีพิกัด GPS',
+        showCancelButton: true, confirmButtonText: 'เช็คชื่อเลย', cancelButtonText: 'ยกเลิก',
+      });
+      if (!c.isConfirmed) return;
 
-    try {
       const d = await this.api('checkin', { lat: pos?.lat ?? null, lng: pos?.lng ?? null, selfie });
       await Swal.fire({ icon: d.late ? 'warning' : 'success', title: d.message, text: 'เวลา ' + d.time_in + ' น.', confirmButtonText: 'ตกลง' });
       this.refreshStaff();
-    } catch { btn.disabled = false; }
+    } finally {
+      btn.disabled = false;   // จบทางไหนก็ปลดล็อกปุ่มเสมอ ไม่ให้ค้าง disabled อีก
+    }
   },
 
   async doCheckout() {
@@ -746,11 +751,28 @@ function toast(msg, icon = 'success') {
 
 function getPosition() {
   return new Promise((res, rej) => {
-    if (!navigator.geolocation) return rej(new Error('no geolocation'));
+    // code 0 = ไม่รองรับ/ไม่ใช่ secure context (แยกจาก GeolocationPositionError จริง)
+    if (!navigator.geolocation) return rej({ code: 0, message: 'browser ไม่รองรับ' });
     navigator.geolocation.getCurrentPosition(
       (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      rej, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+      (err) => rej(err), { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
   });
+}
+
+// แปลง error ตำแหน่งเป็นข้อความไทยที่บอกวิธีแก้ตรงสาเหตุ (+ รหัสไว้ debug)
+function gpsErrorMessage(err) {
+  const code = err && typeof err.code === 'number' ? err.code : -1;
+  const tag = `<br><small style="opacity:.6">(รหัส ${code})</small>`;
+  if (code === 1) return  // PERMISSION_DENIED — iOS จำการปฏิเสธไว้ ต้องเปิดใน Settings
+    'iPhone ปิดสิทธิ์เข้าถึงตำแหน่งของ Safari ไว้ค่ะ<br><br>' +
+    '<b>วิธีเปิด:</b><br>1. ตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่ง → <b>เปิด</b><br>' +
+    '2. เลื่อนหา Safari → เลือก <b>ขณะใช้แอป</b><br>' +
+    '3. ตั้งค่า → แอป → Safari → ตำแหน่ง → <b>อนุญาต</b><br>' +
+    '4. กลับมารีเฟรชหน้านี้แล้วกดเช็คชื่อใหม่' + tag;
+  if (code === 2) return 'หาสัญญาณ GPS ไม่ได้ ลองออกไปที่โล่งแล้วกดใหม่' + tag;      // POSITION_UNAVAILABLE
+  if (code === 3) return 'หาตำแหน่งนานเกินไป กดเช็คชื่ออีกครั้งค่ะ' + tag;              // TIMEOUT
+  if (code === 0) return 'หน้านี้ต้องเปิดผ่าน HTTPS ถึงจะใช้ GPS ได้' + tag;
+  return 'กรุณาเปิดการเข้าถึงตำแหน่ง (Location) แล้วลองใหม่' + tag;
 }
 
 function haversine(lat1, lng1, lat2, lng2) {
