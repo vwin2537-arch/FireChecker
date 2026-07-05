@@ -8,7 +8,17 @@
 
 function build_report(string $type): ?string {
     $today = date('Y-m-d');
-    if (is_station_holiday($today)) return null;
+    if (is_station_holiday($today)) {
+        if ($type !== 'morning') return null;   // วันหยุดสถานี: ส่ง heartbeat เฉพาะรอบเช้า รอบเย็นเงียบ
+        $station = setting('station_name');
+        $lines = [
+            "🔥 {$station}",
+            '😴 วันนี้ ' . thai_date($today) . ' เป็นวันหยุดสถานี',
+            '✅ ระบบเช็คชื่อทำงานปกติ แล้วพบกันใหม่พรุ่งนี้ค่ะ',
+        ];
+        array_push($lines, ...report_pending_leaves());
+        return implode("\n", $lines);
+    }
 
     $roster = roster_for($today);
     $c = roster_counts($roster);

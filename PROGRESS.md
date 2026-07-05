@@ -2,7 +2,7 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 5 ก.ค. 2026 — **ฉากพิกเซลเคลื่อนไหวหน้า Home + ฉลองเช็คชื่อ + deploy (v17)**: แทน emoji สถานะด้วยฉาก SVG วาดเอง 3 แบบ (วันหยุด=ทะเลมะพร้าว, เช็คแล้ว=จนท.ถือคราด, ลา=นอนพัก) ขยับด้วย CSS keyframes + `prefers-reduced-motion` — โค้ด `App.scene()` (app.js) + `.scene`/`sc-*` (app.css). v17 เพิ่ม confetti พิกเซล + ฉากเด้ง pop **เฉพาะเช็คตรงเวลา** (`App.celebrate()`). ก่อนหน้า: เฟส 2 ระบบอนุมัติลา (v15, technical → CLAUDE.md "ระบบอนุมัติลา"). (test log เก่า 2-4 ก.ค. ย้ายไป PROGRESS_ARCHIVE.md)
+อัปเดตล่าสุด: 5 ก.ค. 2026 — **heartbeat วันหยุดสถานี**: วันอาทิตย์รอบเช้า LINE ส่งข้อความยืนยันระบบทำงานปกติ (ก่อนหน้าเงียบเลยเข้าใจผิดว่า cron พัง) — ดู Deploy section. ก่อนหน้า: **ฉากพิกเซลเคลื่อนไหวหน้า Home + ฉลองเช็คชื่อ + deploy (v17)**: แทน emoji สถานะด้วยฉาก SVG วาดเอง 3 แบบ (วันหยุด=ทะเลมะพร้าว, เช็คแล้ว=จนท.ถือคราด, ลา=นอนพัก) ขยับด้วย CSS keyframes + `prefers-reduced-motion` — โค้ด `App.scene()` (app.js) + `.scene`/`sc-*` (app.css). v17 เพิ่ม confetti พิกเซล + ฉากเด้ง pop **เฉพาะเช็คตรงเวลา** (`App.celebrate()`). ก่อนหน้า: เฟส 2 ระบบอนุมัติลา (v15, technical → CLAUDE.md "ระบบอนุมัติลา"). (test log เก่า 2-4 ก.ค. ย้ายไป PROGRESS_ARCHIVE.md)
 
 ## ทำเสร็จแล้ว
 
@@ -96,3 +96,4 @@
 - [x] **redeploy รอบ 6-8** แก้ lesson 8+9: (6) worker Drive แทน after_response, (7) Volume chown + display_errors=Off → verify prod: checkin ตอบ JSON สะอาด (content-type application/json, ok=true) + `gdrive_status done:1`, (8) timezone +07:00 → verify row ใหม่เวลาถูก — ทุกรอบ `railway up` (MCP ยัง Unauthorized) + commit+push `main` (`2a49de6`)
 - [x] **redeploy รอบ 9 (v10)** แก้บั๊กเช็คอิน iOS ค้าง → ถ่ายเซลฟี่ก่อนหา GPS + surface error.code → lesson 10 — verify: พี่วินเทส iPhone จริง ถ่ายรูป+เช็คชื่อผ่าน (commit `f3e51a5`)
 - [x] **redeploy รอบ 10-11 (v11-12)** ปฏิทินวันหยุดแอดมิน heatmap + filter รายคน — verify logic ใน node + พี่วินดูจริงผ่านทั้ง 2 โหมด (commit `df674c4`) — `railway up` ทุกรอบ
+- [x] **heartbeat วันหยุดสถานี** (5 ก.ค. 2026) — เดิมวันอาทิตย์ `build_report` คืน null → รายงานเงียบ (cron ยิงแต่ skip) พี่วินนึกว่า trigger พัง จริงๆ ทำงานถูก. เพิ่ม: วันหยุดสถานี **รอบเช้าส่งข้อความ heartbeat** ("ระบบเช็คชื่อทำงานปกติ...") + แนบคำขอลาค้าง / **รอบเย็นยังเงียบ** — ไม่แตะ `sunday_off` (เช็คชื่อวันอาทิตย์ยังปิด) `line_logs` กันส่งซ้ำเหมือนเดิม — `railway up` (deployment `6fd37fd0` SUCCESS) → **verify:** ยิง `cron_report?type=morning&force=1` เข้า prod → LINE ตอบ HTTP 200 + message id `621442374475972813` (เข้ากลุ่มจริง)
