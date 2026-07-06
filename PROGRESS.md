@@ -15,8 +15,34 @@
 - [x] **โซนพัฒนาตัวเอง เฟส 2 — แบบทดสอบ** แอดมินสร้างชุดคำถามหลายตัวเลือก (4 ตัวเลือก) — จนท. ทำได้ไม่จำกัดครั้ง ตอบทีละข้อ เห็นคะแนนสรุปท้าย — แอดมินดูคะแนนสูงสุด/จำนวนครั้งของทุกคนต่อชุด (ยังไม่ผูกกับคลังความรู้, ยังไม่มี badge แจ้งเตือน — ตามที่ตกลงกันไว้)
 - [x] **ปฏิทินวันหยุดฝั่งแอดมิน** (4 ก.ค. 2026) แท็บวันหยุดเป็นปฏิทิน grid ทั้งเดือน — ทุกคน: heatmap ไล่สีตามจำนวนคนหยุด / เลือกรายคน: สีตามประเภทลา (🟠ป่วย/🟣กิจ/🔵หยุด) แตะวันดูรายชื่อ+ลบ — reuse ปฏิทิน จนท. ไม่แตะ backend (`dayoff_month`)
 - [x] **สำเนารูปเซลฟี่ขึ้น Google Drive** (4 ก.ค. 2026) เช็คอินสำเร็จทันทีไม่รอ Drive → คิว `drive_queue` อัปโหลดเบื้องหลังหลังส่ง response (retry จนสำเร็จ เพดาน 30 ครั้ง) → แยกโฟลเดอร์รายวัน ปี พ.ศ. (`2569-07-04`) ชื่อไฟล์ `เวลา_ชื่อ.jpg` — OAuth scope `drive.file` แอดมินเชื่อมเองครั้งเดียว (คู่มือ `SETUP_GDRIVE.md`) — ย่อรูปเซลฟี่เหลือ 1000px q0.6 ให้ไฟล์เล็ก + เปิดสวิตช์ `selfie_required` บน production แล้ว → lesson 7
+- [x] **เฟส 6 — เวรกลางคืน + เวรวันอาทิตย์ + เพศ** (7 ก.ค. 2026, v18) ดูหัวข้อ "เฟส 6" ด้านล่าง
 
 > test log เก่า (2-4 ก.ค.: API/checkin, แบบทดสอบ, Google Drive sync) ย้ายไป **PROGRESS_ARCHIVE.md**
+
+## เฟส 6 — เวรกลางคืน + เวรวันอาทิตย์ + เพศ (7 ก.ค. 2026, v18)
+
+**ปัญหาที่แก้ (พี่วิน):** (1) เวรกลางคืนสลับกันเอง จำไม่ได้ อยากทำสถิติ (2) คนอยู่เวรกลางคืนเช้าถัดมามา 10 โมง เลยติดสาย (3) วันอาทิตย์เช็คชื่อไม่ได้เลย แต่มีคนมาทำงาน/ชดเชย
+
+**Requirement ที่สรุปกับพี่วิน (ถามล้อม 6 ข้อ):** เวรกลางคืน = บันทึกคนมาจริงพอ (ไม่กรอกคำสั่งล่วงหน้า), ลงเวรเอง กดตอนเย็น (≥18:00) + เซลฟี่/GPS, เฉพาะชาย (กรองด้วย field เพศ), วันที่อยู่เวรกลางวันทำงานปกติ (ระบบไม่แตะ), เช้าถัดมาเช็คปกติแต่ไม่นับสาย, วันอาทิตย์ = แยกจากเวรกลางคืน reuse `attendance` เปิดเช็คได้ทั้งชาย/หญิงหลายคน, ชดเชยวันอาทิตย์ = แค่บันทึก note (ยังไม่หักโควต้า)
+
+**ที่ทำ:**
+- **ตารางใหม่ `night_shifts`** (`user_id, duty_date, time_in, lat/lng/distance_m, selfie_path`, UNIQUE user+duty_date) — แยกจาก `attendance` เพราะ attendance ผูก UNIQUE วันละครั้ง + semantic เช้า
+- **คอลัมน์ใหม่:** `users.gender ENUM('male','female') NULL` (กรองเวรกลางคืน), `attendance.note VARCHAR(255)` (หมายเหตุงานวันอาทิตย์)
+- **3 settings ใหม่:** `night_shift_enabled`(1), `night_checkin_open`(18:00), `sunday_work_enabled`(1) — สวิตช์+เวลาในหน้าตั้งค่า
+- **`h_night_checkin`** — เช็คเพศชาย + สวิตช์ + เวลา≥night_checkin_open + กันซ้ำ + GPS/เซลฟี่ reuse (`distance_m`/`save_photo`/`gdrive_enqueue`). `duty_date` = วันนี้ ถ้ากดก่อน 06:00 = เมื่อวาน (กัน off-by-one หลังเที่ยงคืน) → `tonight_duty_date()`
+- **ยกเว้นสายเช้าถัดมา** ใน `h_checkin`: ถ้า late และมี night_shift `duty_date = เมื่อวาน` → late=0 + `exempted=true` (รวมกรณีคืนวันอาทิตย์)
+- **ปลดล็อกวันอาทิตย์** ใน `h_checkin`: is_holiday + `sunday_work_enabled` → เช็คได้ (ข้ามเวลาเปิด + บังคับ late=0) + รับ `note`
+- **Dashboard วันหยุด** (`h_admin_data`): เดิม roster ว่างวันอาทิตย์ → เพิ่ม `holiday_workers` (คนที่เช็คชื่อวันหยุด) + `night_stats` (จำนวนคืน/คนเดือนนี้). รายงานย้อนหลัง (`report_range`) + `my_history` แนบ night_shifts + CSV
+- **Frontend:** ปุ่ม "🌙 ลงเวรกลางคืน" หน้า Home (เฉพาะชาย+เปิดสวิตช์, gate เวลา, `doNightCheckin` ลำดับเซลฟี่→GPS ตาม iOS lesson 10) / วันอาทิตย์โชว์ปุ่มเช็คชื่อ+ช่อง note / ประวัติโชว์เวรกลางคืน / แอดมิน: ช่องเพศในฟอร์มเพิ่ม+dropdown ในตาราง (`user_set_gender`) + สถิติเวรบนแดชบอร์ด/รายงาน → cache-bust v18
+- **Migration guarded** (`ensure_admin`): probe `night_shifts` (42S02→run schema.sql, re-add settings) + ALTER `users.gender`/`attendance.note` (probe information_schema) — idempotent
+
+**ทดสอบ (local: PHP 8.5 + MySQL, display_errors=0 เหมือน prod):**
+- **API E2E 13/13 pass** — night check-in ชายได้/กันซ้ำ/หญิงบล็อก/ไร้เพศบล็อก, ยกเว้นสาย (มี night_shift เมื่อวาน→late=false+exempted) vs หญิงไม่มีเวร→late=true, night_stats นับ 2 คืน, report/my_history แนบครบ
+- **Sunday logic 4/4 pass** (PHP harness เพราะ fake วันที่ไม่ได้) — is_station_holiday(อาทิตย์)=true/(อังคาร)=false, holiday_workers SQL ดึงคน+note ได้, late=0
+- **Migration บน DB จำลอง prod เก่า** (ตัด night_shifts+gender+note+settings ทิ้ง) → ยิง API → เติมกลับครบ + ยิงซ้ำ idempotent ไม่ error
+- **Playwright + Chrome (headless) 0 console error** — หน้าตั้งค่ามีสวิตช์เวรกลางคืน/วันอาทิตย์+เวลา, หน้าเจ้าหน้าที่มีช่องเพศ, หน้า Home ชายมีปุ่มลงเวร (gate เวลาโชว์ "เปิดลงเวร 18:00 น.")
+
+**⚠️ Rollout:** deploy แล้วแอดมินต้อง **ตั้งเพศให้ จนท.เดิมทุกคนก่อน** (row เก่า gender=NULL → ชายถึงลงเวรได้) — สวิตช์ default เปิดหมด
 
 ## Deploy (3 ก.ค. 2026)
 

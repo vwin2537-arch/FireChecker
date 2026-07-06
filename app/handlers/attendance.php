@@ -39,6 +39,11 @@ function h_app_data(): never {
     $st->execute([$u['id']]);
     $libUnread = (int)$st->fetch()['c'];
 
+    // เวรกลางคืน "คืนนี้" (ถ้าลงแล้ว) — ใช้โชว์สถานะบนหน้าหลัก
+    $st = db()->prepare('SELECT * FROM night_shifts WHERE user_id = ? AND duty_date = ?');
+    $st->execute([$u['id'], tonight_duty_date()]);
+    $nightToday = $st->fetch() ?: null;
+
     gdrive_kick_if_stale();   // ถือโอกาสไล่คิวรูปค้าง (ทำหลังส่ง response, ไม่หน่วงหน้าแอป)
 
     ok([
@@ -49,6 +54,7 @@ function h_app_data(): never {
             'is_holiday'  => is_station_holiday($today),
             'day_off'     => $offToday,
             'attendance'  => $att,
+            'night'       => $nightToday,
         ],
         'quota'    => ['used' => $quotaUsed, 'max' => (int)setting('off_quota_month', '10')],
         'upcoming' => $upcoming,
@@ -74,14 +80,24 @@ function client_settings(): array {
         'gps_radius_m'     => (int)setting('gps_radius_m', '1000'),
         'off_quota_month'  => (int)setting('off_quota_month', '10'),
         'sunday_off'       => setting('sunday_off', '1') === '1',
+        'night_shift_enabled' => setting('night_shift_enabled', '1') === '1',
+        'night_checkin_open'  => setting('night_checkin_open', '18:00'),
+        'sunday_work_enabled' => setting('sunday_work_enabled', '1') === '1',
     ];
+}
+
+/** duty_date ของ "คืนนี้" — ถ้าเวลาปัจจุบันก่อน 06:00 ถือเป็นเวรของเมื่อวาน */
+function tonight_duty_date(): string {
+    return (int)date('G') < 6 ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d');
 }
 
 function h_checkin(): never {
     $u     = require_user();
     $today = date('Y-m-d');
 
-    if (is_station_holiday($today)) fail('วันนี้เป็นวันหยุดสถานี (วันอาทิตย์) ไม่ต้องเช็คชื่อค่ะ');
+    $isHoliday = is_station_holiday($today);
+    if ($isHoliday && setting('sunday_work_enabled', '1') !== '1')
+        fail('วันนี้เป็นวันหยุดสถานี (วันอาทิตย์) ไม่ต้องเช็คชื่อค่ะ');
 
     $st = db()->prepare('SELECT type FROM day_offs WHERE user_id = ? AND off_date = ?');
     $st->execute([$u['id'], $today]);
@@ -94,8 +110,10 @@ function h_checkin(): never {
     $st->execute([$u['id'], $today]);
     if ($st->fetch()) fail('วันนี้เช็คชื่อไปแล้ว');
 
-    $open = hm_to_min(setting('checkin_open', '08:05'));
-    if (now_min() < $open) fail('ยังไม่ถึงเวลาเช็คชื่อ (เปิด ' . setting('checkin_open', '08:05') . ' น.)');
+    if (!$isHoliday) {   // วันหยุด (งานวันอาทิตย์) เช็คได้ทั้งวัน ไม่มีเวลาเปิด
+        $open = hm_to_min(setting('checkin_open', '08:05'));
+        if (now_min() < $open) fail('ยังไม่ถึงเวลาเช็คชื่อ (เปิด ' . setting('checkin_open', '08:05') . ' น.)');
+    }
 
     // ---- GPS ----
     $lat = param('lat') !== null ? (float)param('lat') : null;
@@ -121,19 +139,88 @@ function h_checkin(): never {
         $selfiePath = save_photo($selfie, 'selfie_u' . $u['id']); // ส่งมาก็เก็บให้ แม้ไม่บังคับ
     }
 
-    $late = now_min() > hm_to_min(setting('late_cutoff', '08:15')) ? 1 : 0;
+    // วันหยุด (งานวันอาทิตย์) ไม่มีเข้าแถว = ไม่นับสาย; วันทำงานปกติคิดสายตามเวลา
+    $late = 0; $exempted = false;
+    if (!$isHoliday) {
+        $late = now_min() > hm_to_min(setting('late_cutoff', '08:15')) ? 1 : 0;
+        if ($late) {   // ยกเว้นสายถ้าเมื่อคืนลงเวรกลางคืน (duty_date = เมื่อวาน; รวมคืนวันอาทิตย์)
+            $st = db()->prepare('SELECT 1 FROM night_shifts WHERE user_id = ? AND duty_date = ?');
+            $st->execute([$u['id'], date('Y-m-d', strtotime('-1 day'))]);
+            if ($st->fetch()) { $late = 0; $exempted = true; }
+        }
+    }
+    $note = mb_substr(trim((string)param('note', '')), 0, 255) ?: null;
 
-    db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path)
-                   VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)')
-        ->execute([$u['id'], $today, $late, $lat, $lng, $dist, $selfiePath]);
+    db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path, note)
+                   VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)')
+        ->execute([$u['id'], $today, $late, $lat, $lng, $dist, $selfiePath, $note]);
 
     // สำเนารูปขึ้น Google Drive เบื้องหลัง (ไม่หน่วงเช็คอิน — คิว retry จนสำเร็จ)
     if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'], $today);
 
+    $msg = 'เช็คชื่อแล้ว ตรงเวลา 🎉';
+    if ($late)          $msg = 'เช็คชื่อแล้ว (สาย)';
+    elseif ($exempted)  $msg = 'เช็คชื่อแล้ว — ยกเว้นสาย (มาจากเวรกลางคืน) 🌙';
+    elseif ($isHoliday) $msg = 'เช็คชื่อแล้ว (ทำงานวันหยุด) 🎉';
+
     ok([
-        'late'    => (bool)$late,
-        'time_in' => date('H:i:s'),
-        'message' => $late ? 'เช็คชื่อแล้ว (สาย)' : 'เช็คชื่อแล้ว ตรงเวลา 🎉',
+        'late'     => (bool)$late,
+        'exempted' => $exempted,
+        'holiday'  => $isHoliday,
+        'time_in'  => date('H:i:s'),
+        'message'  => $msg,
+    ]);
+}
+
+function h_night_checkin(): never {
+    $u = require_user();
+    if (setting('night_shift_enabled', '1') !== '1') fail('ระบบเวรกลางคืนยังไม่เปิดใช้งาน');
+    if (($u['gender'] ?? null) !== 'male') {
+        fail(($u['gender'] ?? null) === 'female'
+            ? 'เวรกลางคืนสำหรับเจ้าหน้าที่ชายเท่านั้นค่ะ'
+            : 'แอดมินยังไม่ได้ระบุเพศของคุณ — แจ้งหัวหน้าตั้งค่าก่อนลงเวรค่ะ');
+    }
+
+    $open = hm_to_min(setting('night_checkin_open', '18:00'));
+    if (now_min() < $open) fail('ยังไม่ถึงเวลาลงเวรกลางคืน (เปิด ' . setting('night_checkin_open', '18:00') . ' น.)');
+
+    $dutyDate = tonight_duty_date();
+    $st = db()->prepare('SELECT id FROM night_shifts WHERE user_id = ? AND duty_date = ?');
+    $st->execute([$u['id'], $dutyDate]);
+    if ($st->fetch()) fail('คืนนี้ลงเวรไปแล้วค่ะ');
+
+    // ---- GPS (เหมือนเช็คชื่อ) ----
+    $lat = param('lat') !== null ? (float)param('lat') : null;
+    $lng = param('lng') !== null ? (float)param('lng') : null;
+    $dist = ($lat !== null && $lng !== null)
+        ? distance_m($lat, $lng, (float)setting('gps_lat'), (float)setting('gps_lng')) : null;
+    if (setting('gps_enforce', '1') === '1') {
+        if ($dist === null) fail('ไม่พบพิกัด GPS — กรุณาเปิดตำแหน่งแล้วลองใหม่');
+        $radius = (int)setting('gps_radius_m', '1000');
+        if ($dist > $radius) fail("คุณอยู่ห่างสถานี {$dist} ม. (เกินรัศมี {$radius} ม.) ลงเวรไม่ได้");
+    }
+
+    // ---- เซลฟี่ (ใช้สวิตช์ selfie_required เดียวกับเช็คชื่อ) ----
+    $selfiePath = null;
+    $selfie = param('selfie');
+    if (setting('selfie_required', '0') === '1') {
+        if (!$selfie) fail('กรุณาถ่ายรูปเซลฟี่ยืนยันตัวตน');
+        $selfiePath = save_photo($selfie, 'night_u' . $u['id']);
+        if (!$selfiePath) fail('บันทึกรูปเซลฟี่ไม่สำเร็จ กรุณาลองใหม่');
+    } elseif ($selfie) {
+        $selfiePath = save_photo($selfie, 'night_u' . $u['id']);
+    }
+
+    db()->prepare('INSERT INTO night_shifts (user_id, duty_date, time_in, lat, lng, distance_m, selfie_path)
+                   VALUES (?, ?, NOW(), ?, ?, ?, ?)')
+        ->execute([$u['id'], $dutyDate, $lat, $lng, $dist, $selfiePath]);
+
+    if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'] . ' (เวรกลางคืน)', $dutyDate);
+
+    ok([
+        'time_in'   => date('H:i:s'),
+        'duty_date' => $dutyDate,
+        'message'   => 'ลงเวรกลางคืนแล้ว 🌙 ขอบคุณที่เฝ้าสถานีค่ะ',
     ]);
 }
 
@@ -183,5 +270,9 @@ function h_my_history(): never {
     $st->execute([$u['id'], $ym]);
     $offs = $st->fetchAll();
 
-    ok(['ym' => $ym, 'attendance' => $att, 'day_offs' => $offs]);
+    $st = db()->prepare("SELECT * FROM night_shifts WHERE user_id = ? AND DATE_FORMAT(duty_date,'%Y-%m') = ? ORDER BY duty_date DESC");
+    $st->execute([$u['id'], $ym]);
+    $nights = $st->fetchAll();
+
+    ok(['ym' => $ym, 'attendance' => $att, 'day_offs' => $offs, 'night_shifts' => $nights]);
 }

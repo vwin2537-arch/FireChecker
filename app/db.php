@@ -82,6 +82,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM night_shifts LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
     // แอดมินเพิ่มแค่ชื่อ-สกุล (username = NULL จนกว่าจะลงทะเบียน) → ต้อง ALTER ให้ nullable
@@ -103,5 +109,23 @@ function ensure_admin(): void {
     if (!(int)$hasStatus) {
         db()->exec("ALTER TABLE day_offs
                     ADD COLUMN status ENUM('pending','approved') NOT NULL DEFAULT 'approved' AFTER type");
+    }
+
+    // migrate: users.gender (เวรกลางคืน) — DB เดิมยังไม่มีคอลัมน์นี้ (row เก่าเป็น NULL = ยังไม่ระบุเพศ)
+    $hasGender = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'gender'"
+    )->fetchColumn();
+    if (!(int)$hasGender) {
+        db()->exec("ALTER TABLE users ADD COLUMN gender ENUM('male','female') NULL AFTER position");
+    }
+
+    // migrate: attendance.note (หมายเหตุงานวันอาทิตย์) — DB เดิมยังไม่มีคอลัมน์นี้
+    $hasNote = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'note'"
+    )->fetchColumn();
+    if (!(int)$hasNote) {
+        db()->exec("ALTER TABLE attendance ADD COLUMN note VARCHAR(255) NULL AFTER photos_json");
     }
 }

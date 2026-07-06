@@ -259,15 +259,46 @@ const App = {
     return `<div class="scene${pop ? ' pop' : ''}">${svg}</div>`;
   },
 
+  /** การ์ดเวรกลางคืนบนหน้าหลัก — เฉพาะ จนท.ชาย + สวิตช์เปิด */
+  nightCardHtml() {
+    const t = this.data.today, s = this.data.settings;
+    if (this.user.gender !== 'male' || !s.night_shift_enabled) return '';
+    if (t.night) {
+      return `<div class="card" style="text-align:center">
+        <div class="db-title" style="font-size:15px">🌙 ลงเวรกลางคืนแล้ว</div>
+        <div class="db-sub">เวลา ${t.night.time_in.substr(11, 5)} น. • ขอบคุณที่เฝ้าสถานีค่ะ</div></div>`;
+    }
+    const now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
+    const canNow = nowM >= hm(s.night_checkin_open);
+    return `<div class="card">
+      <button class="btn btn-primary btn-block" ${canNow ? '' : 'disabled'} onclick="App.doNightCheckin()">🌙 ลงเวรกลางคืน</button>
+      <div class="tiny" style="margin-top:6px;text-align:center">${canNow ? 'เฝ้าสำนักงานกลางคืน — กดตอนเริ่มเข้าเวร' : 'เปิดลงเวร ' + s.night_checkin_open + ' น.'}</div></div>`;
+  },
+
   // ---------- หน้าหลัก ----------
   vHome() {
     const d = this.data, t = d.today, s = d.settings;
     let stateHtml = '';
 
     if (t.is_holiday) {
-      stateHtml = `<div class="done-badge">${this.scene('beach')}
-        <div class="db-title">วันอาทิตย์ — วันหยุดสถานี</div>
-        <div class="db-sub">พักผ่อนเต็มที่ แล้วพบกันพรุ่งนี้ค่ะ</div></div>`;
+      if (t.attendance) {
+        const a = t.attendance;
+        const pop = this.justCheckedIn; this.justCheckedIn = false;
+        stateHtml = `<div class="done-badge">${this.scene('work', pop)}
+          <div class="db-title">เช็คชื่อทำงานวันหยุด ${a.time_in.substr(11, 5)} น.</div>
+          <div class="db-sub"><span class="chip chip-ok">ทำงานวันหยุด 🌴</span>
+          ${a.note ? `<div class="tiny" style="margin-top:6px">📝 ${esc(a.note)}</div>` : ''}</div></div>`;
+      } else if (s.sunday_work_enabled) {
+        stateHtml = `<div class="done-badge">${this.scene('beach')}
+          <div class="db-title">วันอาทิตย์ — วันหยุดสถานี</div>
+          <div class="db-sub">ถ้ามาทำงาน / เข้าเวร กดเช็คชื่อด้านล่างได้เลยค่ะ</div></div>
+          <div class="field" style="margin-top:10px"><input class="input" id="holidayNote" maxlength="255" placeholder="หมายเหตุ (ถ้ามี) เช่น มาชดเชยวันลา"></div>
+          <button class="btn btn-primary btn-block" onclick="App.doCheckin()">📍 เช็คชื่อทำงานวันหยุด</button>`;
+      } else {
+        stateHtml = `<div class="done-badge">${this.scene('beach')}
+          <div class="db-title">วันอาทิตย์ — วันหยุดสถานี</div>
+          <div class="db-sub">พักผ่อนเต็มที่ แล้วพบกันพรุ่งนี้ค่ะ</div></div>`;
+      }
     } else if (t.attendance) {
       const a = t.attendance;
       const pop = this.justCheckedIn; this.justCheckedIn = false;
@@ -301,6 +332,8 @@ const App = {
         ${stateHtml}
       </div>
 
+      ${this.nightCardHtml()}
+
       ${d.library_unread ? `<div class="card lib-nudge" onclick="App.go('develop')">
         <span class="ln-ico">📚</span>
         <div class="ln-main"><div class="ln-title">มีเอกสารใหม่ ${d.library_unread} รายการ</div>
@@ -331,7 +364,7 @@ const App = {
     return `<div class="card"><h3>🕐 ${title}</h3>${rows.map(a => `
       <div class="list-row"><span class="dot ${+a.late ? 'dot-late' : 'dot-ok'}"></span>
         <div class="lr-main"><div class="lr-title">${thaiDate(a.work_date)}</div>
-          <div class="lr-sub">เข้า ${a.time_in.substr(11, 5)} น.${a.time_out ? ' • ส่งรายงาน ' + a.time_out.substr(11, 5) + ' น.' : ''}</div></div>
+          <div class="lr-sub">เข้า ${a.time_in.substr(11, 5)} น.${a.time_out ? ' • ส่งรายงาน ' + a.time_out.substr(11, 5) + ' น.' : ''}${a.note ? ' • 📝 ' + esc(a.note) : ''}</div></div>
         <span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span>
       </div>`).join('')}</div>`;
   },
@@ -357,7 +390,7 @@ const App = {
   // ---------- เช็คอิน ----------
   async doCheckin() {
     const s = this.data.settings;
-    const btn = byId('btnCheckin'); btn.disabled = true;
+    const btn = byId('btnCheckin'); if (btn) btn.disabled = true;   // วันหยุดใช้ปุ่มอื่น (ไม่มี btnCheckin)
     try {
       // 1) ถ่ายเซลฟี่ก่อน — iOS/WebKit บังคับ inp.click() ต้องอยู่ในจังหวะ "กดสด" (transient activation)
       //    ห้ามมี await คั่นก่อนบรรทัดนี้ ไม่งั้นสิทธิ์กดหมด กล้องจะไม่เปิด → ค้าง (เดิมหา GPS ก่อนเลยพัง)
@@ -390,15 +423,51 @@ const App = {
       });
       if (!c.isConfirmed) return;
 
-      const d = await this.api('checkin', { lat: pos?.lat ?? null, lng: pos?.lng ?? null, selfie });
+      const note = byId('holidayNote')?.value.trim() || undefined;   // งานวันอาทิตย์ใส่หมายเหตุได้
+      const d = await this.api('checkin', { lat: pos?.lat ?? null, lng: pos?.lng ?? null, selfie, note });
       const onTime = !d.late;
       if (onTime) this.justCheckedIn = true;   // ให้ฉากคนทำงานเด้ง pop ตอนเรนเดอร์ใหม่
       await Swal.fire({ icon: d.late ? 'warning' : 'success', title: d.message, text: 'เวลา ' + d.time_in + ' น.', confirmButtonText: 'ตกลง' });
       this.refreshStaff();
       if (onTime) this.celebrate();   // โปรยคอนเฟตติทับฉากคนทำงาน — เฉพาะมาตรงเวลา
     } finally {
-      btn.disabled = false;   // จบทางไหนก็ปลดล็อกปุ่มเสมอ ไม่ให้ค้าง disabled อีก
+      if (btn) btn.disabled = false;   // จบทางไหนก็ปลดล็อกปุ่มเสมอ ไม่ให้ค้าง disabled อีก
     }
+  },
+
+  // ---------- ลงเวรกลางคืน ----------
+  async doNightCheckin() {
+    const s = this.data.settings;
+    try {
+      // ลำดับเหมือนเช็คชื่อ: เซลฟี่ (ถ้าบังคับ) ก่อน GPS — iOS/WebKit ต้องเปิดกล้องในจังหวะกดสด
+      let selfie = null;
+      if (s.selfie_required) {
+        selfie = await captureSelfie();
+        if (!selfie) return;
+      }
+      let pos = null;
+      try {
+        Swal.fire({ title: 'กำลังหาตำแหน่ง GPS...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        pos = await getPosition();
+        Swal.close();
+      } catch (err) {
+        Swal.close();
+        if (s.gps_enforce) {
+          await Swal.fire({ icon: 'error', title: 'ไม่พบตำแหน่ง GPS', html: gpsErrorMessage(err), confirmButtonText: 'ตกลง' });
+          return;
+        }
+      }
+      const dist = pos ? Math.round(haversine(pos.lat, pos.lng, s.gps_lat, s.gps_lng)) : null;
+      const c = await Swal.fire({
+        icon: 'question', title: 'ยืนยันลงเวรกลางคืน?',
+        html: dist !== null ? `คุณอยู่ห่างสถานี <b>${dist.toLocaleString()} ม.</b>` : 'ไม่มีพิกัด GPS',
+        showCancelButton: true, confirmButtonText: 'ลงเวรเลย', cancelButtonText: 'ยกเลิก',
+      });
+      if (!c.isConfirmed) return;
+      const d = await this.api('night_checkin', { lat: pos?.lat ?? null, lng: pos?.lng ?? null, selfie });
+      await Swal.fire({ icon: 'success', title: d.message, text: 'เวลา ' + d.time_in + ' น.', confirmButtonText: 'ตกลง' });
+      this.refreshStaff();
+    } catch { /* api() แสดง toast ให้แล้ว */ }
   },
 
   async doCheckout() {
@@ -762,7 +831,12 @@ const App = {
         <div class="kpi k-leave"><div class="k-label">ลา/หยุด</div><div class="k-value">${d.day_offs.length}</div></div>
         <div class="kpi"><div class="k-label">มาทั้งหมด</div><div class="k-value">${d.attendance.length}</div></div>
       </div>`;
+    const nights = d.night_shifts || [];
     byId('histList').innerHTML = (this.historyCard(d.attendance, 'บันทึกเช็คชื่อ') || '<div class="card empty"><span class="e-ico">📭</span>เดือนนี้ยังไม่มีบันทึก</div>')
+      + (nights.length ? `<div class="card"><h3>🌙 เวรกลางคืน <span class="h-right">${nights.length} คืน</span></h3>${nights.map(n => `
+        <div class="list-row"><span class="dot" style="background:#6366f1"></span>
+          <div class="lr-main"><div class="lr-title">${thaiDate(n.duty_date)}</div>
+          <div class="lr-sub">ลงเวร ${n.time_in.substr(11, 5)} น.</div></div></div>`).join('')}</div>` : '')
       + (d.day_offs.length ? `<div class="card"><h3>🔵 วันลา/หยุด</h3>${d.day_offs.map(o => `
         <div class="list-row"><span class="dot dot-leave"></span>
           <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)}</div>

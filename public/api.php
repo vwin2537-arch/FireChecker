@@ -28,6 +28,7 @@ const ACTIONS = [
     // staff
     'app_data'        => 'h_app_data',
     'checkin'         => 'h_checkin',
+    'night_checkin'   => 'h_night_checkin',
     'checkout'        => 'h_checkout',
     'my_history'      => 'h_my_history',
     'dayoff_add'      => 'h_dayoff_add',
@@ -37,6 +38,7 @@ const ACTIONS = [
     'admin_data'      => 'h_admin_data',
     'users_list'      => 'h_users_list',
     'user_add'        => 'h_user_add',
+    'user_set_gender' => 'h_user_set_gender',
     'user_approve'    => 'h_user_approve',
     'user_reject'     => 'h_user_reject',
     'user_disable'    => 'h_user_disable',

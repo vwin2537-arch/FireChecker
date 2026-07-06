@@ -48,6 +48,26 @@ function h_admin_data(): never {
     $roster = $isHoliday ? [] : roster_for($today);
     $todayCounts = roster_counts($roster);
 
+    // วันหยุด: ใครมาทำงาน (เช็คชื่อ) วันนี้บ้าง — วันทำงานปกติไม่ต้องดึง (roster ครอบคลุมแล้ว)
+    $holidayWorkers = [];
+    if ($isHoliday) {
+        $st = db()->prepare(
+            "SELECT u.name, u.position, a.time_in, a.note, a.distance_m, a.selfie_path
+             FROM attendance a JOIN users u ON u.id = a.user_id
+             WHERE a.work_date = ? ORDER BY a.time_in");
+        $st->execute([$today]);
+        $holidayWorkers = $st->fetchAll();
+    }
+
+    // ---------- สถิติเวรกลางคืนเดือนนี้ (จำนวนคืนต่อคน — ดูความเป็นธรรม) ----------
+    $st = db()->prepare(
+        "SELECT u.name, u.position, COUNT(*) nights
+         FROM night_shifts n JOIN users u ON u.id = n.user_id
+         WHERE DATE_FORMAT(n.duty_date,'%Y-%m') = ?
+         GROUP BY n.user_id, u.name, u.position ORDER BY nights DESC, u.name");
+    $st->execute([date('Y-m')]);
+    $nightStats = $st->fetchAll();
+
     // ---------- สถิติตามวันในสัปดาห์ (8 สัปดาห์ล่าสุด, จ-ส) ----------
     $st = db()->prepare(
         "SELECT DAYOFWEEK(work_date) dow,
@@ -117,8 +137,10 @@ function h_admin_data(): never {
         'today' => [
             'date' => $today, 'thai_date' => thai_date($today), 'is_holiday' => $isHoliday,
             'counts' => $todayCounts, 'roster' => array_values($roster),
+            'holiday_workers' => $holidayWorkers,
         ],
         'weekday'      => $weekday,
+        'night_stats'  => $nightStats,
         'ranking'      => $ranking,
         'over_quota'   => $overQuota,
         'activity'     => $activity,
@@ -207,7 +229,7 @@ function h_users_list(): never {
     require_admin();
     $ym = date('Y-m');
     $rows = db()->query(
-        "SELECT u.id, u.username, u.name, u.position, u.role, u.status, u.created_at,
+        "SELECT u.id, u.username, u.name, u.position, u.gender, u.role, u.status, u.created_at,
                 (SELECT COUNT(*) FROM day_offs o
                   WHERE o.user_id = u.id AND o.type = 'dayoff' AND DATE_FORMAT(o.off_date,'%Y-%m') = '{$ym}') quota_used
          FROM users u ORDER BY u.role, u.status, u.name")->fetchAll();
@@ -218,11 +240,12 @@ function h_user_add(): never {
     require_admin();
     $name     = trim((string)param('name'));
     $position = mb_substr(trim((string)param('position', '')), 0, 100);
+    $gender   = in_array(param('gender'), ['male', 'female'], true) ? param('gender') : null;
     if ($name === '') fail('กรอกชื่อ-สกุล');
 
     // แอดมินเพิ่มแค่ชื่อ-สกุล — ชื่อผู้ใช้ (username) เจ้าหน้าที่ตั้งเองตอนลงทะเบียน (username = NULL ไปก่อน)
-    db()->prepare("INSERT INTO users (name, position, role, status) VALUES (?, ?, 'staff', 'unregistered')")
-        ->execute([$name, $position]);
+    db()->prepare("INSERT INTO users (name, position, gender, role, status) VALUES (?, ?, ?, 'staff', 'unregistered')")
+        ->execute([$name, $position, $gender]);
     ok(['message' => "เพิ่ม {$name} แล้ว — ให้เจ้าตัวเปิดหน้าเว็บ กด \"ลงทะเบียน\" เลือกชื่อ แล้วตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย"]);
 }
 
@@ -233,6 +256,15 @@ function set_user_status(int $id, string $status, bool $clearPass = false): void
     $st = db()->prepare($sql);
     $st->execute([$status, $id]);
     if (!$st->rowCount()) fail('ไม่พบเจ้าหน้าที่คนนี้');
+}
+
+function h_user_set_gender(): never {
+    require_admin();
+    $g = param('gender');
+    $gender = in_array($g, ['male', 'female'], true) ? $g : null;
+    db()->prepare("UPDATE users SET gender = ? WHERE id = ? AND role = 'staff'")
+        ->execute([$gender, (int)param('id')]);
+    ok(['message' => 'บันทึกเพศแล้ว']);
 }
 
 function h_user_approve(): never { require_admin(); set_user_status((int)param('id'), 'active');        ok(['message' => 'อนุมัติแล้ว']); }
@@ -263,7 +295,14 @@ function h_report_range(): never {
     $st->execute($uid ? [$from, $to, $uid] : [$from, $to]);
     $offs = $st->fetchAll();
 
-    ok(['from' => $from, 'to' => $to, 'attendance' => $att, 'day_offs' => $offs]);
+    $sql = "SELECT n.*, u.name FROM night_shifts n JOIN users u ON u.id = n.user_id
+            WHERE n.duty_date BETWEEN ? AND ?" . ($uid ? " AND n.user_id = ?" : "") . "
+            ORDER BY n.duty_date DESC, u.name";
+    $st = db()->prepare($sql);
+    $st->execute($uid ? [$from, $to, $uid] : [$from, $to]);
+    $nights = $st->fetchAll();
+
+    ok(['from' => $from, 'to' => $to, 'attendance' => $att, 'day_offs' => $offs, 'night_shifts' => $nights]);
 }
 
 // ---------- ตั้งค่า ----------
@@ -272,6 +311,7 @@ const EDITABLE_SETTINGS = [
     'station_name', 'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
     'gps_lat', 'gps_lng', 'gps_radius_m', 'gps_enforce',
     'selfie_required', 'checkout_enabled', 'off_quota_month', 'sunday_off',
+    'night_shift_enabled', 'night_checkin_open', 'sunday_work_enabled',
     'line_token', 'line_group_id',
     'gdrive_client_id', 'gdrive_client_secret',
 ];
@@ -285,9 +325,9 @@ function h_settings_get(): never {
 function h_settings_save(): never {
     require_admin();
     $in = (array)param('settings', []);
-    $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff'];
+    $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff', 'night_checkin_open'];
     $numKeys  = ['gps_radius_m', 'off_quota_month'];
-    $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off'];
+    $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off', 'night_shift_enabled', 'sunday_work_enabled'];
 
     foreach ($in as $k => $v) {
         if (!in_array($k, EDITABLE_SETTINGS, true)) continue;

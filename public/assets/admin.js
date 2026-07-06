@@ -64,12 +64,17 @@ const Admin = {
       `${esc(o.name)} (${o.n} วัน เดือน ${thaiMonth(o.ym)})`).join(', ')}</b>
       <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ดูปฏิทิน</button></div>`;
 
-    // วันหยุดสถานี — ไม่มีการเช็คชื่อ โชว์แค่ส่วนวิเคราะห์
+    // วันหยุดสถานี — โชว์คนที่มาทำงาน/เข้าเวรวันหยุด + ส่วนวิเคราะห์
     if (d.today.is_holiday) {
+      const hw = d.today.holiday_workers || [];
       byId('view').innerHTML = `${alerts}
         <div class="card" style="padding:14px 18px"><div style="font-size:16px;font-weight:500">📍 วันนี้ — ${esc(d.today.thai_date)}</div>
-          <div class="tiny">วันอาทิตย์ วันหยุดสถานี</div></div>
-        <div class="card empty"><span class="e-ico">🌴</span>วันนี้วันหยุดสถานี ไม่มีการเช็คชื่อ</div>
+          <div class="tiny">วันอาทิตย์ วันหยุดสถานี${hw.length ? ` · มาทำงาน ${hw.length} คน` : ''}</div></div>
+        ${hw.length ? `<div class="card"><h3>📅 มาทำงานวันหยุด (${hw.length})</h3>
+          ${hw.map(w => `<div class="list-row"><span class="dot dot-ok"></span>
+            <div class="lr-main"><div class="lr-title">${esc(w.name)}</div>
+            <div class="lr-sub">เข้า ${w.time_in.substr(11, 5)} น.${w.note ? ' • ' + esc(w.note) : ''}${w.position ? ' • ' + esc(w.position) : ''}</div></div></div>`).join('')}</div>`
+          : '<div class="card empty"><span class="e-ico">🌴</span>วันนี้วันหยุดสถานี ยังไม่มีใครมาเช็คชื่อ</div>'}
         ${this.analyticsHtml(d)}`;
       this.drawWeekday(d.weekday);
       return;
@@ -145,6 +150,12 @@ const Admin = {
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
         ${this.rankingHtml(d.ranking)}
       </div>
+      ${(d.night_stats || []).length ? `<div class="card">
+        <h3>🌙 เวรกลางคืนเดือนนี้ <span class="h-right">รวม ${d.night_stats.reduce((s, n) => s + +n.nights, 0)} คืน</span></h3>
+        <div class="tbl-wrap"><table class="tbl"><tr><th>ชื่อ</th><th class="num">จำนวนคืน</th></tr>
+          ${d.night_stats.map(n => `<tr><td><b>${esc(n.name)}</b>${n.position ? `<div class="tiny">${esc(n.position)}</div>` : ''}</td>
+            <td class="num"><b>${n.nights}</b></td></tr>`).join('')}
+        </table></div></div>` : ''}
       <div class="grid-2-lg">
         <div class="card"><h3>📅 สถิติตามวันในสัปดาห์ <span class="h-right">8 สัปดาห์ล่าสุด</span></h3><div class="chart-box"><canvas id="chWeekday"></canvas></div></div>
         <div class="card"><h3>🕐 กิจกรรมล่าสุด</h3>
@@ -243,7 +254,7 @@ const Admin = {
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>วันที่</th><th>ชื่อ</th><th>เวลาเข้า</th><th>สถานะ</th><th class="num">ระยะ (ม.)</th><th>รายงาน</th></tr>
           ${d.attendance.map(a => `<tr>
-            <td>${thaiDate(a.work_date)}</td><td>${esc(a.name)}</td>
+            <td>${thaiDate(a.work_date)}</td><td>${esc(a.name)}${a.note ? `<div class="tiny">📝 ${esc(a.note)}</div>` : ''}</td>
             <td>${a.time_in.substr(11, 5)}${a.time_out ? ' – ' + a.time_out.substr(11, 5) : ''}</td>
             <td><span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span></td>
             <td class="num">${a.distance_m ?? '—'}</td>
@@ -256,6 +267,12 @@ const Admin = {
           <tr><th>วันที่</th><th>ชื่อ</th><th>ประเภท</th><th>หมายเหตุ</th></tr>
           ${d.day_offs.map(o => `<tr><td>${thaiDate(o.off_date)}</td><td>${esc(o.name)}</td>
             <td><span class="chip chip-leave">${offLabel(o.type)}</span>${+o.over_quota ? ' ⚠️' : ''}</td><td>${esc(o.note || '—')}</td></tr>`).join('')}
+        </table></div></div>` : ''}
+      ${(d.night_shifts || []).length ? `<div class="card"><h3>🌙 เวรกลางคืน (${d.night_shifts.length} คืน)</h3>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>คืนของวันที่</th><th>ชื่อ</th><th>เวลาลงเวร</th><th class="num">ระยะ (ม.)</th></tr>
+          ${d.night_shifts.map(n => `<tr><td>${thaiDate(n.duty_date)}</td><td>${esc(n.name)}</td>
+            <td>${n.time_in.substr(11, 5)}</td><td class="num">${n.distance_m ?? '—'}</td></tr>`).join('')}
         </table></div></div>` : ''}`;
   },
 
@@ -274,11 +291,15 @@ const Admin = {
 
   exportCsv() {
     const d = this.lastReport;
-    const rows = [['วันที่', 'ชื่อ', 'เวลาเข้า', 'เวลาออก', 'สถานะ', 'ระยะ_เมตร', 'รายงาน']];
+    const rows = [['วันที่', 'ชื่อ', 'เวลาเข้า', 'เวลาออก', 'สถานะ', 'ระยะ_เมตร', 'หมายเหตุ', 'รายงาน']];
     d.attendance.forEach(a => rows.push([a.work_date, a.name, a.time_in.substr(11, 8),
-      a.time_out ? a.time_out.substr(11, 8) : '', +a.late ? 'สาย' : 'ตรงเวลา', a.distance_m ?? '', (a.report_text || '').replace(/\n/g, ' ')]));
+      a.time_out ? a.time_out.substr(11, 8) : '', +a.late ? 'สาย' : 'ตรงเวลา', a.distance_m ?? '', a.note || '', (a.report_text || '').replace(/\n/g, ' ')]));
     rows.push([]); rows.push(['วันที่', 'ชื่อ', 'ประเภทลา', 'หมายเหตุ']);
     d.day_offs.forEach(o => rows.push([o.off_date, o.name, offLabel(o.type), o.note || '']));
+    if ((d.night_shifts || []).length) {
+      rows.push([]); rows.push(['คืนของวันที่', 'ชื่อ', 'เวลาลงเวร', 'ระยะ_เมตร']);
+      d.night_shifts.forEach(n => rows.push([n.duty_date, n.name, n.time_in.substr(11, 8), n.distance_m ?? '']));
+    }
     const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -429,16 +450,25 @@ const Admin = {
 
       <div class="card"><h3>➕ เพิ่มเจ้าหน้าที่ใหม่</h3>
         <div class="field"><label>ชื่อ-สกุล</label><input class="input" id="nuName"></div>
-        <div class="field"><label>ตำแหน่ง</label><input class="input" id="nuPos" placeholder="เช่น พนักงานดับไฟป่า"></div>
+        <div class="grid-2">
+          <div class="field"><label>ตำแหน่ง</label><input class="input" id="nuPos" placeholder="เช่น พนักงานดับไฟป่า"></div>
+          <div class="field"><label>เพศ <span class="tiny">(ใช้กรองเวรกลางคืน)</span></label>
+            <select class="select" id="nuGender"><option value="">— ยังไม่ระบุ —</option><option value="male">ชาย</option><option value="female">หญิง</option></select></div>
+        </div>
         <button class="btn btn-primary btn-block" onclick="Admin.addUser()">เพิ่ม</button>
         <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย</div>
       </div>
 
       <div class="card"><h3>👥 เจ้าหน้าที่ทั้งหมด (${staff.length})</h3>
+        <div class="tiny" style="margin-bottom:8px">💡 ตั้งเพศให้ครบก่อนใช้เวรกลางคืน — เฉพาะ "ชาย" ถึงลงเวรกลางคืนได้</div>
         <div class="tbl-wrap"><table class="tbl">
-          <tr><th>ชื่อ</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
+          <tr><th>ชื่อ</th><th>เพศ</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
           ${staff.map(u => `<tr>
             <td><b>${esc(u.name)}</b><div class="tiny">${u.username ? '@' + esc(u.username) + ' ' : ''}${esc(u.position || '')}</div></td>
+            <td><select class="select" style="min-width:86px;padding:4px 6px" onchange="Admin.setGender(${u.id}, this.value)">
+              <option value=""${!u.gender ? ' selected' : ''}>—</option>
+              <option value="male"${u.gender === 'male' ? ' selected' : ''}>ชาย</option>
+              <option value="female"${u.gender === 'female' ? ' selected' : ''}>หญิง</option></select></td>
             <td>${{ active: '<span class="chip chip-ok">ใช้งาน</span>', unregistered: '<span class="chip chip-plain">ยังไม่ลงทะเบียน</span>',
                    disabled: '<span class="chip chip-absent">ปิดใช้งาน</span>' }[u.status] || u.status}</td>
             <td class="num">${u.quota_used}/${d.quota_max}</td>
@@ -446,15 +476,20 @@ const Admin = {
               ${u.status === 'active' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_reset',${u.id},'รีเซ็ตรหัสผ่าน? เจ้าตัวต้องลงทะเบียนใหม่')">รีเซ็ตรหัส</button>
                 <button class="btn btn-danger-ghost btn-sm" onclick="Admin.userAct('user_disable',${u.id},'ปิดใช้งานบัญชีนี้?')">ปิด</button>` : ''}
               ${u.status === 'disabled' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_enable',${u.id})">เปิดใช้งาน</button>` : ''}
-            </td></tr>`).join('') || '<tr><td colspan="4" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
+            </td></tr>`).join('') || '<tr><td colspan="5" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
         </table></div>
       </div>`;
   },
 
   async addUser() {
-    const d = await App.api('user_add', { name: byId('nuName').value.trim(), position: byId('nuPos').value.trim() });
+    const d = await App.api('user_add', { name: byId('nuName').value.trim(), position: byId('nuPos').value.trim(), gender: byId('nuGender').value });
     await Swal.fire({ icon: 'success', title: 'เพิ่มแล้ว', text: d.message, confirmButtonText: 'ตกลง' });
     this.vUsers();
+  },
+
+  async setGender(id, gender) {
+    const d = await App.api('user_set_gender', { id, gender });
+    toast(d.message);
   },
 
   async userAct(action, id, confirmMsg) {
@@ -788,11 +823,14 @@ const Admin = {
         ${T('checkout_enabled', '📝 เช็คเอาท์ + รายงานผลงานเย็น', 'เปิดแล้วคะแนนความขยันเปลี่ยนเป็นสูตรเต็ม 30/30/20/20')}
         ${T('gps_enforce', '📍 บังคับ GPS ในรัศมีสถานี', 'ปิดชั่วคราวได้ตอนทดสอบระบบ')}
         ${T('sunday_off', '🌴 วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด')}
+        ${T('sunday_work_enabled', '📅 เปิดเช็คชื่อวันอาทิตย์', 'ให้คนมาทำงาน/เข้าเวรวันหยุด กดเช็คชื่อได้ (ไม่นับสาย)')}
+        ${T('night_shift_enabled', '🌙 เวรกลางคืน (เฝ้าสำนักงาน)', 'เฉพาะ จนท.ชาย — ยกเว้นสายเช้าถัดมาให้อัตโนมัติ')}
       </div>
       <div class="card"><h3>⏰ เวลา</h3>
         <div class="grid-2">
           ${I('checkin_open', 'เปิดเช็คอิน (น.)', 'time')}${I('late_cutoff', 'หลังเวลานี้ = สาย', 'time')}
           ${I('checkout_open', 'เปิดส่งรายงาน', 'time')}${I('report_cutoff', 'หลังเวลานี้ = รายงานช้า', 'time')}
+          ${I('night_checkin_open', 'เปิดลงเวรกลางคืน', 'time')}
         </div>
       </div>
       <div class="card"><h3>📍 พิกัดสถานี</h3>
@@ -875,6 +913,7 @@ const Admin = {
 
   async saveSettings() {
     const keys = ['selfie_required', 'checkout_enabled', 'gps_enforce', 'sunday_off',
+      'sunday_work_enabled', 'night_shift_enabled', 'night_checkin_open',
       'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
       'gps_lat', 'gps_lng', 'gps_radius_m', 'off_quota_month', 'station_name', 'line_token', 'line_group_id',
       'gdrive_client_id', 'gdrive_client_secret'];

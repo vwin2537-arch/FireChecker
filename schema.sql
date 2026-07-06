@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NULL,
   name          VARCHAR(100) NOT NULL,
   position      VARCHAR(100) NOT NULL DEFAULT '',
+  gender        ENUM('male','female') NULL,   -- ใช้กรองเวรกลางคืน (เฉพาะชาย); NULL = ยังไม่ระบุ
   role          ENUM('admin','staff') NOT NULL DEFAULT 'staff',
   -- unregistered → (ตั้งรหัสผ่าน) → pending → (แอดมินอนุมัติ) → active
   status        ENUM('unregistered','pending','active','disabled') NOT NULL DEFAULT 'unregistered',
@@ -39,8 +40,25 @@ CREATE TABLE IF NOT EXISTS attendance (
   report_text TEXT NULL,
   report_late TINYINT(1) NULL,
   photos_json TEXT NULL,
+  note        VARCHAR(255) NULL,             -- หมายเหตุตอนเช็คชื่อ (ใช้กับงานวันอาทิตย์ เช่น "มาชดเชยวันลา")
   UNIQUE KEY uq_user_date (user_id, work_date),
   KEY idx_work_date (work_date),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- เวรกลางคืน (เฝ้าสำนักงาน — เฉพาะชาย, บันทึกคนมาจริง) ----------
+-- duty_date = คืนของวันนั้น (เย็นวันนี้ → เช้าพรุ่งนี้). ใช้ยกเว้นสายเช้าถัดมา (duty_date = เมื่อวาน)
+CREATE TABLE IF NOT EXISTS night_shifts (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT NOT NULL,
+  duty_date   DATE NOT NULL,
+  time_in     DATETIME NOT NULL,
+  lat         DECIMAL(10,6) NULL,
+  lng         DECIMAL(10,6) NULL,
+  distance_m  INT NULL,
+  selfie_path VARCHAR(255) NULL,
+  UNIQUE KEY uq_user_night (user_id, duty_date),
+  KEY idx_duty_date (duty_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -176,6 +194,9 @@ INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('checkout_enabled', '0'),
   ('off_quota_month',  '10'),
   ('sunday_off',       '1'),
+  ('night_shift_enabled', '1'),
+  ('night_checkin_open',  '18:00'),
+  ('sunday_work_enabled', '1'),
   ('line_token',       ''),
   ('line_group_id',    ''),
   ('gdrive_client_id',     ''),
