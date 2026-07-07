@@ -631,7 +631,6 @@ const App = {
     const t = (v, l) => `<button class="${this.devTab === v ? 'active' : ''}" onclick="App.devSetTab('${v}')">${l}</button>`;
     return `<div class="seg" id="devSeg">
       ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}
-      <button disabled title="เร็วๆ นี้">💪 กายภาพ</button>
     </div>`;
   },
 
