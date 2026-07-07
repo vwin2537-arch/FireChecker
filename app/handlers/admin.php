@@ -229,23 +229,35 @@ function h_users_list(): never {
     require_admin();
     $ym = date('Y-m');
     $rows = db()->query(
-        "SELECT u.id, u.username, u.name, u.position, u.gender, u.role, u.status, u.created_at,
+        "SELECT u.id, u.username, u.name, u.position, u.gender, u.birthdate, u.role, u.status, u.created_at,
                 (SELECT COUNT(*) FROM day_offs o
                   WHERE o.user_id = u.id AND o.type = 'dayoff' AND DATE_FORMAT(o.off_date,'%Y-%m') = '{$ym}') quota_used
          FROM users u ORDER BY u.role, u.status, u.name")->fetchAll();
     ok(['users' => $rows, 'quota_max' => (int)setting('off_quota_month', '10')]);
 }
 
+/** validate 'YYYY-MM-DD' + ช่วงอายุสมเหตุผล (15-80 ปี) — คืน string วันเกิด หรือ null ถ้าว่าง/ผิด */
+function valid_birthdate($v): ?string {
+    if (!is_string($v) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return null;
+    $t = strtotime($v);
+    if ($t === false) return null;
+    $year = (int)date('Y', $t);
+    $now  = (int)date('Y');
+    if ($year < $now - 80 || $year > $now - 15) return null;   // นอกช่วงวัยทำงาน = ถือว่ากรอกผิด
+    return $v;
+}
+
 function h_user_add(): never {
     require_admin();
-    $name     = trim((string)param('name'));
-    $position = mb_substr(trim((string)param('position', '')), 0, 100);
-    $gender   = in_array(param('gender'), ['male', 'female'], true) ? param('gender') : null;
+    $name      = trim((string)param('name'));
+    $position  = mb_substr(trim((string)param('position', '')), 0, 100);
+    $gender    = in_array(param('gender'), ['male', 'female'], true) ? param('gender') : null;
+    $birthdate = valid_birthdate(param('birthdate'));
     if ($name === '') fail('กรอกชื่อ-สกุล');
 
     // แอดมินเพิ่มแค่ชื่อ-สกุล — ชื่อผู้ใช้ (username) เจ้าหน้าที่ตั้งเองตอนลงทะเบียน (username = NULL ไปก่อน)
-    db()->prepare("INSERT INTO users (name, position, gender, role, status) VALUES (?, ?, ?, 'staff', 'unregistered')")
-        ->execute([$name, $position, $gender]);
+    db()->prepare("INSERT INTO users (name, position, gender, birthdate, role, status) VALUES (?, ?, ?, ?, 'staff', 'unregistered')")
+        ->execute([$name, $position, $gender, $birthdate]);
     ok(['message' => "เพิ่ม {$name} แล้ว — ให้เจ้าตัวเปิดหน้าเว็บ กด \"ลงทะเบียน\" เลือกชื่อ แล้วตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย"]);
 }
 
@@ -265,6 +277,14 @@ function h_user_set_gender(): never {
     db()->prepare("UPDATE users SET gender = ? WHERE id = ? AND role = 'staff'")
         ->execute([$gender, (int)param('id')]);
     ok(['message' => 'บันทึกเพศแล้ว']);
+}
+
+function h_user_set_birthdate(): never {
+    require_admin();
+    $birthdate = valid_birthdate(param('birthdate'));   // ว่าง/ผิด = ล้างเป็น NULL
+    db()->prepare("UPDATE users SET birthdate = ? WHERE id = ? AND role = 'staff'")
+        ->execute([$birthdate, (int)param('id')]);
+    ok(['message' => 'บันทึกวันเกิดแล้ว']);
 }
 
 function h_user_approve(): never { require_admin(); set_user_status((int)param('id'), 'active');        ok(['message' => 'อนุมัติแล้ว']); }

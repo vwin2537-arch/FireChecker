@@ -123,3 +123,25 @@
 - [x] **redeploy รอบ 9 (v10)** แก้บั๊กเช็คอิน iOS ค้าง → ถ่ายเซลฟี่ก่อนหา GPS + surface error.code → lesson 10 — verify: พี่วินเทส iPhone จริง ถ่ายรูป+เช็คชื่อผ่าน (commit `f3e51a5`)
 - [x] **redeploy รอบ 10-11 (v11-12)** ปฏิทินวันหยุดแอดมิน heatmap + filter รายคน — verify logic ใน node + พี่วินดูจริงผ่านทั้ง 2 โหมด (commit `df674c4`) — `railway up` ทุกรอบ
 - [x] **heartbeat วันหยุดสถานี** (5 ก.ค. 2026) — เดิมวันอาทิตย์ `build_report` คืน null → รายงานเงียบ (cron ยิงแต่ skip) พี่วินนึกว่า trigger พัง จริงๆ ทำงานถูก. เพิ่ม: วันหยุดสถานี **รอบเช้าส่งข้อความ heartbeat** ("ระบบเช็คชื่อทำงานปกติ...") + แนบคำขอลาค้าง / **รอบเย็นยังเงียบ** — ไม่แตะ `sunday_off` (เช็คชื่อวันอาทิตย์ยังปิด) `line_logs` กันส่งซ้ำเหมือนเดิม — `railway up` (deployment `6fd37fd0` SUCCESS) → **verify:** ยิง `cron_report?type=morning&force=1` เข้า prod → LINE ตอบ HTTP 200 + message id `621442374475972813` (เข้ากลุ่มจริง)
+
+## โซนสุขภาพ (เฟส 1 — สมุดบันทึกสุขภาพ) — Deploy 7 ก.ค. 2026 (v19)
+
+- **เมนูใหม่ 🩺 สุขภาพ** ในแถบล่าง (staff 6 แท็บ / admin 7 แท็บ) — segmented sub-tab: ผลตรวจสุขภาพ (เฟส1) / สมรรถภาพ (เฟส2 ยัง disabled)
+- **แอดมินกรอกผลตรวจให้ทุกคน** (`health_admin_add/list/del`) — เจ้าหน้าที่ดูของตัวเองอย่างเดียว (`health_my`) หลาย entry ต่อคน (ไม่มี UNIQUE เก็บทุกครั้ง เหมือน `quiz_attempts`)
+- **ตาราง `health_records`** (weight/height/waist/bp_sys/bp_dia/pulse/note/checkup_place) + **คอลัมน์ `users.birthdate DATE NULL`** — ทั้งคู่ migrate ผ่าน guarded pattern ใน `ensure_admin()` (probe 42S02 + ALTER information_schema เหมือน gender)
+- **จัดระดับอัตโนมัติ (Set 3 ค่าคงที่การแพทย์ไทย ใน `health.php`):** BMI เอเชีย / ความดัน สมาคมความดันฯ 2562 / รอบเอว (ต้องรู้เพศ) / ชีพจร — คืน `{label,level}` (ok/warn/bad/info) หรือ null. **BMI คำนวณสดตอนอ่าน ไม่เก็บ**
+- **NULL degrade:** ไม่มีเพศ → รอบเอว = "ยังไม่จัดระดับ" (BMI/ความดัน/ชีพจรยังคำนวณได้) ไม่ error — verify แล้ว
+- **แอดมินกรอกวันเกิด+เพศ** ในแท็บเจ้าหน้าที่ (`user_set_birthdate` + `valid_birthdate` 15-80 ปี) — ใช้เตรียมเทียบเกณฑ์ทดสอบเฟส 2
+- verify: local API ครบ (grading ถูกทุกค่า + NULL path) + playwright screenshot ทั้ง staff/admin ไม่มี console error — `railway up` (Deploy complete) → prod v19 + `health_admin_list` recognized + login เดิมทำงาน
+- **⚠️ Rollout:** แอดมินต้องตั้งเพศ+วันเกิด จนท.เดิมก่อน — เฟส1 ขาดเพศแค่รอบเอวไม่จัดระดับ / **เฟส2 (สมรรถภาพ) ขาดอายุ/เพศ = ไม่จัดเกรด**
+- **รอทำเฟส 2:** ทดสอบสมรรถภาพ (`fitness_items`/`fitness_rounds`/`fitness_results` + grading engine higher/lower/cap + seed WCT Pack Test) — เกณฑ์ configurable แอดมินตั้งเอง (ไม่มีมาตรฐานดับไฟป่าไทยเผยแพร่ + ตารางกรมพลศึกษาเต็มติด PDF)
+
+## โซนสุขภาพ (เฟส 2 — ทดสอบสมรรถภาพ + grading engine) — v20 (7 ก.ค. 2026, รอ deploy)
+
+- **3 ตารางใหม่:** `fitness_items` (ท่า+เกณฑ์ criteria_json), `fitness_rounds` (รอบทดสอบ), `fitness_results` (ผลรายคน/รอบ/ท่า หลาย entry) — probe 42S02 ใน `ensure_admin` + FK cascade
+- **เกณฑ์ configurable (แอดมินตั้งเอง)** — `seed_fitness_presets()` ใส่ตั้งต้นครั้งแรก (ตารางว่าง): WCT Arduous/Moderate/Light (cap 45/30/16) + ดันพื้น (higher, ThaiSook 5 ช่วงอายุ×เพศ)
+- **grading engine (`grade_fitness` ใน health.php) — 3 direction:** `higher`(มากยิ่งดี) · `lower`(น้อย/เร็วยิ่งดี) · `cap`(ผ่าน≤เพดาน). เกณฑ์เป็น band แยกอายุ×เพศ; ระดับเรียง best→worst, tone(ok/warn/bad)คำนวณตามลำดับ. **cap ไม่ใช้อายุ/เพศ (จัดได้ทุกคน)** / higher-lower ต้องมีอายุ(จากbirthdate ณ test_date)+เพศ ไม่งั้น `level=null` "ยังไม่จัดระดับ" — verify ครบทุก direction + NULL
+- **แอดมิน:** สร้างรอบ(+LINE notify async) / กรอกผลแบบ roster (ตารางทั้งทีม×ท่า กรอกทีเดียว batch, ค่าว่าง=ลบ, จัดระดับตอนบันทึก) / จัดการท่า+เกณฑ์ (editor แบบตารางวิชาพละ: ระดับ comma-separated + band อายุ×เพศ, `fitSyncCrit` อ่าน DOM ก่อน re-render กันค่าหาย)
+- **เจ้าหน้าที่:** แท็บย่อย 🏃 สมรรถภาพ (เดิม disabled) → ผลตัวเองแยกตามรอบ + chip ระดับ (`fitnessChip` by tone)
+- verify: local API grading ถูกทุกเคส (ดันพื้น45→ดี, วิ่ง12→พอใช้ ไม่กลับทิศ, WCT50→ไม่ผ่าน, NULL→ยังไม่จัดระดับ, re-save/clear) + playwright 3 จอ (roster/criteria-editor/staff) ไม่มี console error
+- **cache-bust v19→v20** (เฟส2 แก้ app.js/admin.js/app.css ซ้ำจาก v19 ที่ deploy ไปแล้ว — ต้องเด้ง v20 ไม่งั้น PWA ค้างเฟส1)

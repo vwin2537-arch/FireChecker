@@ -88,6 +88,19 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM health_records LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
+    try {
+        db()->query('SELECT 1 FROM fitness_items LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
+    seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
     // แอดมินเพิ่มแค่ชื่อ-สกุล (username = NULL จนกว่าจะลงทะเบียน) → ต้อง ALTER ให้ nullable
@@ -120,6 +133,15 @@ function ensure_admin(): void {
         db()->exec("ALTER TABLE users ADD COLUMN gender ENUM('male','female') NULL AFTER position");
     }
 
+    // migrate: users.birthdate (โซนสุขภาพ — คำนวณอายุเทียบเกณฑ์ทดสอบสมรรถภาพ) — DB เดิมยังไม่มีคอลัมน์นี้ (row เก่าเป็น NULL)
+    $hasBirthdate = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'birthdate'"
+    )->fetchColumn();
+    if (!(int)$hasBirthdate) {
+        db()->exec("ALTER TABLE users ADD COLUMN birthdate DATE NULL AFTER gender");
+    }
+
     // migrate: attendance.note (หมายเหตุงานวันอาทิตย์) — DB เดิมยังไม่มีคอลัมน์นี้
     $hasNote = db()->query(
         "SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -128,4 +150,32 @@ function ensure_admin(): void {
     if (!(int)$hasNote) {
         db()->exec("ALTER TABLE attendance ADD COLUMN note VARCHAR(255) NULL AFTER photos_json");
     }
+}
+
+/** ใส่ท่าทดสอบสมรรถภาพตั้งต้นครั้งแรก (ตารางว่าง) — แอดมินแก้/เพิ่ม/ซ่อนได้ภายหลัง
+ *  WCT Pack Test = มาตรฐานสากลนักดับไฟป่า (US Forest Service) · ดันพื้น = ThaiSook (เกณฑ์บางส่วน เติมเต็มได้)
+ */
+function seed_fitness_presets(): void {
+    if ((int)db()->query('SELECT COUNT(*) FROM fitness_items')->fetchColumn() > 0) return;
+
+    // ดันพื้น: ระดับ ดี/พอใช้/ต้องปรับปรุง (best→worst) เกณฑ์แยกอายุ×เพศ (ThaiSook — ช่วงมาตรฐานเป็นขอบ "พอใช้")
+    $pushup = json_encode([
+        'levels' => ['ดี', 'พอใช้', 'ต้องปรับปรุง'],
+        'bands'  => [
+            ['min_age' => 18, 'max_age' => 29, 'male' => [50, 37, 0], 'female' => [43, 32, 0]],
+            ['min_age' => 30, 'max_age' => 39, 'male' => [40, 27, 0], 'female' => [31, 22, 0]],
+            ['min_age' => 40, 'max_age' => 49, 'male' => [31, 22, 0], 'female' => [25, 17, 0]],
+            ['min_age' => 50, 'max_age' => 59, 'male' => [25, 17, 0], 'female' => [17, 11, 0]],
+            ['min_age' => 60, 'max_age' => 69, 'male' => [17, 11, 0], 'female' => [14, 10, 0]],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+
+    $items = [
+        ['WCT — Arduous (เดิน 4.8 กม. แบกเป้ 20.4 กก.)',  'นาที', 'cap',    json_encode(['cap' => 45], JSON_UNESCAPED_UNICODE), 1],
+        ['WCT — Moderate (เดิน 3.2 กม. แบกเป้ 11.3 กก.)', 'นาที', 'cap',    json_encode(['cap' => 30], JSON_UNESCAPED_UNICODE), 2],
+        ['WCT — Light (เดิน 1.6 กม.)',                     'นาที', 'cap',    json_encode(['cap' => 16], JSON_UNESCAPED_UNICODE), 3],
+        ['ดันพื้น (1 นาที)',                                'ครั้ง', 'higher', $pushup, 4],
+    ];
+    $st = db()->prepare('INSERT INTO fitness_items (name, unit, direction, criteria_json, sort_order) VALUES (?, ?, ?, ?, ?)');
+    foreach ($items as $it) $st->execute($it);
 }

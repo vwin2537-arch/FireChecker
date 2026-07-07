@@ -28,7 +28,7 @@ const Admin = {
       <div id="view"></div>
     </div>
     <nav class="bottom-nav wide">
-      ${[['dash', '📊', 'แดชบอร์ด'], ['report', '📋', 'รายงาน'], ['dayoff', '🗓️', 'วันหยุด'], ['users', '👥', 'เจ้าหน้าที่'], ['develop', '📚', 'พัฒนา'], ['settings', '⚙️', 'ตั้งค่า']]
+      ${[['dash', '📊', 'แดชบอร์ด'], ['report', '📋', 'รายงาน'], ['dayoff', '🗓️', 'วันหยุด'], ['users', '👥', 'เจ้าหน้าที่'], ['develop', '📚', 'พัฒนา'], ['health', '🩺', 'สุขภาพ'], ['settings', '⚙️', 'ตั้งค่า']]
         .map(([v, i, l]) => `<button class="nav-item" data-v="${v}" onclick="Admin.go('${v}')"><span class="ni">${i}</span>${l}</button>`).join('')}
     </nav>`;
     await this.refresh();
@@ -45,7 +45,7 @@ const Admin = {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.v === tab));
     this.charts.forEach(c => c.destroy()); this.charts = [];
     ({ dash: () => this.vDash(), report: () => this.vReport(), dayoff: () => this.vDayoff(),
-       users: () => this.vUsers(), develop: () => this.vDevelop(), settings: () => this.vSettings() })[tab]();
+       users: () => this.vUsers(), develop: () => this.vDevelop(), health: () => this.vHealth(), settings: () => this.vSettings() })[tab]();
   },
 
   // =====================================================
@@ -452,23 +452,25 @@ const Admin = {
         <div class="field"><label>ชื่อ-สกุล</label><input class="input" id="nuName"></div>
         <div class="grid-2">
           <div class="field"><label>ตำแหน่ง</label><input class="input" id="nuPos" placeholder="เช่น พนักงานดับไฟป่า"></div>
-          <div class="field"><label>เพศ <span class="tiny">(ใช้กรองเวรกลางคืน)</span></label>
+          <div class="field"><label>เพศ <span class="tiny">(เวรกลางคืน+เกณฑ์ทดสอบ)</span></label>
             <select class="select" id="nuGender"><option value="">— ยังไม่ระบุ —</option><option value="male">ชาย</option><option value="female">หญิง</option></select></div>
         </div>
+        <div class="field"><label>วันเกิด <span class="tiny">(ใช้เทียบเกณฑ์ทดสอบสมรรถภาพตามอายุ)</span></label><input class="input" type="date" id="nuBirth"></div>
         <button class="btn btn-primary btn-block" onclick="Admin.addUser()">เพิ่ม</button>
         <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย</div>
       </div>
 
       <div class="card"><h3>👥 เจ้าหน้าที่ทั้งหมด (${staff.length})</h3>
-        <div class="tiny" style="margin-bottom:8px">💡 ตั้งเพศให้ครบก่อนใช้เวรกลางคืน — เฉพาะ "ชาย" ถึงลงเวรกลางคืนได้</div>
+        <div class="tiny" style="margin-bottom:8px">💡 ตั้งเพศ+วันเกิดให้ครบ — เพศใช้กรองเวรกลางคืน (เฉพาะชาย) · เพศ+วันเกิดใช้เทียบเกณฑ์ทดสอบสมรรถภาพ</div>
         <div class="tbl-wrap"><table class="tbl">
-          <tr><th>ชื่อ</th><th>เพศ</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
+          <tr><th>ชื่อ</th><th>เพศ</th><th>วันเกิด</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
           ${staff.map(u => `<tr>
             <td><b>${esc(u.name)}</b><div class="tiny">${u.username ? '@' + esc(u.username) + ' ' : ''}${esc(u.position || '')}</div></td>
             <td><select class="select" style="min-width:86px;padding:4px 6px" onchange="Admin.setGender(${u.id}, this.value)">
               <option value=""${!u.gender ? ' selected' : ''}>—</option>
               <option value="male"${u.gender === 'male' ? ' selected' : ''}>ชาย</option>
               <option value="female"${u.gender === 'female' ? ' selected' : ''}>หญิง</option></select></td>
+            <td><input type="date" class="input" style="min-width:130px;padding:4px 6px" value="${u.birthdate || ''}" onchange="Admin.setBirthdate(${u.id}, this.value)"></td>
             <td>${{ active: '<span class="chip chip-ok">ใช้งาน</span>', unregistered: '<span class="chip chip-plain">ยังไม่ลงทะเบียน</span>',
                    disabled: '<span class="chip chip-absent">ปิดใช้งาน</span>' }[u.status] || u.status}</td>
             <td class="num">${u.quota_used}/${d.quota_max}</td>
@@ -476,13 +478,13 @@ const Admin = {
               ${u.status === 'active' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_reset',${u.id},'รีเซ็ตรหัสผ่าน? เจ้าตัวต้องลงทะเบียนใหม่')">รีเซ็ตรหัส</button>
                 <button class="btn btn-danger-ghost btn-sm" onclick="Admin.userAct('user_disable',${u.id},'ปิดใช้งานบัญชีนี้?')">ปิด</button>` : ''}
               ${u.status === 'disabled' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_enable',${u.id})">เปิดใช้งาน</button>` : ''}
-            </td></tr>`).join('') || '<tr><td colspan="5" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
+            </td></tr>`).join('') || '<tr><td colspan="6" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
         </table></div>
       </div>`;
   },
 
   async addUser() {
-    const d = await App.api('user_add', { name: byId('nuName').value.trim(), position: byId('nuPos').value.trim(), gender: byId('nuGender').value });
+    const d = await App.api('user_add', { name: byId('nuName').value.trim(), position: byId('nuPos').value.trim(), gender: byId('nuGender').value, birthdate: byId('nuBirth').value });
     await Swal.fire({ icon: 'success', title: 'เพิ่มแล้ว', text: d.message, confirmButtonText: 'ตกลง' });
     this.vUsers();
   },
@@ -490,6 +492,312 @@ const Admin = {
   async setGender(id, gender) {
     const d = await App.api('user_set_gender', { id, gender });
     toast(d.message);
+  },
+
+  async setBirthdate(id, birthdate) {
+    const d = await App.api('user_set_birthdate', { id, birthdate });
+    toast(d.message);
+  },
+
+  // =====================================================
+  // สุขภาพ (แอดมินกรอกให้เจ้าหน้าที่แต่ละคน)
+  // =====================================================
+  healthTab: 'record',
+  healthUid: null,
+  healthStaff: null,
+
+  healthSegHtml() {
+    const t = (v, l) => `<button class="${this.healthTab === v ? 'active' : ''}" onclick="Admin.healthSetTab('${v}')">${l}</button>`;
+    return `<div class="seg">${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
+  },
+  healthSetTab(t) { this.healthTab = t; this.vHealth(); },
+
+  async vHealth() {
+    if (this.healthTab === 'fitness') return this.vFitness();
+    const dl = await App.api('users_list');
+    this.healthStaff = dl.users.filter(u => u.role === 'staff' && u.status !== 'pending');
+    const opts = this.healthStaff.map(u => `<option value="${u.id}"${u.id == this.healthUid ? ' selected' : ''}>${esc(u.name)}${u.position ? ' — ' + esc(u.position) : ''}</option>`).join('');
+    byId('view').innerHTML = this.healthSegHtml() + `
+      <div class="card"><h3>🩺 สมุดสุขภาพเจ้าหน้าที่</h3>
+        <div class="field"><label>เลือกเจ้าหน้าที่</label>
+          <select class="select" id="hUser" onchange="Admin.healthPick(this.value)">
+            <option value="">— เลือก —</option>${opts}</select></div>
+      </div>
+      <div id="hDetail"></div>`;
+    if (this.healthUid) this.loadHealthDetail();
+  },
+
+  healthPick(uid) { this.healthUid = uid || null; this.loadHealthDetail(); },
+
+  async loadHealthDetail() {
+    if (!this.healthUid) { byId('hDetail').innerHTML = ''; return; }
+    byId('hDetail').innerHTML = '<div class="card muted">กำลังโหลด...</div>';
+    const d = await App.api('health_admin_list', { user_id: +this.healthUid });
+    const u = d.user, age = ageFrom(u.birthdate);
+    const warn = (!u.gender || !u.birthdate)
+      ? `<div class="alert-bar" style="margin-bottom:12px">⚠️ ${esc(u.name)} ยัง${!u.birthdate ? 'ไม่มีวันเกิด' : ''}${(!u.gender && !u.birthdate) ? '+' : ''}${!u.gender ? 'ไม่ระบุเพศ' : ''} — บันทึกผลตรวจได้ แต่รอบเอวจะยังไม่จัดระดับ (ตั้งได้ที่แท็บเจ้าหน้าที่)</div>`
+      : '';
+    // ฟอร์มกรอกผลตรวจใหม่
+    const form = `<div class="card"><h3>➕ บันทึกผลตรวจใหม่</h3>
+      ${warn}
+      <div class="grid-2">
+        <div class="field"><label>วันที่ตรวจ</label><input type="date" class="input" id="hDate" value="${todayStr()}"></div>
+        <div class="field"><label>ตรวจที่ไหน</label><input class="input" id="hPlace" placeholder="เช่น รพ.พหลฯ"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>น้ำหนัก (กก.)</label><input type="number" step="0.1" class="input" id="hW" inputmode="decimal"></div>
+        <div class="field"><label>ส่วนสูง (ซม.)</label><input type="number" step="0.1" class="input" id="hH" inputmode="decimal"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>รอบเอว (ซม.)</label><input type="number" step="0.1" class="input" id="hWaist" inputmode="decimal"></div>
+        <div class="field"><label>ชีพจร (ครั้ง/นาที)</label><input type="number" class="input" id="hPulse" inputmode="numeric"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>ความดันตัวบน (SBP)</label><input type="number" class="input" id="hSys" inputmode="numeric"></div>
+        <div class="field"><label>ความดันตัวล่าง (DBP)</label><input type="number" class="input" id="hDia" inputmode="numeric"></div>
+      </div>
+      <div class="field"><label>ผลตรวจอื่น ๆ / หมายเหตุ</label><textarea class="input" id="hNote" rows="2" placeholder="เช่น น้ำตาลในเลือด ไขมัน ฯลฯ"></textarea></div>
+      <button class="btn btn-primary btn-block" onclick="Admin.saveHealth()">บันทึกผลตรวจ</button>
+    </div>`;
+    // ประวัติ
+    const hist = d.records.length
+      ? `<div class="card"><h3>ประวัติผลตรวจ <span class="h-right">${d.records.length} ครั้ง${age !== null ? ` • อายุ ${age} ปี` : ''}</span></h3>
+          ${d.records.map(r => `<div class="list-row"><span class="dot" style="background:#0ea5e9"></span>
+            <div class="lr-main"><div class="lr-title">${thaiDate(r.record_date)}${r.checkup_place ? ` <span class="tiny">· ${esc(r.checkup_place)}</span>` : ''}</div>
+              <div class="lr-sub">${healthSummary(r)}${r.bmi_class ? ' · ' + healthChip(r.bmi_class) : ''}${r.bp_class ? ' ' + healthChip(r.bp_class) : ''}</div></div>
+            <button class="btn btn-danger-ghost btn-sm" onclick="Admin.delHealth(${r.id})">ลบ</button></div>`).join('')}</div>`
+      : '<div class="card empty"><span class="e-ico">🩺</span>ยังไม่มีบันทึกผลตรวจของคนนี้</div>';
+    byId('hDetail').innerHTML = form + hist;
+  },
+
+  async saveHealth() {
+    await App.api('health_admin_add', {
+      user_id: +this.healthUid,
+      record_date: byId('hDate').value, checkup_place: byId('hPlace').value.trim(),
+      weight_kg: byId('hW').value, height_cm: byId('hH').value, waist_cm: byId('hWaist').value,
+      bp_sys: byId('hSys').value, bp_dia: byId('hDia').value, pulse: byId('hPulse').value,
+      note: byId('hNote').value.trim(),
+    });
+    toast('บันทึกผลตรวจแล้ว');
+    this.loadHealthDetail();
+  },
+
+  async delHealth(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบผลตรวจนี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    await App.api('health_admin_del', { id });
+    toast('ลบแล้ว');
+    this.loadHealthDetail();
+  },
+
+  // =====================================================
+  // ทดสอบสมรรถภาพ (แอดมิน) — รอบทดสอบ + กรอกผล + จัดการท่า/เกณฑ์
+  // =====================================================
+  fitView: 'rounds',   // rounds | entry | items | itemEdit
+  fitRoundId: null,
+  fitItems: null,
+  fitEdit: null,       // ท่าที่กำลังแก้ (working copy)
+
+  vFitness() {
+    const sub = (v, l) => `<button class="${this.fitView === v ? 'active' : ''}" onclick="Admin.fitGo('${v}')">${l}</button>`;
+    const bar = `<div class="seg" style="margin-top:-4px">${sub('rounds', '📋 รอบทดสอบ')}${sub('items', '⚙️ ท่า & เกณฑ์')}</div>`;
+    byId('view').innerHTML = this.healthSegHtml() + bar + '<div id="fitBox"><div class="card muted">กำลังโหลด...</div></div>';
+    if (this.fitView === 'items') return this.fitLoadItems();
+    if (this.fitView === 'entry') return this.fitLoadEntry();
+    if (this.fitView === 'itemEdit') return this.fitRenderItemEdit();
+    return this.fitLoadRounds();
+  },
+  fitGo(v) { this.fitView = v; this.vFitness(); },
+
+  // ---------- รอบทดสอบ ----------
+  async fitLoadRounds() {
+    const d = await App.api('fitness_rounds_list');
+    byId('fitBox').innerHTML = `
+      <div class="card"><h3>➕ สร้างรอบทดสอบใหม่</h3>
+        <div class="field"><label>ชื่อรอบ</label><input class="input" id="frTitle" placeholder="เช่น ทดสอบสมรรถภาพ ไตรมาส 3/2569"></div>
+        <div class="grid-2">
+          <div class="field"><label>วันที่ทดสอบ</label><input type="date" class="input" id="frDate" value="${todayStr()}"></div>
+          <div class="field"><label>หมายเหตุ</label><input class="input" id="frNote"></div>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="Admin.fitAddRound()">สร้างรอบ + แจ้ง LINE</button>
+      </div>
+      ${d.rounds.length ? `<div class="card"><h3>รอบทดสอบทั้งหมด</h3>
+        ${d.rounds.map(r => `<div class="list-row">
+          <div class="lr-main"><div class="lr-title">${esc(r.title)}</div>
+            <div class="lr-sub">${thaiDate(r.test_date)} • ทดสอบแล้ว ${r.tested} คน${r.note ? ' • ' + esc(r.note) : ''}</div></div>
+          <button class="btn btn-primary btn-sm" onclick="Admin.fitOpenEntry(${r.id})">กรอก/ดูผล</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.fitDelRound(${r.id})">ลบ</button>
+        </div>`).join('')}</div>` : '<div class="card empty"><span class="e-ico">📋</span>ยังไม่มีรอบทดสอบ</div>'}`;
+  },
+  async fitAddRound() {
+    const title = byId('frTitle').value.trim();
+    if (!title) return toast('กรอกชื่อรอบ', 'error');
+    const d = await App.api('fitness_round_add', { title, test_date: byId('frDate').value, note: byId('frNote').value.trim() });
+    toast(d.message); this.fitOpenEntry(d.id);
+  },
+  async fitDelRound(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบรอบทดสอบนี้?', text: 'ผลทั้งรอบจะถูกลบ', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    await App.api('fitness_round_del', { id }); toast('ลบแล้ว'); this.fitLoadRounds();
+  },
+  fitOpenEntry(id) { this.fitRoundId = id; this.fitGo('entry'); },
+
+  // ---------- กรอกผลแบบ roster ----------
+  async fitLoadEntry() {
+    const d = await App.api('fitness_round_get', { round_id: this.fitRoundId });
+    if (!d.items.length) {
+      byId('fitBox').innerHTML = `<div class="card"><button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('rounds')">← กลับ</button>
+        <div class="empty" style="margin-top:10px">ยังไม่มีท่าทดสอบที่ใช้งาน — ไปเพิ่มที่แท็บ "ท่า & เกณฑ์" ก่อน</div></div>`;
+      return;
+    }
+    const head = d.items.map(it => `<th class="num">${esc(it.name)}<div class="tiny">${esc(it.unit || '')}</div></th>`).join('');
+    const rows = d.staff.map(s => {
+      const cells = d.items.map(it => {
+        const r = d.results[s.id + '_' + it.id];
+        const val = r && r.raw_value !== null ? +r.raw_value : '';
+        const chip = r && r.level ? fitnessChip(r.level, r.tone) : '';
+        return `<td class="num"><input type="number" step="0.1" inputmode="decimal" class="input fit-in" style="width:74px;padding:4px 6px" data-u="${s.id}" data-i="${it.id}" value="${val}"><div class="fit-chip">${chip}</div></td>`;
+      }).join('');
+      const meta = (s.age !== null ? 'อายุ ' + s.age + ' ปี' : '<span style="color:#dc2626">ไม่มีวันเกิด</span>') + (!s.gender ? ' <span style="color:#dc2626">·ไม่ระบุเพศ</span>' : '');
+      return `<tr><td><b>${esc(s.name)}</b><div class="tiny">${meta}</div></td>${cells}</tr>`;
+    }).join('');
+    byId('fitBox').innerHTML = `
+      <div class="card">
+        <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('rounds')">← กลับ</button>
+        <h3 style="margin-top:10px">${esc(d.round.title)} <span class="h-right">${thaiDate(d.round.test_date)}</span></h3>
+        <div class="tiny" style="margin-bottom:8px">💡 กรอกค่าที่วัดได้ → ระบบจัดระดับให้ตอนกดบันทึก (ช่องว่าง = ไม่มีผล) · คนที่ไม่มีวันเกิด/เพศ จะยังไม่จัดระดับท่าที่อิงอายุ</div>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>เจ้าหน้าที่</th>${head}</tr>
+          ${rows || '<tr><td class="empty">ไม่มีเจ้าหน้าที่ active</td></tr>'}
+        </table></div>
+        <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.fitSaveResults()">บันทึกผลทั้งหมด</button>
+      </div>`;
+  },
+  async fitSaveResults() {
+    const results = [...document.querySelectorAll('.fit-in')].map(el => ({ user_id: +el.dataset.u, item_id: +el.dataset.i, value: el.value }));
+    const d = await App.api('fitness_result_save', { round_id: this.fitRoundId, results });
+    toast(d.message); this.fitLoadEntry();
+  },
+
+  // ---------- จัดการท่าทดสอบ + เกณฑ์ ----------
+  async fitLoadItems() {
+    const d = await App.api('fitness_items_admin');
+    this.fitItems = d.items;
+    const dirL = { higher: 'มากยิ่งดี', lower: 'น้อย/เร็วยิ่งดี', cap: 'ผ่านภายในเพดาน' };
+    byId('fitBox').innerHTML = `
+      <div class="card"><h3>⚙️ ท่าทดสอบ & เกณฑ์</h3>
+        <div class="tiny" style="margin-bottom:8px">ตั้งท่าเอง — cap = ผ่านภายในเพดาน (เช่น WCT ไม่ใช้อายุ/เพศ) · มากยิ่งดี (ดันพื้น) · น้อย/เร็วยิ่งดี (เวลาวิ่ง) มีเกณฑ์ตามอายุ×เพศ</div>
+        <button class="btn btn-primary btn-sm" onclick="Admin.fitEditItem(0)">+ เพิ่มท่าทดสอบ</button>
+      </div>
+      <div class="card">${d.items.map(it => `<div class="list-row" style="${it.is_active == 0 ? 'opacity:.5' : ''}">
+        <div class="lr-main"><div class="lr-title">${esc(it.name)}</div><div class="lr-sub">${esc(it.unit || '')} • ${dirL[it.direction]}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="Admin.fitEditItem(${it.id})">แก้ไข</button>
+        <button class="btn btn-danger-ghost btn-sm" onclick="Admin.fitToggleItem(${it.id},${it.is_active == 1 ? 0 : 1})">${it.is_active == 1 ? 'ซ่อน' : 'แสดง'}</button>
+      </div>`).join('') || '<div class="empty">ยังไม่มีท่าทดสอบ</div>'}</div>`;
+  },
+  async fitToggleItem(id, active) { await App.api('fitness_item_delete', { id, active }); this.fitLoadItems(); },
+
+  fitEditItem(id) {
+    const it = id ? (this.fitItems || []).find(x => x.id == id) : null;
+    this.fitEdit = it
+      ? { id: it.id, name: it.name, unit: it.unit, direction: it.direction, criteria: JSON.parse(it.criteria_json || 'null') || {} }
+      : { id: 0, name: '', unit: '', direction: 'higher', criteria: { levels: ['ดี', 'พอใช้', 'ต้องปรับปรุง'], bands: [] } };
+    this.fitGo('itemEdit');
+  },
+
+  fitRenderItemEdit() {
+    const e = this.fitEdit;
+    byId('fitBox').innerHTML = `
+      <div class="card">
+        <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('items')">← กลับ</button>
+        <h3 style="margin-top:10px">${e.id ? 'แก้ไข' : 'เพิ่ม'}ท่าทดสอบ</h3>
+        <div class="field"><label>ชื่อท่า</label><input class="input" id="fiName" value="${esc(e.name)}" placeholder="เช่น ดันพื้น 1 นาที"></div>
+        <div class="grid-2">
+          <div class="field"><label>หน่วย</label><input class="input" id="fiUnit" value="${esc(e.unit)}" placeholder="ครั้ง/วินาที/ซม./นาที"></div>
+          <div class="field"><label>ทิศทางการให้เกรด</label>
+            <select class="select" id="fiDir" onchange="Admin.fitDirChange(this.value)">
+              <option value="higher"${e.direction === 'higher' ? ' selected' : ''}>มากยิ่งดี</option>
+              <option value="lower"${e.direction === 'lower' ? ' selected' : ''}>น้อย/เร็วยิ่งดี</option>
+              <option value="cap"${e.direction === 'cap' ? ' selected' : ''}>ผ่านภายในเพดาน (cap)</option>
+            </select></div>
+        </div>
+        <div id="fiCrit"></div>
+        <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.fitSaveItem()">บันทึกท่าทดสอบ</button>
+      </div>`;
+    this.fitRenderCrit();
+  },
+  fitDirChange(dir) {
+    this.fitEdit.direction = dir;
+    if (dir === 'cap') { if (this.fitEdit.criteria?.cap === undefined) this.fitEdit.criteria = { cap: '' }; }
+    else if (!this.fitEdit.criteria?.levels) this.fitEdit.criteria = { levels: ['ดี', 'พอใช้', 'ต้องปรับปรุง'], bands: [] };
+    this.fitRenderCrit();
+  },
+  fitRenderCrit() {
+    const e = this.fitEdit, box = byId('fiCrit');
+    if (e.direction === 'cap') {
+      box.innerHTML = `<div class="field"><label>เพดาน (ผ่านถ้าค่า ≤ เพดาน)</label>
+        <input type="number" step="0.1" class="input" id="fiCap" value="${e.criteria?.cap ?? ''}"></div>
+        <div class="tiny">เช่น WCT Arduous = 45 (นาที) — cap ไม่ใช้อายุ/เพศ จัดระดับได้ทุกคน</div>`;
+      return;
+    }
+    const lv = e.criteria.levels || [], bands = e.criteria.bands || [];
+    const bandRows = bands.map((b, bi) => {
+      const inputs = g => lv.map((lname, li) => `<input type="number" step="0.1" class="input" style="width:64px;padding:4px 5px" data-b="${bi}" data-g="${g}" data-l="${li}" value="${b[g] && b[g][li] !== undefined ? b[g][li] : ''}" title="${esc(lname)}">`).join(' ');
+      return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">
+        <div class="row" style="gap:6px;margin-bottom:6px">อายุ
+          <input type="number" class="input" style="width:60px;padding:4px 5px" data-b="${bi}" data-f="min" value="${b.min_age ?? ''}"> ถึง
+          <input type="number" class="input" style="width:60px;padding:4px 5px" data-b="${bi}" data-f="max" value="${b.max_age ?? ''}">
+          <button class="btn btn-danger-ghost btn-sm" style="margin-left:auto" onclick="Admin.fitDelBand(${bi})">ลบช่วง</button></div>
+        <div class="tiny">ชาย (${esc(lv.join(' / '))}):</div><div class="row" style="gap:4px;margin:3px 0 6px;flex-wrap:wrap">${inputs('male')}</div>
+        <div class="tiny">หญิง:</div><div class="row" style="gap:4px;margin-top:3px;flex-wrap:wrap">${inputs('female')}</div>
+      </div>`;
+    }).join('');
+    box.innerHTML = `
+      <div class="field"><label>ระดับ (เรียงดี→แย่ คั่นด้วยจุลภาค)</label>
+        <input class="input" id="fiLevels" value="${esc(lv.join(', '))}" onchange="Admin.fitSetLevels(this.value)"></div>
+      <div class="tiny" style="margin-bottom:6px">ใส่ค่าเกณฑ์แต่ละระดับตามอายุ/เพศ (${e.direction === 'higher' ? 'ค่าขั้นต่ำของระดับนั้น' : 'เวลาสูงสุดของระดับนั้น'}) — เรียงซ้าย→ขวาตามระดับ</div>
+      ${bandRows}
+      <button class="btn btn-ghost btn-sm" onclick="Admin.fitAddBand()">+ เพิ่มช่วงอายุ</button>`;
+  },
+  // อ่านค่าจาก input ทั้งหมดกลับเข้า working copy ก่อน mutate/re-render (กันค่าที่พิมพ์หาย)
+  fitSyncCrit() {
+    const e = this.fitEdit;
+    if (e.direction === 'cap') { const c = byId('fiCap'); e.criteria = { cap: c ? c.value : '' }; return; }
+    const bands = e.criteria.bands || [];
+    document.querySelectorAll('#fiCrit input[data-f]').forEach(el => {
+      const b = bands[+el.dataset.b]; if (!b) return;
+      if (el.dataset.f === 'min') b.min_age = el.value; else b.max_age = el.value;
+    });
+    document.querySelectorAll('#fiCrit input[data-g]').forEach(el => {
+      const b = bands[+el.dataset.b]; if (!b) return;
+      b[el.dataset.g] = b[el.dataset.g] || []; b[el.dataset.g][+el.dataset.l] = el.value;
+    });
+    e.criteria.bands = bands;
+  },
+  fitSetLevels(v) { this.fitSyncCrit(); this.fitEdit.criteria.levels = v.split(',').map(s => s.trim()).filter(Boolean); this.fitRenderCrit(); },
+  fitAddBand() { this.fitSyncCrit(); this.fitEdit.criteria.bands.push({ min_age: '', max_age: '', male: [], female: [] }); this.fitRenderCrit(); },
+  fitDelBand(bi) { this.fitSyncCrit(); this.fitEdit.criteria.bands.splice(bi, 1); this.fitRenderCrit(); },
+
+  async fitSaveItem() {
+    const e = this.fitEdit;
+    e.name = byId('fiName').value.trim(); e.unit = byId('fiUnit').value.trim(); e.direction = byId('fiDir').value;
+    if (!e.name) return toast('กรอกชื่อท่า', 'error');
+    this.fitSyncCrit();
+    let criteria;
+    if (e.direction === 'cap') {
+      criteria = { cap: parseFloat(e.criteria.cap) };
+      if (isNaN(criteria.cap)) return toast('กรอกเพดานเป็นตัวเลข', 'error');
+    } else {
+      const levels = (e.criteria.levels || []).filter(Boolean);
+      const bands = (e.criteria.bands || []).map(b => ({
+        min_age: +b.min_age, max_age: +b.max_age,
+        male: (b.male || []).map(x => x === '' ? 0 : +x), female: (b.female || []).map(x => x === '' ? 0 : +x),
+      }));
+      if (!levels.length || !bands.length) return toast('ใส่ระดับและช่วงอายุอย่างน้อย 1 ช่วง', 'error');
+      criteria = { levels, bands };
+    }
+    const d = await App.api('fitness_item_save', { id: e.id, name: e.name, unit: e.unit, direction: e.direction, criteria });
+    toast(d.message); this.fitGo('items');
   },
 
   async userAct(action, id, confirmMsg) {

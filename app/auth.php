@@ -61,6 +61,7 @@ function public_user(array $u): array {
         'name'     => $u['name'],
         'position' => $u['position'],
         'gender'   => $u['gender'] ?? null,
+        'birthdate'=> $u['birthdate'] ?? null,
         'role'     => $u['role'],
         'status'   => $u['status'],
     ];

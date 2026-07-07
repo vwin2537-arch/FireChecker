@@ -407,6 +407,19 @@ tr.lib-hidden { opacity:.5; }
 .quiz-opt.selected .quiz-opt-l { background:var(--green-700); color:#fff; }
 .quiz-score { font-size:40px; font-weight:600; color:var(--green-700); margin-top:8px; font-variant-numeric:tabular-nums; }
 
+/* ---------- สุขภาพ ---------- */
+.hm-grid { display:flex; flex-direction:column; }
+.hm-row { display:flex; align-items:center; gap:10px; padding:10px 2px; border-bottom:1px solid var(--line); }
+.hm-row:last-child { border-bottom:none; }
+.hm-label { flex:0 0 84px; font-size:13.5px; color:var(--ink-2); }
+.hm-val { flex:1; font-size:15px; font-weight:500; font-variant-numeric:tabular-nums; }
+.hm-val .hm-unit { font-size:12px; font-weight:400; color:var(--ink-3); }
+.hm-chip { flex-shrink:0; }
+.hchip { display:inline-block; padding:3px 10px; border-radius:99px; font-size:12px; font-weight:500; white-space:nowrap; }
+.hm-note { margin-top:10px; padding:10px 12px; background:var(--surface); border-radius:10px; font-size:13px; color:var(--ink-2); }
+.fit-chip { margin-top:3px; font-size:10px; min-height:14px; text-align:center; }
+.fit-chip .hchip { padding:1px 6px; font-size:10px; }
+
 /* ---------- desktop admin ---------- */
 @media (min-width:760px) {
   .topbar { border-radius:0 0 26px 26px; }

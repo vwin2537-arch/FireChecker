@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NULL,
   name          VARCHAR(100) NOT NULL,
   position      VARCHAR(100) NOT NULL DEFAULT '',
-  gender        ENUM('male','female') NULL,   -- ใช้กรองเวรกลางคืน (เฉพาะชาย); NULL = ยังไม่ระบุ
+  gender        ENUM('male','female') NULL,   -- ใช้กรองเวรกลางคืน (เฉพาะชาย) + เทียบเกณฑ์ทดสอบสมรรถภาพ; NULL = ยังไม่ระบุ
+  birthdate     DATE NULL,                    -- ใช้คำนวณอายุเทียบเกณฑ์ทดสอบสมรรถภาพ; NULL = ยังไม่ระบุ
   role          ENUM('admin','staff') NOT NULL DEFAULT 'staff',
   -- unregistered → (ตั้งรหัสผ่าน) → pending → (แอดมินอนุมัติ) → active
   status        ENUM('unregistered','pending','active','disabled') NOT NULL DEFAULT 'unregistered',
@@ -149,6 +150,69 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
   KEY idx_set_user (set_id, user_id),
   FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- สมุดบันทึกสุขภาพ (โซนสุขภาพ เฟส 1) ----------
+-- แอดมินกรอกผลตรวจสุขภาพให้เจ้าหน้าที่แต่ละคน (หลาย entry ต่อคน ไม่มี UNIQUE) — เจ้าหน้าที่ดูของตัวเอง
+-- เก็บเฉพาะค่าที่ระบบจัดระดับได้ (BMI/ความดัน/รอบเอว/ชีพจร) + note สำหรับผลแล็บอื่น ๆ
+CREATE TABLE IF NOT EXISTS health_records (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT NOT NULL,
+  record_date   DATE NOT NULL,                 -- วันที่ไปตรวจ
+  checkup_place VARCHAR(200) NOT NULL DEFAULT '',  -- ตรวจที่ไหน (รพ./คลินิก)
+  weight_kg     DECIMAL(5,2) NULL,             -- น้ำหนัก (กก.)
+  height_cm     DECIMAL(5,1) NULL,             -- ส่วนสูง (ซม.) — คู่กับน้ำหนักคำนวณ BMI สดตอนอ่าน
+  waist_cm      DECIMAL(5,1) NULL,             -- รอบเอว (ซม.)
+  bp_sys        INT NULL,                      -- ความดันตัวบน (SBP)
+  bp_dia        INT NULL,                      -- ความดันตัวล่าง (DBP)
+  pulse         INT NULL,                      -- ชีพจรขณะพัก (ครั้ง/นาที)
+  note          VARCHAR(500) NOT NULL DEFAULT '',  -- ผลตรวจอื่น ๆ / หมายเหตุ
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_date (user_id, record_date),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- ทดสอบสมรรถภาพ (โซนสุขภาพ เฟส 2) ----------
+-- แอดมินออกแบบท่าทดสอบ + เกณฑ์เอง (configurable) แล้วกรอกผลให้เจ้าหน้าที่เป็นรอบ ระบบจัดระดับตามอายุ+เพศ
+-- ท่าทดสอบ + เกณฑ์ผ่านตามช่วงอายุ/เพศ (แอดมินตั้งเอง)
+CREATE TABLE IF NOT EXISTS fitness_items (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  name          VARCHAR(120) NOT NULL,
+  unit          VARCHAR(20)  NOT NULL DEFAULT '',    -- ครั้ง / วินาที / ซม. / นาที
+  -- higher = มากยิ่งดี (ดันพื้น) · lower = น้อย/เร็วยิ่งดี (เวลาวิ่ง) · cap = ผ่าน/ไม่ผ่านภายในเพดาน (WCT)
+  direction     ENUM('higher','lower','cap') NOT NULL DEFAULT 'higher',
+  -- higher/lower: {"levels":["ดี","พอใช้","ต้องปรับปรุง"],"bands":[{"min_age":18,"max_age":29,"male":[50,37,0],"female":[43,32,0]}]}
+  -- cap: {"cap":45}   (raw_value <= cap → ผ่าน) — ไม่ต้องใช้อายุ/เพศ
+  criteria_json TEXT         NULL,
+  sort_order    INT          NOT NULL DEFAULT 0,
+  is_active     TINYINT(1)   NOT NULL DEFAULT 1,      -- 0 = ซ่อน (soft delete)
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- รอบการทดสอบ (เช่น "ทดสอบประจำไตรมาส 3/2569")
+CREATE TABLE IF NOT EXISTS fitness_rounds (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(120) NOT NULL,
+  test_date  DATE NOT NULL,
+  note       VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ผลทดสอบรายคนต่อรอบต่อท่า (หลาย entry — เก็บทุกครั้ง เหมือน quiz_attempts)
+CREATE TABLE IF NOT EXISTS fitness_results (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  round_id   INT NOT NULL,
+  item_id    INT NOT NULL,
+  user_id    INT NOT NULL,
+  raw_value  DECIMAL(8,2) NULL,          -- ค่าที่วัดได้ (จำนวนครั้ง/วินาที/ซม./นาที)
+  level      VARCHAR(40)  NULL,          -- ระดับที่จัดได้ (null = ยังไม่จัดระดับ เช่นไม่มีอายุ/เพศ)
+  tone       VARCHAR(8)   NULL,          -- ok/warn/bad สำหรับสีป้าย (คำนวณตอนกรอก)
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_round_user (round_id, user_id),
+  KEY idx_item_user (item_id, user_id),
+  FOREIGN KEY (round_id) REFERENCES fitness_rounds(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id)  REFERENCES fitness_items(id)  ON DELETE CASCADE,
+  FOREIGN KEY (user_id)  REFERENCES users(id)          ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------- คิวส่งสำเนารูปเช็คชื่อขึ้น Google Drive ----------

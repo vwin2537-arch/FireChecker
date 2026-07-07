@@ -149,7 +149,7 @@ const App = {
       <div id="view"></div>
     </div>
     <nav class="bottom-nav">
-      ${[['home', '🏠', 'หน้าหลัก'], ['dayoff', '🗓️', 'วันหยุด'], ['develop', '📚', 'พัฒนาตัวเอง'], ['history', '📖', 'ประวัติ'], ['profile', '👤', 'โปรไฟล์']]
+      ${[['home', '🏠', 'หน้าหลัก'], ['dayoff', '🗓️', 'วันหยุด'], ['develop', '📚', 'พัฒนา'], ['health', '🩺', 'สุขภาพ'], ['history', '📖', 'ประวัติ'], ['profile', '👤', 'โปรไฟล์']]
         .map(([v, i, l]) => `<button class="nav-item" data-v="${v}" onclick="App.go('${v}')"><span class="ni">${i}</span>${l}</button>`).join('')}
     </nav>`;
     await this.refreshStaff();
@@ -175,7 +175,7 @@ const App = {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.v === v));
     clearInterval(this.clockTimer);
     ({ home: () => this.vHome(), dayoff: () => this.vDayoff(), develop: () => this.vDevelop(),
-       history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
+       health: () => this.vHealth(), history: () => this.vHistory(), profile: () => this.vProfile() })[v]();
   },
 
   /** คอนเฟตติพิกเซลฉลองเช็คชื่อตรงเวลา (สร้าง overlay ชั่วคราว ลบเองใน 2.4 วิ) */
@@ -808,6 +808,101 @@ const App = {
       </div>`;
   },
 
+  // ---------- สุขภาพ ----------
+  healthTab: 'record',
+  healthChart: null,
+
+  healthSegHtml() {
+    const t = (v, l) => `<button class="${this.healthTab === v ? 'active' : ''}" onclick="App.healthSetTab('${v}')">${l}</button>`;
+    return `<div class="seg" id="healthSeg">${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
+  },
+
+  healthSetTab(t) { this.healthTab = t; this.vHealth(); },
+
+  async vHealth() {
+    byId('view').innerHTML = this.healthSegHtml() + '<div id="healthBox"><div class="card muted">กำลังโหลด...</div></div>';
+    if (this.healthTab === 'fitness') {
+      const d = await this.api('fitness_my');
+      this.renderFitness(d.rounds);
+    } else {
+      const d = await this.api('health_my');
+      this.renderHealth(d.records);
+    }
+  },
+
+  renderFitness(rounds) {
+    if (this.healthChart) { this.healthChart.destroy(); this.healthChart = null; }
+    if (!rounds.length) {
+      byId('healthBox').innerHTML = '<div class="card empty"><span class="e-ico">🏃</span>ยังไม่มีผลทดสอบสมรรถภาพ<br>หัวหน้าสถานีจะบันทึกให้หลังทดสอบค่ะ</div>';
+      return;
+    }
+    byId('healthBox').innerHTML = rounds.map(r => `<div class="card">
+      <h3>${esc(r.title)} <span class="h-right">${thaiDate(r.test_date)}</span></h3>
+      ${r.items.map(it => `<div class="hm-row">
+        <div class="hm-label" style="flex:1">${esc(it.item_name)}</div>
+        <div class="hm-val" style="flex:0 0 auto">${it.raw_value !== null ? (+it.raw_value % 1 === 0 ? +it.raw_value : (+it.raw_value).toFixed(1)) : '—'}${it.unit ? ` <span class="hm-unit">${esc(it.unit)}</span>` : ''}</div>
+        <div class="hm-chip">${fitnessChip(it.level, it.tone)}</div>
+      </div>`).join('')}
+    </div>`).join('');
+  },
+
+  renderHealth(records) {
+    if (this.healthChart) { this.healthChart.destroy(); this.healthChart = null; }
+    if (!records.length) {
+      byId('healthBox').innerHTML = '<div class="card empty"><span class="e-ico">🩺</span>ยังไม่มีบันทึกผลตรวจสุขภาพ<br>หัวหน้าสถานีจะบันทึกให้หลังคุณไปตรวจสุขภาพค่ะ</div>';
+      return;
+    }
+    const latest = records[0];
+    // การ์ดค่าล่าสุด — แต่ละค่ามี chip จัดระดับ (เขียว=ปกติ ส้ม=เฝ้าระวัง แดง=ผิดปกติ ฟ้า=ข้อมูล)
+    const metric = (label, val, unit, cls) => (val === null || val === undefined || val === '')
+      ? '' : `<div class="hm-row">
+          <div class="hm-label">${label}</div>
+          <div class="hm-val">${val}${unit ? ` <span class="hm-unit">${unit}</span>` : ''}</div>
+          <div class="hm-chip">${healthChip(cls)}</div>
+        </div>`;
+    const latestCard = `<div class="card">
+      <h3>ผลตรวจล่าสุด <span class="h-right">${thaiDate(latest.record_date)}</span></h3>
+      ${latest.checkup_place ? `<div class="tiny" style="margin:-4px 0 8px">📍 ${esc(latest.checkup_place)}</div>` : ''}
+      <div class="hm-grid">
+        ${metric('น้ำหนัก', latest.weight_kg, 'กก.', null)}
+        ${metric('ส่วนสูง', latest.height_cm, 'ซม.', null)}
+        ${metric('BMI', latest.bmi ?? '', '', latest.bmi_class)}
+        ${metric('ความดัน', (latest.bp_sys && latest.bp_dia) ? latest.bp_sys + '/' + latest.bp_dia : '', 'mmHg', latest.bp_class)}
+        ${metric('รอบเอว', latest.waist_cm, 'ซม.', latest.waist_class)}
+        ${metric('ชีพจร', latest.pulse, 'ครั้ง/นาที', latest.pulse_class)}
+      </div>
+      ${latest.note ? `<div class="hm-note">📝 ${esc(latest.note)}</div>` : ''}
+    </div>`;
+
+    // กราฟแนวโน้มน้ำหนัก (ถ้ามี ≥2 ครั้งที่ชั่งน้ำหนัก)
+    const wSeries = records.filter(r => r.weight_kg !== null).slice().reverse();
+    const chartCard = wSeries.length >= 2
+      ? '<div class="card"><h3>📈 แนวโน้มน้ำหนัก</h3><div style="height:200px"><canvas id="chHealth"></canvas></div></div>'
+      : '';
+
+    // ประวัติทุกครั้ง
+    const histCard = `<div class="card"><h3>ประวัติผลตรวจ <span class="h-right">${records.length} ครั้ง</span></h3>
+      ${records.map(r => `<div class="list-row"><span class="dot" style="background:#0ea5e9"></span>
+        <div class="lr-main"><div class="lr-title">${thaiDate(r.record_date)}</div>
+          <div class="lr-sub">${healthSummary(r)}</div></div></div>`).join('')}</div>`;
+
+    byId('healthBox').innerHTML = latestCard + chartCard + histCard;
+
+    if (wSeries.length >= 2) {
+      this.healthChart = new Chart(byId('chHealth'), {
+        type: 'line',
+        data: { labels: wSeries.map(r => thaiDate(r.record_date, false)),
+          datasets: [{ label: 'น้ำหนัก (กก.)', data: wSeries.map(r => +r.weight_kg),
+            borderColor: '#0ea5e9', backgroundColor: 'rgba(14,165,233,.12)', fill: true, tension: .3,
+            pointRadius: 4, pointBackgroundColor: '#0ea5e9' }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { bodyFont: { family: 'Kanit' }, titleFont: { family: 'Kanit' } } },
+          scales: { x: { ticks: { font: { family: 'Kanit', size: 11 } }, grid: { display: false } },
+            y: { ticks: { font: { family: 'Kanit', size: 11 } }, grid: { color: '#eef1ec' } } } },
+      });
+    }
+  },
+
   // ---------- ประวัติ ----------
   histYm: null,
   async vHistory() {
@@ -900,6 +995,29 @@ const LIB_CAT = {
   manual: { icon: '📘', label: 'คู่มือ' },
 };
 
+// ป้ายจัดระดับสุขภาพ/สมรรถภาพ — cls = {label, level} จาก backend (level: ok/warn/bad/info) หรือ null = ยังไม่จัดระดับ
+const HEALTH_LV = { ok: '#16a34a', warn: '#f59e0b', bad: '#dc2626', info: '#0ea5e9' };
+function healthChip(cls) {
+  if (!cls) return `<span class="hchip" style="background:#f1f5f9;color:#64748b">ยังไม่จัดระดับ</span>`;
+  const c = HEALTH_LV[cls.level] || '#64748b';
+  return `<span class="hchip" style="background:${c}1a;color:${c}">${esc(cls.label)}</span>`;
+}
+// ป้ายระดับสมรรถภาพ — level = label string, tone = ok/warn/bad จาก backend (null = ยังไม่จัดระดับ)
+function fitnessChip(level, tone) {
+  if (!level) return `<span class="hchip" style="background:#f1f5f9;color:#64748b">ยังไม่จัดระดับ</span>`;
+  const c = HEALTH_LV[tone] || '#64748b';
+  return `<span class="hchip" style="background:${c}1a;color:${c}">${esc(level)}</span>`;
+}
+// สรุปสั้น 1 บรรทัดของผลตรวจ (ใช้ในรายการประวัติ)
+function healthSummary(r) {
+  const p = [];
+  if (r.weight_kg !== null) p.push(`${(+r.weight_kg).toFixed(1)} กก.`);
+  if (r.bmi != null) p.push(`BMI ${r.bmi}`);
+  if (r.bp_sys && r.bp_dia) p.push(`ความดัน ${r.bp_sys}/${r.bp_dia}`);
+  if (r.pulse) p.push(`ชีพจร ${r.pulse}`);
+  return p.length ? esc(p.join(' • ')) : 'ไม่มีค่าตัวเลข';
+}
+
 const TH_D = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 const TH_M = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 function thaiDate(ymd, withDow = true) {
@@ -908,6 +1026,16 @@ function thaiDate(ymd, withDow = true) {
   return (withDow ? TH_D[dow] + ' ' : '') + D + ' ' + TH_M[M] + ' ' + (Y + 543);
 }
 const thaiMonth = (ym) => { const [Y, M] = ym.split('-').map(Number); return TH_M[M].replace('.', '') + ' ' + (Y + 543); };
+
+/** อายุ (ปี) จากวันเกิด 'YYYY-MM-DD' — null ถ้าไม่มี/ผิดรูปแบบ */
+function ageFrom(birthdate) {
+  if (!birthdate || !/^\d{4}-\d{2}-\d{2}$/.test(birthdate)) return null;
+  const [Y, M, D] = birthdate.split('-').map(Number);
+  const n = new Date();
+  let age = n.getFullYear() - Y;
+  if (n.getMonth() + 1 < M || (n.getMonth() + 1 === M && n.getDate() < D)) age--;
+  return age >= 0 && age < 120 ? age : null;
+}
 
 function toast(msg, icon = 'success') {
   Swal.fire({ toast: true, position: 'top', icon, title: msg, showConfirmButton: false, timer: 2600, timerProgressBar: true });

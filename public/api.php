@@ -15,6 +15,7 @@ require_once __DIR__ . '/../app/handlers/admin.php';
 require_once __DIR__ . '/../app/handlers/line.php';
 require_once __DIR__ . '/../app/handlers/library.php';
 require_once __DIR__ . '/../app/handlers/quiz.php';
+require_once __DIR__ . '/../app/handlers/health.php';
 require_once __DIR__ . '/../app/drive.php';
 
 const ACTIONS = [
@@ -39,6 +40,7 @@ const ACTIONS = [
     'users_list'      => 'h_users_list',
     'user_add'        => 'h_user_add',
     'user_set_gender' => 'h_user_set_gender',
+    'user_set_birthdate' => 'h_user_set_birthdate',
     'user_approve'    => 'h_user_approve',
     'user_reject'     => 'h_user_reject',
     'user_disable'    => 'h_user_disable',
@@ -70,6 +72,22 @@ const ACTIONS = [
     'quiz_admin_scores' => 'h_quiz_admin_scores',
     'quiz_save'         => 'h_quiz_save',
     'quiz_delete'       => 'h_quiz_delete',
+    // สุขภาพ (staff)
+    'health_my'          => 'h_health_my',
+    'fitness_my'         => 'h_fitness_my',
+    // สุขภาพ (admin)
+    'health_admin_list'  => 'h_health_admin_list',
+    'health_admin_add'   => 'h_health_admin_add',
+    'health_admin_del'   => 'h_health_admin_del',
+    // ทดสอบสมรรถภาพ (admin)
+    'fitness_items_admin' => 'h_fitness_items_admin',
+    'fitness_item_save'   => 'h_fitness_item_save',
+    'fitness_item_delete' => 'h_fitness_item_delete',
+    'fitness_rounds_list' => 'h_fitness_rounds_list',
+    'fitness_round_add'   => 'h_fitness_round_add',
+    'fitness_round_del'   => 'h_fitness_round_del',
+    'fitness_round_get'   => 'h_fitness_round_get',
+    'fitness_result_save' => 'h_fitness_result_save',
     // Google Drive (admin)
     'gdrive_auth_url'   => 'h_gdrive_auth_url',
     'gdrive_status'     => 'h_gdrive_status',
