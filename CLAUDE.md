@@ -58,6 +58,21 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **Migration guarded (ensure_admin):** probe `night_shifts` (42S02→schema.sql, พ่วง re-add 3 settings ใหม่) + ALTER `users.gender`/`attendance.note` (probe information_schema) — pattern เดียวกับ `day_offs.status`
 - **3 settings:** `night_shift_enabled`/`sunday_work_enabled` (bool) + `night_checkin_open` (time) — อยู่ใน EDITABLE_SETTINGS + validation h_settings_save + client_settings
 
+## โซนสุขภาพ (เฟส 1 สมุดสุขภาพ + เฟส 2 ทดสอบสมรรถภาพ — `app/handlers/health.php`)
+
+- **เมนู 🩺 สุขภาพ แยกต่างหาก** (ไม่อยู่ใต้ "พัฒนาตัวเอง") — staff bottom-nav 6 แท็บ / admin 7 แท็บ. แต่ละฝั่งมี segmented sub-tab `record`(สุขภาพ)/`fitness`(สมรรถภาพ). **แอดมินกรอกทุกอย่าง เจ้าหน้าที่อ่านอย่างเดียว**
+- **`users.birthdate DATE NULL`** — guarded ALTER ใน `ensure_admin` (probe information_schema เหมือน gender) + อยู่ใน `public_user()`. แอดมินตั้งผ่านแท็บเจ้าหน้าที่ (`user_set_birthdate` + `valid_birthdate` 15-80 ปี). อายุคำนวณสด (`age_at`/`ageFrom`) ห้ามเก็บ
+- **สุขภาพ (`health_records`, หลาย entry/คน ไม่มี UNIQUE):** จัดระดับ BMI/ความดัน/รอบเอว/ชีพจร เป็น**ค่าคงที่มาตรฐานการแพทย์ไทยในโค้ด** (`grade_bmi/grade_bp/grade_waist/grade_pulse` คืน `{label,level}` level=ok/warn/bad/info หรือ null). **BMI คำนวณสดตอนอ่าน (`calc_bmi`) ไม่เก็บ**. รอบเอวต้องรู้เพศ ไม่งั้น null
+- **สมรรถภาพ = configurable (แอดมินตั้งเกณฑ์เอง):** 3 ตาราง `fitness_items`(ท่า+`criteria_json`) / `fitness_rounds`(รอบ) / `fitness_results`(ผลรายคน/รอบ/ท่า หลาย entry). preset ใส่ครั้งแรกด้วย `seed_fitness_presets()` (guard count==0) — WCT + ดันพื้น
+- **grading engine `grade_fitness($item,$raw,$age,$gender)` — 3 direction (หัวใจ, กันพลาดทิศ):**
+  - `higher` มากยิ่งดี / `lower` น้อย-เร็วยิ่งดี → ต้องมี**อายุ+เพศ**; `criteria_json`={levels:[best→worst], bands:[{min_age,max_age,male:[thr...],female:[thr...]}]}; thr เรียงตรงกับ levels; tone(ok/warn/bad) จากลำดับ (`fitness_tone`)
+  - `cap` ผ่าน≤เพดาน → `criteria_json`={cap:N}; **ไม่ใช้อายุ/เพศ จัดระดับได้ทุกคน** (WCT)
+  - **NULL degrade:** ไม่มีค่า/อายุ/เพศ/เกณฑ์ → คืน null = "ยังไม่จัดระดับ" ห้าม error/เกรดผิด. คำนวณ+เก็บ level+tone ตอนกรอก (ตอน `fitness_result_save`)
+- **กรอกผลแบบ roster batch** (`fitness_round_get` → ตารางทั้งทีม×ท่า, `fitness_result_save` รับ array — ค่าว่าง=ลบผลเดิม, แก้ซ้ำได้ด้วย DELETE+INSERT). แจ้ง LINE async ตอนเปิดรอบ (`line_enqueue` ห้าม push คา request)
+- **criteria editor ฝั่ง admin (admin.js `fitRenderCrit`/`fitSyncCrit`):** re-render บ่อย → **ต้อง `fitSyncCrit()` อ่านค่าจาก DOM กลับเข้า working copy ก่อน mutate/re-render ทุกครั้ง** ไม่งั้นค่าที่พิมพ์หาย
+- helper `healthChip`/`fitnessChip` (app.js global, admin.js เรียกได้เพราะโหลดทีหลัง) — สี tone จาก `HEALTH_LV`
+- migration: probe `health_records` + `fitness_items` (42S02→schema.sql) — pattern เดียวกับ night_shifts
+
 ## Google Drive selfie sync (สำเนารูปเช็คอินขึ้น Drive)
 
 - **ไฟล์:** `app/drive.php` (ท่อ Drive + คิว + OAuth handlers `h_gdrive_*`), `public/oauth.php` (OAuth callback — ไม่มี auth header พึ่ง `gdrive_oauth_state` ที่หมดอายุ 10 นาที กัน CSRF)
