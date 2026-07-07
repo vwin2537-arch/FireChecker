@@ -502,17 +502,18 @@ const Admin = {
   // =====================================================
   // สุขภาพ (แอดมินกรอกให้เจ้าหน้าที่แต่ละคน)
   // =====================================================
-  healthTab: 'record',
+  healthTab: 'overview',
   healthUid: null,
   healthStaff: null,
 
   healthSegHtml() {
     const t = (v, l) => `<button class="${this.healthTab === v ? 'active' : ''}" onclick="Admin.healthSetTab('${v}')">${l}</button>`;
-    return `<div class="seg">${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
+    return `<div class="seg">${t('overview', '📊 ภาพรวม')}${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
   },
   healthSetTab(t) { this.healthTab = t; this.vHealth(); },
 
   async vHealth() {
+    if (this.healthTab === 'overview') return this.vHealthOverview();
     if (this.healthTab === 'fitness') return this.vFitness();
     const dl = await App.api('users_list');
     this.healthStaff = dl.users.filter(u => u.role === 'staff' && u.status !== 'pending');
@@ -526,6 +527,35 @@ const Admin = {
       <div id="hDetail"></div>`;
     if (this.healthUid) this.loadHealthDetail();
   },
+
+  // ---------- แดชบอร์ดภาพรวม (คนต้องดูแล/เฝ้าระวัง แยกสุขภาพ & สมรรถภาพ) ----------
+  async vHealthOverview() {
+    byId('view').innerHTML = this.healthSegHtml() + '<div id="ovBox"><div class="card muted">กำลังโหลด...</div></div>';
+    const d = await App.api('health_dashboard');
+    byId('ovBox').innerHTML =
+      this.ovCard('🩺 สุขภาพ', d.health, 'จากผลตรวจล่าสุด') +
+      this.ovCard('🏃 สมรรถภาพ', d.fitness, 'จากรอบทดสอบล่าสุด');
+  },
+
+  ovCard(title, s, sub) {
+    const stat = (n, cls, lbl) => `<div class="ov-stat ov-${cls}"><b>${n}</b><span>${lbl}</span></div>`;
+    const person = (p, cls) => `<button class="ov-row ov-${cls}" onclick="Admin.healthOpen(${p.id})">
+        <span class="ov-name">${esc(p.name)}</span>
+        <span class="ov-iss">${p.issues.map(esc).join(' · ')}</span></button>`;
+    let body;
+    if (s.total === 0) body = '<div class="empty" style="padding:16px 12px">ยังไม่มีข้อมูล — เมื่อบันทึกผลแล้วจะสรุปให้อัตโนมัติค่ะ</div>';
+    else if (!s.red.length && !s.yellow.length) body = '<div class="empty" style="padding:16px 12px">🟢 ทุกคนอยู่ในเกณฑ์ดี ไม่มีใครต้องเป็นห่วงค่ะ</div>';
+    else body =
+      (s.red.length ? `<div class="ov-sec ov-sec-r">🔴 ต้องดูแล (${s.red.length})</div>${s.red.map(p => person(p, 'r')).join('')}` : '') +
+      (s.yellow.length ? `<div class="ov-sec ov-sec-y">🟡 เฝ้าระวัง (${s.yellow.length})</div>${s.yellow.map(p => person(p, 'y')).join('')}` : '');
+    return `<div class="card">
+      <h3>${title} <span class="h-right tiny">${sub}</span></h3>
+      <div class="ov-stats">${stat(s.red.length, 'r', 'ต้องดูแล')}${stat(s.yellow.length, 'y', 'เฝ้าระวัง')}${stat(s.green, 'g', 'ปกติ')}</div>
+      ${body}</div>`;
+  },
+
+  // กดชื่อคน → เปิดหน้าผลตรวจรายคนของเขา
+  healthOpen(uid) { this.healthUid = String(uid); this.healthTab = 'record'; this.vHealth(); },
 
   healthPick(uid) { this.healthUid = uid || null; this.loadHealthDetail(); },
 

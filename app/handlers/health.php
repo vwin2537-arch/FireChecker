@@ -382,3 +382,92 @@ function h_fitness_result_save(): never {
     }
     ok(['message' => "บันทึกผลแล้ว {$saved} รายการ"]);
 }
+
+// =====================================================
+// แดชบอร์ดภาพรวม (แอดมิน) — สรุปคนต้องดูแล/เฝ้าระวัง แยกสุขภาพ & สมรรถภาพ
+// ใช้ผลล่าสุดของแต่ละคน · ซ่อนคนที่ยังไม่มีข้อมูล · เฉพาะ จนท. active
+// =====================================================
+function h_health_dashboard(): never {
+    require_admin();
+
+    $staff = [];
+    foreach (db()->query("SELECT id, name, position, gender FROM users WHERE role='staff' AND status='active'") as $s)
+        $staff[$s['id']] = $s;
+
+    // ---------- สุขภาพ: ผลตรวจล่าสุดต่อคน ----------
+    $rows = db()->query(
+        'SELECT h.user_id, h.weight_kg, h.height_cm, h.waist_cm, h.bp_sys, h.bp_dia, h.pulse
+         FROM health_records h
+         JOIN (SELECT user_id, MAX(record_date) md FROM health_records GROUP BY user_id) t
+           ON t.user_id = h.user_id AND t.md = h.record_date
+         ORDER BY h.id DESC')->fetchAll();
+    $latest = [];                                          // เก็บ record แรก (id สูงสุด) ต่อคน
+    foreach ($rows as $r) if (!isset($latest[$r['user_id']])) $latest[$r['user_id']] = $r;
+
+    $hRed = []; $hYellow = []; $hGreen = 0;
+    foreach ($latest as $uid => $r) {
+        if (!isset($staff[$uid])) continue;               // ไม่ active แล้ว = ซ่อน
+        $classes = [
+            'ความดัน' => grade_bp($r['bp_sys'], $r['bp_dia']),
+            'BMI'     => grade_bmi(calc_bmi($r['weight_kg'], $r['height_cm'])),
+            'รอบเอว'  => grade_waist($r['waist_cm'], $staff[$uid]['gender'] ?? null),
+            'ชีพจร'   => grade_pulse($r['pulse']),
+        ];
+        $bad = []; $warn = [];
+        foreach ($classes as $name => $c) {
+            if (!$c) continue;
+            if ($c['level'] === 'bad')       $bad[]  = "$name: {$c['label']}";
+            elseif ($c['level'] === 'warn')  $warn[] = "$name: {$c['label']}";
+        }
+        if ($bad)      $hRed[]    = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => array_merge($bad, $warn)];
+        elseif ($warn) $hYellow[] = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => $warn];
+        else           $hGreen++;
+    }
+
+    // ---------- สมรรถภาพ: รอบทดสอบล่าสุดต่อคน ----------
+    $fr = db()->query(
+        'SELECT f.user_id, f.level, f.tone, r.id round_id,
+                i.name item_name, i.criteria_json
+         FROM fitness_results f
+         JOIN fitness_rounds r ON r.id = f.round_id
+         JOIN fitness_items  i ON i.id = f.item_id
+         ORDER BY f.user_id, r.test_date DESC, r.id DESC')->fetchAll();
+    $byUser = [];                                          // เก็บเฉพาะแถวของ round ล่าสุด (round_id แรกที่เจอ)
+    foreach ($fr as $row) {
+        $uid = $row['user_id'];
+        if (!isset($byUser[$uid])) $byUser[$uid] = ['round_id' => $row['round_id'], 'rows' => []];
+        if ($byUser[$uid]['round_id'] === $row['round_id']) $byUser[$uid]['rows'][] = $row;
+    }
+
+    $fRed = []; $fYellow = []; $fGreen = 0;
+    foreach ($byUser as $uid => $data) {
+        if (!isset($staff[$uid])) continue;
+        $bad = []; $warn = [];
+        foreach ($data['rows'] as $row) {
+            $lvl = $row['level'];
+            if ($lvl === null || $lvl === '') continue;    // ยังไม่จัดระดับ = ข้าม
+            $crit = json_decode((string)$row['criteria_json'], true);
+            $levels = (is_array($crit) && !empty($crit['levels'])) ? $crit['levels'] : null;
+            if (is_array($levels) && count($levels) >= 2) {
+                // ใช้ตำแหน่งระดับ: ล่างสุด = แดง · รองล่างสุด = เหลือง (ระดับกลาง/ดี ไม่เตือน)
+                $idx = array_search($lvl, $levels, true);
+                $last = count($levels) - 1;
+                if ($idx === $last)          $bad[]  = "{$row['item_name']}: {$lvl}";
+                elseif ($idx === $last - 1)  $warn[] = "{$row['item_name']}: {$lvl}";
+            } elseif ($row['tone'] === 'bad') {
+                // cap (ผ่าน/ไม่ผ่าน) หรือไม่มีระดับ → พึ่ง tone
+                $bad[] = "{$row['item_name']}: {$lvl}";
+            }
+        }
+        if ($bad)      $fRed[]    = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => array_merge($bad, $warn)];
+        elseif ($warn) $fYellow[] = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => $warn];
+        else           $fGreen++;
+    }
+
+    ok([
+        'health'  => ['red' => $hRed, 'yellow' => $hYellow, 'green' => $hGreen,
+                      'total' => count($hRed) + count($hYellow) + $hGreen],
+        'fitness' => ['red' => $fRed, 'yellow' => $fYellow, 'green' => $fGreen,
+                      'total' => count($fRed) + count($fYellow) + $fGreen],
+    ]);
+}

@@ -76,6 +76,7 @@ const ACTIONS = [
     'health_my'          => 'h_health_my',
     'fitness_my'         => 'h_fitness_my',
     // สุขภาพ (admin)
+    'health_dashboard'   => 'h_health_dashboard',
     'health_admin_list'  => 'h_health_admin_list',
     'health_admin_add'   => 'h_health_admin_add',
     'health_admin_del'   => 'h_health_admin_del',

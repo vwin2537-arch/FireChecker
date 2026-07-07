@@ -2,7 +2,7 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 5 ก.ค. 2026 — **heartbeat วันหยุดสถานี**: วันอาทิตย์รอบเช้า LINE ส่งข้อความยืนยันระบบทำงานปกติ (ก่อนหน้าเงียบเลยเข้าใจผิดว่า cron พัง) — ดู Deploy section. ก่อนหน้า: **ฉากพิกเซลเคลื่อนไหวหน้า Home + ฉลองเช็คชื่อ + deploy (v17)**: แทน emoji สถานะด้วยฉาก SVG วาดเอง 3 แบบ (วันหยุด=ทะเลมะพร้าว, เช็คแล้ว=จนท.ถือคราด, ลา=นอนพัก) ขยับด้วย CSS keyframes + `prefers-reduced-motion` — โค้ด `App.scene()` (app.js) + `.scene`/`sc-*` (app.css). v17 เพิ่ม confetti พิกเซล + ฉากเด้ง pop **เฉพาะเช็คตรงเวลา** (`App.celebrate()`). ก่อนหน้า: เฟส 2 ระบบอนุมัติลา (v15, technical → CLAUDE.md "ระบบอนุมัติลา"). (test log เก่า 2-4 ก.ค. ย้ายไป PROGRESS_ARCHIVE.md)
+อัปเดตล่าสุด: 7 ก.ค. 2026 — **แดชบอร์ดภาพรวมสุขภาพ (v21) deploy แล้ว**: แท็บ 📊 ภาพรวม (แท็บแรก+default ในโซนสุขภาพ, admin) สรุปคนต้องดูแล🔴/เฝ้าระวัง🟡/ปกติ🟢 แยกการ์ดสุขภาพ & สมรรถภาพ — `h_health_dashboard` (health.php). ก่อนหน้า: โซนสุขภาพ เฟส1-2 (v19-20), เฟส 6 เวรกลางคืน/วันอาทิตย์ (v18). (test log เก่า 2-4 ก.ค. → PROGRESS_ARCHIVE.md · technical → CLAUDE.md "โซนสุขภาพ")
 
 ## ทำเสร็จแล้ว
 
@@ -136,7 +136,7 @@
 - **⚠️ Rollout:** แอดมินต้องตั้งเพศ+วันเกิด จนท.เดิมก่อน — เฟส1 ขาดเพศแค่รอบเอวไม่จัดระดับ / **เฟส2 (สมรรถภาพ) ขาดอายุ/เพศ = ไม่จัดเกรด**
 - **รอทำเฟส 2:** ทดสอบสมรรถภาพ (`fitness_items`/`fitness_rounds`/`fitness_results` + grading engine higher/lower/cap + seed WCT Pack Test) — เกณฑ์ configurable แอดมินตั้งเอง (ไม่มีมาตรฐานดับไฟป่าไทยเผยแพร่ + ตารางกรมพลศึกษาเต็มติด PDF)
 
-## โซนสุขภาพ (เฟส 2 — ทดสอบสมรรถภาพ + grading engine) — v20 (7 ก.ค. 2026, รอ deploy)
+## โซนสุขภาพ (เฟส 2 — ทดสอบสมรรถภาพ + grading engine) — v20 (7 ก.ค. 2026, deployed)
 
 - **3 ตารางใหม่:** `fitness_items` (ท่า+เกณฑ์ criteria_json), `fitness_rounds` (รอบทดสอบ), `fitness_results` (ผลรายคน/รอบ/ท่า หลาย entry) — probe 42S02 ใน `ensure_admin` + FK cascade
 - **เกณฑ์ configurable (แอดมินตั้งเอง)** — `seed_fitness_presets()` ใส่ตั้งต้นครั้งแรก (ตารางว่าง): WCT Arduous/Moderate/Light (cap 45/30/16) + ดันพื้น (higher, ThaiSook 5 ช่วงอายุ×เพศ)
@@ -145,3 +145,9 @@
 - **เจ้าหน้าที่:** แท็บย่อย 🏃 สมรรถภาพ (เดิม disabled) → ผลตัวเองแยกตามรอบ + chip ระดับ (`fitnessChip` by tone)
 - verify: local API grading ถูกทุกเคส (ดันพื้น45→ดี, วิ่ง12→พอใช้ ไม่กลับทิศ, WCT50→ไม่ผ่าน, NULL→ยังไม่จัดระดับ, re-save/clear) + playwright 3 จอ (roster/criteria-editor/staff) ไม่มี console error
 - **cache-bust v19→v20** (เฟส2 แก้ app.js/admin.js/app.css ซ้ำจาก v19 ที่ deploy ไปแล้ว — ต้องเด้ง v20 ไม่งั้น PWA ค้างเฟส1)
+- **v20+21 deployed 7 ก.ค. (`railway up`)** — verify live: index v21 เสิร์ฟจริง + `fitness_rounds_list`/`health_dashboard` ตอบ 401 JSON (route ลง, display_errors ปิด). **ชุดทดสอบที่พี่วินเลือก = กรมพลศึกษา 19-59 + WCT** (ไม่ใช่ดันพื้น/ซิทอัพ=วัยเรียน 7-18) → สคริปต์ตั้ง 3 ท่า `~/setup_fitness.py` (idempotent, พี่วินรันเอง) **ยังไม่รันบน prod**
+
+## แดชบอร์ดภาพรวมสุขภาพ — v21 (7 ก.ค. 2026, deployed)
+
+- **แท็บ 📊 ภาพรวม** แท็บแรก+default โซนสุขภาพ (admin) — `h_health_dashboard` สรุป 🔴ต้องดูแล/🟡เฝ้าระวัง/🟢ปกติ **แยกการ์ดสุขภาพ & สมรรถภาพ**, ผลล่าสุดต่อคน, ซ่อนคนไม่มีข้อมูล, staff active. สุขภาพ=grade bad→🔴/warn→🟡 · สมรรถภาพ=**ตำแหน่งระดับ** ล่างสุด→🔴 รองล่าง→🟡 (ไม่ใช้ tone ดิบ กัน "ดี" false-alarm) · cap=tone bad→🔴. กดชื่อ→หน้ารายคน. → CLAUDE.md "โซนสุขภาพ"
+- verify: ทดสอบครบทุก branch บน local server+DB จริง (รวมเคส "ดี"ไม่โดน flag) + prod endpoint 401 JSON
