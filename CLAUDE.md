@@ -85,13 +85,23 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **settings ที่เกี่ยว (ห้าม hardcode):** `gdrive_client_id`/`gdrive_client_secret` (แอดมินกรอก, อยู่ใน EDITABLE_SETTINGS), `gdrive_refresh_token`/`gdrive_access_token`/`gdrive_access_exp`/`gdrive_root_id`/`gdrive_day_cache`/`gdrive_oauth_state`/`gdrive_last_run` (ระบบเซ็ตเอง) — เหมือน LINE token ไม่อยู่ในโค้ด
 - **OAuth setup:** แอดมินทำครั้งเดียวตามคู่มือ `SETUP_GDRIVE.md` — ต้อง Publish App + Enable Drive API มิฉะนั้นพัง (ดู PROGRESS lesson 7)
 
+## โหมดเช็คชื่อนอกสถานที่ (offsite — `offsite_days` + attendance.php/admin.php, v25)
+
+แอดมินตั้งวันล่วงหน้าที่สั่ง จนท.ไปกิจกรรมนอกสถานี → วันนั้นทุกคนเช็คจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย
+
+- **ตาราง `offsite_days`** (global รายวัน ไม่ผูก user): `off_date UNIQUE`, `start_time`/`end_time` เก็บ **VARCHAR(5) "HH:MM"** (ให้ตรง pattern เวลาอื่นทั้งระบบ ไหลผ่าน `hm_to_min()` + regex เดียวกัน — ไม่ใช้ TIME เพราะจะได้ ":ss" กลับมา), `reason`. helper `offsite_for($date)` คืน row/null (คล้าย `is_station_holiday`)
+- **`h_checkin` แทรก 4 จุดผ่านตัวแปร `$offsite = offsite_for($today)`:** (1) block วันหยุด `&& !$offsite` (offsite ทะลุได้ แม้ตรงวันอาทิตย์) (2) เวลาเปิด → `$offsite['start_time']` แทน `checkin_open` (3) **GPS `if (!$offsite && gps_enforce)`** ข้ามบังคับรัศมี แต่ยังคำนวณ/เก็บ `distance_m` ไว้ดูว่าเช็คจากที่ไหน (4) คิดสาย → `end_time` แทน `late_cutoff` (offsite ไม่ยกเว้นเวรกลางคืน — คนละบริบท)
+- **แอดมินจัดการในหน้าตั้งค่า** — การ์ด "📍 วันเช็คชื่อนอกสถานที่", handler แยก `offsite_list/add/del` (**ไม่ผ่าน `settings_save`** เพราะเป็น record รายวันไม่ใช่ key-value). `h_offsite_add` validate วันที่ + start<end (regex `HH:MM`) + กันวันย้อนหลัง, `ON DUPLICATE KEY` แก้วันเดิมทับได้. list โหลด async ท้าย `vSettings` ผ่าน `Admin.offsiteRefresh()` (pattern เดียวกับ `gdriveRefreshStatus`)
+- **client:** `h_app_data` ส่ง `today.offsite` (row/null) → `app.js` (1) `doCheckin` ข้าม block ตอน GPS fail ด้วย `&& !this.data.today.offsite` (2) `startClock` คุมปุ่มด้วย `start/end` ของวันนั้น (ไม่งั้นปุ่ม disabled จนถึง `checkin_open`) (3) banner เขียวหน้า Home + clock-note บอกช่วงเวลา
+- migration: probe `offsite_days` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
+
 ## Deploy
 
 Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
 
 **⚠️ push GitHub ไม่ auto-deploy** — repo เป็น source control อย่างเดียว ไม่ได้ผูก webhook ต้อง deploy tarball เอง: `railway up` หรือ MCP `deploy` (`path=firecheck/`, service `8a5f15ef-d377-4437-80aa-b0fc0775d087`) ทุก deployment คอลัมน์ commit เป็น `-` เพราะเป็น tarball upload ไม่ใช่ GitHub-triggered — verify live ด้วย `curl https://sakpra-erawan.up.railway.app/index.php` ทุกครั้ง — ถ้า MCP `deploy`/`whoami` ค้าง `Unauthorized` (auth คนละชุดกับ CLI) ให้ใช้ `railway up` ตรงๆ ในเทอร์มินัลแทนได้เลย ไม่ต้อง re-login
 
-**⚠️ Cache-bust ตอนแก้ frontend** — `sw.js` เก็บ `assets/*` แบบ cache-first PWA ที่ติดตั้งแล้วจะเห็นของเก่าถ้าไม่เด้ง version ต้องแก้ **พร้อมกัน 2 ที่**: `?v=N` ใน `index.php` (css+js) **และ** `const CACHE = 'firecheck-vN'` + ASSETS `?v=N` ใน `sw.js` (activate จะล้าง cache เก่าให้)
+**⚠️ Cache-bust ตอนแก้ frontend** — `sw.js` เก็บ `assets/*` แบบ cache-first PWA ที่ติดตั้งแล้วจะเห็นของเก่าถ้าไม่เด้ง version ต้องแก้ **พร้อมกัน 2 ที่**: `?v=N` ใน `index.php` (css+js+admin.js) **และ** `const CACHE = 'firecheck-vN'` + ASSETS `?v=N` ใน `sw.js` (activate จะล้าง cache เก่าให้). **`index.php` มี PHP `header('Cache-Control: no-cache')` ต้นไฟล์** (เพิ่ม v23) กัน iOS PWA standalone ค้าง HTML shell เก่าที่ยังชี้ไป asset เก่า → วนงูกินหาง (เจอจริง: บั๊ก UI ที่ hard-refresh แล้วไม่หาย มักเป็น**โค้ดค้าง/โค้ดซ้ำ 2 ที่** ไม่ใช่ cache — เช่น `devSegHtml` มีทั้งใน app.js (staff) และ admin.js (admin) แก้ที่เดียวไม่พอ)
 
 **Live:** https://sakpra-erawan.up.railway.app — Railway project "firecheck" (`0490e262-abfe-49c6-bd47-81cdd12ed7d1`), service `firecheck-app` + `MySQL` + Volume `/data` (domain renamed from the default `firecheck-app-production.up.railway.app` for staff usability; `firecheck.up.railway.app` was already taken by someone else)
 
