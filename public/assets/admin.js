@@ -1175,6 +1175,19 @@ const Admin = {
         <div class="grid-2">${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}${I('off_quota_month', 'โควต้าวันหยุด (วัน/เดือน)', 'number')}</div>
         <button class="btn btn-ghost btn-sm" onclick="Admin.useHere()">📌 ใช้ตำแหน่งปัจจุบันของฉัน</button>
       </div>
+      <div class="card"><h3>📍 วันเช็คชื่อนอกสถานที่</h3>
+        <div class="tiny" style="margin-bottom:10px">วันที่สั่ง จนท. ไปกิจกรรมนอกสถานี — วันนั้นทุกคนเช็คชื่อจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย</div>
+        <div id="offsiteList" class="tiny">กำลังโหลด...</div>
+        <div class="grid-2" style="margin-top:12px">
+          <div class="field"><label>วันที่</label><input type="date" class="input" id="osDate" value="${todayStr()}"></div>
+          <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osReason" maxlength="255" placeholder="เช่น อบรมดับไฟป่า อ.เมือง"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>เปิดเช็ค (น.)</label><input type="time" class="input" id="osStart" value="07:00"></div>
+          <div class="field"><label>ปิด — ไม่นับสาย (น.)</label><input type="time" class="input" id="osEnd" value="09:00"></div>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="Admin.offsiteAdd()">➕ เพิ่มวันนอกสถานที่</button>
+      </div>
       <div class="card"><h3>🏷️ ทั่วไป</h3>${I('station_name', 'ชื่อสถานี')}
         <div class="setting-row" style="border:none;padding-top:4px">
           <div class="sr-main"><div class="sr-title">🔑 เปลี่ยนรหัสผ่านแอดมิน</div>
@@ -1201,6 +1214,38 @@ const Admin = {
       </div>
       <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
     this.gdriveRefreshStatus();
+    this.offsiteRefresh();
+  },
+
+  // วันเช็คชื่อนอกสถานที่ — โหลด/แสดง list (handler แยกจาก settings_save)
+  async offsiteRefresh() {
+    const el = byId('offsiteList');
+    if (!el) return;
+    const d = await App.api('offsite_list');
+    el.innerHTML = d.items.length ? d.items.map(o => `
+      <div class="list-row">
+        <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)} <span style="color:var(--muted)">· ${o.start_time}–${o.end_time} น.</span></div>
+          ${o.reason ? `<div class="lr-sub">${esc(o.reason)}</div>` : ''}</div>
+        <button class="link-btn" style="color:var(--absent);font-size:13px" onclick="Admin.offsiteDel(${o.id})">ลบ</button>
+      </div>`).join('') : '<div style="color:var(--muted);padding:6px 0">ยังไม่มีวันนอกสถานที่ที่ตั้งไว้</div>';
+  },
+
+  async offsiteAdd() {
+    const d = await App.api('offsite_add', {
+      off_date: byId('osDate').value, start_time: byId('osStart').value,
+      end_time: byId('osEnd').value, reason: byId('osReason').value.trim(),
+    });
+    toast(d.message);
+    byId('osReason').value = '';
+    this.offsiteRefresh();
+  },
+
+  async offsiteDel(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบวันนอกสถานที่นี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    await App.api('offsite_del', { id });
+    toast('ลบแล้ว');
+    this.offsiteRefresh();
   },
 
   async gdriveRefreshStatus() {

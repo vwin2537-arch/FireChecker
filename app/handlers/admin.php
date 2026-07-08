@@ -360,3 +360,41 @@ function h_settings_save(): never {
     }
     ok(['message' => 'บันทึกการตั้งค่าแล้ว']);
 }
+
+// ---------- วันเช็คชื่อนอกสถานที่ (offsite) ----------
+
+/** รายการวันนอกสถานที่ที่ตั้งไว้ (วันนี้ขึ้นไป) — สำหรับหน้าตั้งค่าแอดมิน */
+function h_offsite_list(): never {
+    require_admin();
+    $st = db()->prepare('SELECT id, off_date, start_time, end_time, reason FROM offsite_days WHERE off_date >= ? ORDER BY off_date');
+    $st->execute([date('Y-m-d')]);
+    ok(['items' => $st->fetchAll()]);
+}
+
+/** เพิ่ม/แก้วันนอกสถานที่ (แก้วันเดิม = ทับ ผ่าน ON DUPLICATE KEY) */
+function h_offsite_add(): never {
+    require_admin();
+    $date   = trim((string)param('off_date', ''));
+    $start  = trim((string)param('start_time', ''));
+    $end    = trim((string)param('end_time', ''));
+    $reason = mb_substr(trim((string)param('reason', '')), 0, 255);
+    $timeRe = '/^([01]\d|2[0-3]):[0-5]\d$/';
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) fail('วันที่ไม่ถูกต้อง');
+    if ($date < date('Y-m-d')) fail('เลือกวันย้อนหลังไม่ได้');
+    if (!preg_match($timeRe, $start) || !preg_match($timeRe, $end)) fail('รูปแบบเวลาไม่ถูกต้อง (HH:MM)');
+    if (hm_to_min($start) >= hm_to_min($end)) fail('เวลาเริ่มต้องก่อนเวลาสิ้นสุด');
+
+    db()->prepare('INSERT INTO offsite_days (off_date, start_time, end_time, reason)
+                   VALUES (?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE start_time = VALUES(start_time), end_time = VALUES(end_time), reason = VALUES(reason)')
+        ->execute([$date, $start, $end, $reason]);
+    ok(['message' => 'บันทึกวันเช็คชื่อนอกสถานที่แล้ว']);
+}
+
+/** ลบวันนอกสถานที่ */
+function h_offsite_del(): never {
+    require_admin();
+    db()->prepare('DELETE FROM offsite_days WHERE id = ?')->execute([(int)param('id', 0)]);
+    ok(['message' => 'ลบแล้ว']);
+}

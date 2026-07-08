@@ -318,10 +318,12 @@ const App = {
         <div class="db-title">วันนี้คุณแจ้ง${label}ไว้</div>
         <div class="db-sub">ถ้ามาทำงาน ให้ยกเลิกที่แท็บ "วันหยุด" ก่อนเช็คชื่อ</div></div>`;
     } else {
-      stateHtml = `<button class="big-check" id="btnCheckin" onclick="App.doCheckin()">
+      const os = t.offsite;
+      const osBanner = os ? `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#065f46">📍 วันนี้เช็คชื่อ<b>นอกสถานที่</b>ได้ทุกที่${os.reason ? ' — ' + esc(os.reason) : ''}<br>เช็คในช่วง <b>${os.start_time}–${os.end_time}</b> น. ไม่นับสาย</div>` : '';
+      stateHtml = `${osBanner}<button class="big-check" id="btnCheckin" onclick="App.doCheckin()">
         <span class="bc-ico">📍</span>เช็คชื่อ<span class="bc-sub" id="bcSub"></span>
       </button>
-      <div class="clock-note">เปิดเช็คชื่อ ${s.checkin_open} น. • หลัง ${s.late_cutoff} น. นับว่าสาย</div>`;
+      <div class="clock-note">${os ? `เช็คนอกสถานที่ ${os.start_time}–${os.end_time} น. (ไม่นับสาย)` : `เปิดเช็คชื่อ ${s.checkin_open} น. • หลัง ${s.late_cutoff} น. นับว่าสาย`}</div>`;
     }
 
     const q = d.quota, qPct = Math.min(100, q.used / q.max * 100);
@@ -370,7 +372,8 @@ const App = {
   },
 
   startClock() {
-    const s = this.data.settings;
+    const s = this.data.settings, os = this.data.today.offsite;   // วันนอกสถานที่คุมปุ่มด้วยช่วงเวลาของวันนั้น
+    const openStr = os ? os.start_time : s.checkin_open, lateStr = os ? os.end_time : s.late_cutoff;
     const tick = () => {
       const el = byId('clock'); if (!el) return clearInterval(this.clockTimer);
       const n = new Date();
@@ -378,8 +381,8 @@ const App = {
       const btn = byId('btnCheckin'), sub = byId('bcSub');
       if (btn) {
         const nowM = n.getHours() * 60 + n.getMinutes();
-        const openM = hm(s.checkin_open), lateM = hm(s.late_cutoff);
-        if (nowM < openM) { btn.disabled = true; sub.textContent = 'เปิดเวลา ' + s.checkin_open + ' น.'; }
+        const openM = hm(openStr), lateM = hm(lateStr);
+        if (nowM < openM) { btn.disabled = true; sub.textContent = 'เปิดเวลา ' + openStr + ' น.'; }
         else { btn.disabled = false; sub.textContent = nowM > lateM ? 'เลยเวลา — จะถูกนับว่าสาย' : 'แตะเพื่อเช็คชื่อ'; }
       }
     };
@@ -408,7 +411,7 @@ const App = {
         Swal.close();
       } catch (err) {
         Swal.close();
-        if (s.gps_enforce) {
+        if (s.gps_enforce && !this.data.today.offsite) {   // วันนอกสถานที่ไม่บังคับ GPS — หาไม่เจอก็เช็คต่อได้
           await Swal.fire({ icon: 'error', title: 'ไม่พบตำแหน่ง GPS', html: gpsErrorMessage(err), confirmButtonText: 'ตกลง' });
           return;
         }

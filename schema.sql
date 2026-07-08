@@ -80,6 +80,18 @@ CREATE TABLE IF NOT EXISTS day_offs (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- วันเช็คชื่อนอกสถานที่ (สั่งเจ้าหน้าที่ไปกิจกรรมนอกสถานี) — global รายวัน ไม่ผูก user
+-- ถึงวันนี้: h_checkin ข้าม GPS enforce + ใช้ start_time/end_time แทน checkin_open/late_cutoff
+CREATE TABLE IF NOT EXISTS offsite_days (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  off_date   DATE NOT NULL,
+  start_time VARCHAR(5) NOT NULL,          -- "HH:MM" เวลาเปิดเช็ค
+  end_time   VARCHAR(5) NOT NULL,          -- "HH:MM" เส้นตายไม่สาย
+  reason     VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_offsite_date (off_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS settings (
   skey   VARCHAR(50) PRIMARY KEY,
   svalue TEXT

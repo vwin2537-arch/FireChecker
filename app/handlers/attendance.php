@@ -55,6 +55,7 @@ function h_app_data(): never {
             'day_off'     => $offToday,
             'attendance'  => $att,
             'night'       => $nightToday,
+            'offsite'     => offsite_for($today),   // วันเช็คชื่อนอกสถานที่ (null = วันปกติ)
         ],
         'quota'    => ['used' => $quotaUsed, 'max' => (int)setting('off_quota_month', '10')],
         'upcoming' => $upcoming,
@@ -91,12 +92,20 @@ function tonight_duty_date(): string {
     return (int)date('G') < 6 ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d');
 }
 
+/** วันเช็คชื่อนอกสถานที่ของวันที่ระบุ (row {off_date,start_time,end_time,reason} หรือ null) */
+function offsite_for(string $date): ?array {
+    $st = db()->prepare('SELECT off_date, start_time, end_time, reason FROM offsite_days WHERE off_date = ?');
+    $st->execute([$date]);
+    return $st->fetch() ?: null;
+}
+
 function h_checkin(): never {
     $u     = require_user();
     $today = date('Y-m-d');
 
     $isHoliday = is_station_holiday($today);
-    if ($isHoliday && setting('sunday_work_enabled', '1') !== '1')
+    $offsite   = offsite_for($today);   // วันเช็คชื่อนอกสถานที่ (ข้าม GPS + ใช้ช่วงเวลาของวันนั้น); null = วันปกติ
+    if ($isHoliday && !$offsite && setting('sunday_work_enabled', '1') !== '1')
         fail('วันนี้เป็นวันหยุดสถานี (วันอาทิตย์) ไม่ต้องเช็คชื่อค่ะ');
 
     $st = db()->prepare('SELECT type FROM day_offs WHERE user_id = ? AND off_date = ?');
@@ -110,9 +119,10 @@ function h_checkin(): never {
     $st->execute([$u['id'], $today]);
     if ($st->fetch()) fail('วันนี้เช็คชื่อไปแล้ว');
 
-    if (!$isHoliday) {   // วันหยุด (งานวันอาทิตย์) เช็คได้ทั้งวัน ไม่มีเวลาเปิด
-        $open = hm_to_min(setting('checkin_open', '08:05'));
-        if (now_min() < $open) fail('ยังไม่ถึงเวลาเช็คชื่อ (เปิด ' . setting('checkin_open', '08:05') . ' น.)');
+    // เวลาเปิดเช็ค: offsite ใช้ช่วงเวลาของวันนั้น / วันทำงานปกติใช้ checkin_open / วันหยุด (งานวันอาทิตย์) เช็คได้ทั้งวัน
+    if ($offsite || !$isHoliday) {
+        $openStr = $offsite ? $offsite['start_time'] : setting('checkin_open', '08:05');
+        if (now_min() < hm_to_min($openStr)) fail("ยังไม่ถึงเวลาเช็คชื่อ (เปิด {$openStr} น.)");
     }
 
     // ---- GPS ----
@@ -122,7 +132,7 @@ function h_checkin(): never {
     if ($lat !== null && $lng !== null) {
         $dist = distance_m($lat, $lng, (float)setting('gps_lat'), (float)setting('gps_lng'));
     }
-    if (setting('gps_enforce', '1') === '1') {
+    if (!$offsite && setting('gps_enforce', '1') === '1') {   // วันนอกสถานที่ข้ามการบังคับรัศมี (ยังเก็บพิกัด/ระยะไว้ดู)
         if ($dist === null) fail('ไม่พบพิกัด GPS — กรุณาเปิดตำแหน่งแล้วลองใหม่');
         $radius = (int)setting('gps_radius_m', '1000');
         if ($dist > $radius) fail("คุณอยู่ห่างสถานี {$dist} ม. (เกินรัศมี {$radius} ม.) เช็คชื่อไม่ได้");
@@ -139,9 +149,11 @@ function h_checkin(): never {
         $selfiePath = save_photo($selfie, 'selfie_u' . $u['id']); // ส่งมาก็เก็บให้ แม้ไม่บังคับ
     }
 
-    // วันหยุด (งานวันอาทิตย์) ไม่มีเข้าแถว = ไม่นับสาย; วันทำงานปกติคิดสายตามเวลา
+    // คิดสาย: offsite ใช้ end_time ของวันนั้น / วันทำงานปกติใช้ late_cutoff (+ยกเว้นเวรกลางคืน) / วันหยุด (งานวันอาทิตย์) ไม่นับสาย
     $late = 0; $exempted = false;
-    if (!$isHoliday) {
+    if ($offsite) {
+        $late = now_min() > hm_to_min($offsite['end_time']) ? 1 : 0;
+    } elseif (!$isHoliday) {
         $late = now_min() > hm_to_min(setting('late_cutoff', '08:15')) ? 1 : 0;
         if ($late) {   // ยกเว้นสายถ้าเมื่อคืนลงเวรกลางคืน (duty_date = เมื่อวาน; รวมคืนวันอาทิตย์)
             $st = db()->prepare('SELECT 1 FROM night_shifts WHERE user_id = ? AND duty_date = ?');
@@ -159,7 +171,8 @@ function h_checkin(): never {
     if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'], $today);
 
     $msg = 'เช็คชื่อแล้ว ตรงเวลา 🎉';
-    if ($late)          $msg = 'เช็คชื่อแล้ว (สาย)';
+    if ($offsite)       $msg = $late ? 'เช็คชื่อแล้ว (นอกสถานที่ · สาย) 📍' : 'เช็คชื่อแล้ว (นอกสถานที่) 📍';
+    elseif ($late)      $msg = 'เช็คชื่อแล้ว (สาย)';
     elseif ($exempted)  $msg = 'เช็คชื่อแล้ว — ยกเว้นสาย (มาจากเวรกลางคืน) 🌙';
     elseif ($isHoliday) $msg = 'เช็คชื่อแล้ว (ทำงานวันหยุด) 🎉';
 
