@@ -2,7 +2,11 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 8 ก.ค. 2026 — **โหมดเช็คชื่อนอกสถานที่ (v25) deploy แล้ว**: แอดมินตั้งวันล่วงหน้า (วันที่+ช่วงเวลา+เหตุผล) ที่สั่ง จนท.ไปกิจกรรมนอกสถานี → วันนั้นทุกคนข้าม GPS + คิดสายด้วยช่วงเวลาของวันนั้น. ก่อนหน้า: ลบปุ่ม 💪 กายภาพ ค้างจากหน้าพัฒนา (มี 2 ที่ app.js+admin.js) + `index.php` no-cache header กัน iOS PWA ค้าง HTML (v22-24), แดชบอร์ดภาพรวมสุขภาพ (v21). (test log เก่า 2-4 ก.ค. → PROGRESS_ARCHIVE.md · technical → CLAUDE.md "โหมดเช็คชื่อนอกสถานที่")
+อัปเดตล่าสุด: 10 ก.ค. 2026 — **กล่องข้อความ + คืนนี้ใครเข้าเวร (v26) — เขียน+เทสเสร็จ ยังไม่ deploy**: กล่องข้อความ 📬 ฝั่งเจ้าหน้าที่ (จุดแดงข้อความใหม่ เปิดอ่านแล้วหาย) รับ 3 อย่าง — ประกาศจากหัวหน้า (broadcast) / หัวหน้าอนุมัติลา / ไม่อนุมัติลา · แดชบอร์ดแอดมินเพิ่ม "🌙 คืนนี้ใครเข้าเวร" (รายชื่อ+เวลา + date picker เลือกย้อนวัน) คู่กับสถิติจำนวนคืนเดิม. ตารางใหม่ `notifications`. **Technical → CLAUDE.md "กล่องข้อความ / Mailbox"**.
+
+**Verify:** Backend E2E ผ่าน HTTP ครบ — announcement: unread 0→1→เปิด is_new=true→อ่านหมด 0→re-open is_new=false ✓ · leave approve+reject เด้งเข้ากล่องข้อความถูกทั้งคู่ (reject snapshot ก่อนลบ row, row ถูกลบจริง) ✓ · night_tonight + night_roster date picker + admin-only guard ✓ · migration probe (drop table→request→recreate) ✓ · `php -l`+`node --check` ผ่านหมด. **UI browser render (Playwright+Chromium) 15/15** — render จริง: ไอคอน 📬+จุดแดง(unread=3)→เปิด popup 3 รายการ+tag "ใหม่"+newline→ปิดจุดหาย · แดชบอร์ดแอดมิน: การ์ดประกาศ+การ์ดคืนนี้ (สมชาย 19:30) + date picker onchange สลับ #nrBody จริง · ไม่มี console error. ⚠️ **ยังไม่ deploy + commit อยู่ local ยังไม่ push** (auto-mode บล็อก — พี่วิน push/deploy เอง). พี่วินลองบน prod: แดชบอร์ด → การ์ด "📢 ประกาศถึงเจ้าหน้าที่" ส่งประกาศ → เจ้าหน้าที่เห็นจุดแดงที่ 📬
+
+อัปเดตก่อนหน้า: 8 ก.ค. 2026 — **โหมดเช็คชื่อนอกสถานที่ (v25) deploy แล้ว**: แอดมินตั้งวันล่วงหน้า (วันที่+ช่วงเวลา+เหตุผล) ที่สั่ง จนท.ไปกิจกรรมนอกสถานี → วันนั้นทุกคนข้าม GPS + คิดสายด้วยช่วงเวลาของวันนั้น. ก่อนหน้า: ลบปุ่ม 💪 กายภาพ ค้างจากหน้าพัฒนา (มี 2 ที่ app.js+admin.js) + `index.php` no-cache header กัน iOS PWA ค้าง HTML (v22-24), แดชบอร์ดภาพรวมสุขภาพ (v21). (test log เก่า 2-4 ก.ค. → PROGRESS_ARCHIVE.md · technical → CLAUDE.md "โหมดเช็คชื่อนอกสถานที่")
 
 ## โหมดเช็คชื่อนอกสถานที่ (8 ก.ค. 2026, v25, commit `b3a6954`)
 

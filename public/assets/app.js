@@ -144,7 +144,9 @@ const App = {
         <div class="avatar">${esc(initials(this.user.name))}</div>
         <div><div class="t-title">${esc(this.user.name)}</div>
         <div class="t-sub">${esc(this.user.position || 'เจ้าหน้าที่')}</div></div>
-        <div class="t-right"><button class="icon-btn" onclick="App.refreshStaff()" title="รีเฟรช">⟳</button></div>
+        <div class="t-right">
+          <button class="icon-btn mail-btn" onclick="App.openMailbox()" title="กล่องข้อความ">📬<span class="mail-dot" id="mailDot" hidden></span></button>
+          <button class="icon-btn" onclick="App.refreshStaff()" title="รีเฟรช">⟳</button></div>
       </div>
       <div id="view"></div>
     </div>
@@ -158,6 +160,7 @@ const App = {
   async refreshStaff() {
     this.data = await this.api('app_data');
     this.paintNavBadge();
+    this.paintMailDot();
     this.go(this.view || 'home');
   },
 
@@ -168,6 +171,33 @@ const App = {
     ni.querySelector('.ni-badge')?.remove();
     const n = this.data?.library_unread || 0;
     if (n) ni.insertAdjacentHTML('beforeend', `<span class="ni-badge">${n > 9 ? '9+' : n}</span>`);
+  },
+
+  /** จุดแดงบนไอคอนกล่องข้อความ (มีข้อความยังไม่อ่าน) */
+  paintMailDot() {
+    const dot = byId('mailDot');
+    if (dot) dot.hidden = !(this.data?.notif_unread > 0);
+  },
+
+  /** เปิดกล่องข้อความ — โหลดรายการ (ระบบ mark อ่านหมดฝั่ง server) แล้วโชว์ป๊อปอัพ จุดแดงหาย */
+  async openMailbox() {
+    const d = await this.api('notify_list');
+    if (this.data) this.data.notif_unread = 0;
+    this.paintMailDot();
+    const icon = { announcement: '📢', leave_approved: '✅', leave_rejected: '❌' };
+    const items = d.items || [];
+    const html = items.length
+      ? `<div class="mbox">${items.map(m => `
+          <div class="mbox-item${m.is_new ? ' is-new' : ''}">
+            <div class="mb-ico">${icon[m.type] || '📬'}</div>
+            <div class="mb-body">
+              <div class="mb-title">${esc(m.title)}${m.is_new ? '<span class="mb-new">ใหม่</span>' : ''}</div>
+              ${m.body ? `<div class="mb-text">${esc(m.body).replace(/\n/g, '<br>')}</div>` : ''}
+              <div class="mb-time">${m.created_at.substr(5, 11)}</div>
+            </div>
+          </div>`).join('')}</div>`
+      : '<div class="mbox-empty"><div class="mb-e-ico">📭</div>ยังไม่มีข้อความค่ะ</div>';
+    Swal.fire({ title: '📬 กล่องข้อความ', html, width: 460, showConfirmButton: true, confirmButtonText: 'ปิด' });
   },
 
   go(v) {

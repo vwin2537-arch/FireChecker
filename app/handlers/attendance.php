@@ -61,6 +61,7 @@ function h_app_data(): never {
         'upcoming' => $upcoming,
         'history'  => $history,
         'library_unread' => $libUnread,
+        'notif_unread'   => notify_unread_count($u['id']),   // จุดแดงกล่องข้อความ
         'settings' => client_settings(),
     ]);
 }

@@ -189,6 +189,11 @@ function h_leave_approve(): never {
 
     db()->prepare("UPDATE day_offs SET status = 'approved' WHERE id = ?")->execute([$id]);
 
+    // เด้งเข้ากล่องข้อความของเจ้าหน้าที่ที่ขอลา
+    notify_push((int)$off['user_id'], 'leave_approved', '✅ อนุมัติการลาแล้ว',
+        'หัวหน้าอนุมัติ' . OFF_TYPES[$off['type']] . ' วันที่ ' . thai_date($off['off_date'], false)
+        . ($off['note'] !== '' ? "\nหมายเหตุ: " . $off['note'] : ''), $id);
+
     // แจ้งเข้ากลุ่ม LINE แบบ async (ไม่ push คาใน request — ผ่านคิว line_queue + worker)
     $text = "✅ อนุมัติการลา\n• {$off['name']} — " . OFF_TYPES[$off['type']] . ' ' . thai_date($off['off_date'], false)
           . ($off['note'] !== '' ? "\n📝 {$off['note']}" : '');
@@ -208,6 +213,11 @@ function h_leave_reject(): never {
         db()->prepare("UPDATE day_offs SET status = 'approved' WHERE id = ?")->execute([$id]);
         fail('เลยกำหนดปฏิเสธแล้ว (ระบบอนุมัติอัตโนมัติเมื่อ 00:00 ของวันก่อนวันลา)');
     }
+    // เด้งเข้ากล่องข้อความก่อนลบ row (snapshot วันที่+ประเภท เพราะ ref จะ dangle หลังลบ)
+    notify_push((int)$off['user_id'], 'leave_rejected', '❌ คำขอลาไม่ได้รับอนุมัติ',
+        'หัวหน้าไม่อนุมัติ' . OFF_TYPES[$off['type']] . ' วันที่ ' . thai_date($off['off_date'], false)
+        . ' — กลับเป็นวันทำงานตามปกติค่ะ');
+
     // ปฏิเสธ = ลบ row ทิ้ง → กลับเป็นวันทำงาน (เจ้าหน้าที่ขอใหม่วันเดิมได้)
     db()->prepare('DELETE FROM day_offs WHERE id = ?')->execute([$id]);
     ok(['message' => 'ปฏิเสธแล้ว — ลบคำขอออก กลับเป็นวันทำงาน']);

@@ -92,6 +92,22 @@ CREATE TABLE IF NOT EXISTS offsite_days (
   UNIQUE KEY uq_offsite_date (off_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- กล่องข้อความเจ้าหน้าที่ (mailbox) — 1 แถว/คน/ข้อความ (broadcast = fan-out หลายแถว)
+-- read_at NULL = ยังไม่อ่าน (จุดแดง); เปิดกล่อง = set read_at ทั้งหมด
+CREATE TABLE IF NOT EXISTS notifications (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  type       ENUM('announcement','leave_approved','leave_rejected') NOT NULL,
+  title      VARCHAR(150) NOT NULL,
+  body       TEXT NULL,
+  ref_id     INT NULL,                         -- อ้างอิง (เช่น day_off id) — informational เท่านั้น
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at    DATETIME NULL,
+  KEY idx_user_unread (user_id, read_at),
+  KEY idx_user_created (user_id, created_at),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS settings (
   skey   VARCHAR(50) PRIMARY KEY,
   svalue TEXT

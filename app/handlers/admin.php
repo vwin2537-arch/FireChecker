@@ -68,6 +68,14 @@ function h_admin_data(): never {
     $st->execute([date('Y-m')]);
     $nightStats = $st->fetchAll();
 
+    // ---------- เข้าเวรกลางคืน "คืนนี้" (ใครลงเวรบ้าง) ----------
+    $nightDate = tonight_duty_date();
+    $st = db()->prepare(
+        "SELECT u.name, u.position, n.time_in FROM night_shifts n JOIN users u ON u.id = n.user_id
+         WHERE n.duty_date = ? ORDER BY n.time_in");
+    $st->execute([$nightDate]);
+    $nightTonight = $st->fetchAll();
+
     // ---------- สถิติตามวันในสัปดาห์ (8 สัปดาห์ล่าสุด, จ-ส) ----------
     $st = db()->prepare(
         "SELECT DAYOFWEEK(work_date) dow,
@@ -141,6 +149,8 @@ function h_admin_data(): never {
         ],
         'weekday'      => $weekday,
         'night_stats'  => $nightStats,
+        'night_tonight'      => $nightTonight,
+        'night_tonight_date' => $nightDate,
         'ranking'      => $ranking,
         'over_quota'   => $overQuota,
         'activity'     => $activity,
@@ -323,6 +333,17 @@ function h_report_range(): never {
     $nights = $st->fetchAll();
 
     ok(['from' => $from, 'to' => $to, 'attendance' => $att, 'day_offs' => $offs, 'night_shifts' => $nights]);
+}
+
+/** รายชื่อคนเข้าเวรกลางคืนของวันที่ระบุ (default = คืนนี้) — สำหรับ date picker บนแดชบอร์ด */
+function h_night_roster(): never {
+    require_admin();
+    $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)param('date')) ? param('date') : tonight_duty_date();
+    $st = db()->prepare(
+        "SELECT u.name, u.position, n.time_in FROM night_shifts n JOIN users u ON u.id = n.user_id
+         WHERE n.duty_date = ? ORDER BY n.time_in");
+    $st->execute([$date]);
+    ok(['date' => $date, 'items' => $st->fetchAll()]);
 }
 
 // ---------- ตั้งค่า ----------

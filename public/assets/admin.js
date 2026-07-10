@@ -150,6 +150,8 @@ const Admin = {
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
         ${this.rankingHtml(d.ranking)}
       </div>
+      ${this.announceHtml()}
+      ${this.nightTonightHtml(d)}
       ${(d.night_stats || []).length ? `<div class="card">
         <h3>🌙 เวรกลางคืนเดือนนี้ <span class="h-right">รวม ${d.night_stats.reduce((s, n) => s + +n.nights, 0)} คืน</span></h3>
         <div class="tbl-wrap"><table class="tbl"><tr><th>ชื่อ</th><th class="num">จำนวนคืน</th></tr>
@@ -163,6 +165,50 @@ const Admin = {
             <span class="f-time">${a.ts.substr(5, 11)}</span></div>`).join('') : '<div class="empty">ยังไม่มีกิจกรรม</div>'}
         </div>
       </div>`;
+  },
+
+  // การ์ดประกาศถึงเจ้าหน้าที่ (เด้งเข้ากล่องข้อความทุกคน)
+  announceHtml() {
+    return `<div class="card">
+      <h3>📢 ประกาศถึงเจ้าหน้าที่</h3>
+      <div class="tiny" style="margin-bottom:10px">ส่งเข้ากล่องข้อความของเจ้าหน้าที่ทุกคน — มีจุดแดงเตือนจนกว่าจะเปิดอ่าน</div>
+      <div class="field"><input class="input" id="annTitle" maxlength="150" placeholder="หัวข้อประกาศ เช่น ประชุมประจำเดือน"></div>
+      <div class="field" style="margin-top:8px"><textarea class="input" id="annBody" rows="3" maxlength="2000" placeholder="รายละเอียด (ถ้ามี)"></textarea></div>
+      <button class="btn btn-primary btn-block" style="margin-top:10px" onclick="Admin.announceSend()">ส่งประกาศ</button>
+    </div>`;
+  },
+
+  async announceSend() {
+    const title = byId('annTitle').value.trim();
+    if (!title) return toast('กรอกหัวข้อประกาศก่อนค่ะ', 'error');
+    const c = await Swal.fire({ icon: 'question', title: 'ส่งประกาศนี้?', text: 'จะเด้งเข้ากล่องข้อความเจ้าหน้าที่ทุกคน',
+      showCancelButton: true, confirmButtonText: 'ส่งเลย', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    const d = await App.api('announce_send', { title, body: byId('annBody').value.trim() });
+    byId('annTitle').value = ''; byId('annBody').value = '';
+    toast(d.message);
+  },
+
+  // การ์ด "คืนนี้ใครเข้าเวร" + เลือกย้อนดูวันอื่นได้
+  nightTonightHtml(d) {
+    return `<div class="card">
+      <h3>🌙 เข้าเวรกลางคืน <span class="h-right"><input type="date" id="nrDate" value="${d.night_tonight_date || ''}" onchange="Admin.nightRosterLoad()" class="nr-date"></span></h3>
+      <div id="nrBody">${this.nightRosterBody(d.night_tonight || [], d.night_tonight_date || '')}</div>
+    </div>`;
+  },
+
+  nightRosterBody(list, date) {
+    const head = `<div class="tiny" style="margin-bottom:8px">คืนวันที่ ${date ? thaiDate(date) : '-'} · ${list.length} คน</div>`;
+    if (!list.length) return head + '<div class="empty" style="padding:16px"><span class="e-ico">🌙</span>ยังไม่มีใครลงเวรคืนนี้</div>';
+    return head + list.map(n => `<div class="list-row"><span class="dot dot-ok"></span>
+      <div class="lr-main"><div class="lr-title">${esc(n.name)}</div>
+      <div class="lr-sub">เข้าเวร ${n.time_in.substr(11, 5)} น.${n.position ? ' • ' + esc(n.position) : ''}</div></div></div>`).join('');
+  },
+
+  async nightRosterLoad() {
+    const date = byId('nrDate').value;
+    const d = await App.api('night_roster', { date });
+    byId('nrBody').innerHTML = this.nightRosterBody(d.items, d.date);
   },
 
   rankingHtml(ranking) {

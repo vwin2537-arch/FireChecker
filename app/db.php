@@ -106,6 +106,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM notifications LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว

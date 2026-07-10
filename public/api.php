@@ -16,6 +16,7 @@ require_once __DIR__ . '/../app/handlers/line.php';
 require_once __DIR__ . '/../app/handlers/library.php';
 require_once __DIR__ . '/../app/handlers/quiz.php';
 require_once __DIR__ . '/../app/handlers/health.php';
+require_once __DIR__ . '/../app/handlers/notify.php';
 require_once __DIR__ . '/../app/drive.php';
 
 const ACTIONS = [
@@ -57,6 +58,10 @@ const ACTIONS = [
     'leave_pending'   => 'h_leave_pending',
     'leave_approve'   => 'h_leave_approve',
     'leave_reject'    => 'h_leave_reject',
+    'night_roster'    => 'h_night_roster',
+
+    'notify_list'     => 'h_notify_list',
+    'announce_send'   => 'h_announce_send',
     // คลังความรู้ (staff)
     'library_list'    => 'h_library_list',
     'library_view'    => 'h_library_view',
