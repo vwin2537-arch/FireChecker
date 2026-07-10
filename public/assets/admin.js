@@ -146,11 +146,6 @@ const Admin = {
   // ส่วนวิเคราะห์ด้านล่าง (อันดับความขยัน / สถิติรายวัน / กิจกรรมล่าสุด)
   analyticsHtml(d) {
     return `
-      <div class="card">
-        <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
-        ${this.rankingHtml(d.ranking)}
-      </div>
-      ${this.announceHtml()}
       ${this.nightTonightHtml(d)}
       ${(d.night_stats || []).length ? `<div class="card">
         <h3>🌙 เวรกลางคืนเดือนนี้ <span class="h-right">รวม ${d.night_stats.reduce((s, n) => s + +n.nights, 0)} คืน</span></h3>
@@ -158,6 +153,10 @@ const Admin = {
           ${d.night_stats.map(n => `<tr><td><b>${esc(n.name)}</b>${n.position ? `<div class="tiny">${esc(n.position)}</div>` : ''}</td>
             <td class="num"><b>${n.nights}</b></td></tr>`).join('')}
         </table></div></div>` : ''}
+      <div class="card">
+        <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
+        ${this.rankingHtml(d.ranking)}
+      </div>
       <div class="grid-2-lg">
         <div class="card"><h3>📅 สถิติตามวันในสัปดาห์ <span class="h-right">8 สัปดาห์ล่าสุด</span></h3><div class="chart-box"><canvas id="chWeekday"></canvas></div></div>
         <div class="card"><h3>🕐 กิจกรรมล่าสุด</h3>
@@ -1201,6 +1200,7 @@ const Admin = {
       <input class="input" id="st_${k}" type="${type}" value="${esc(s[k])}" ${extra}></div>`;
 
     byId('view').innerHTML = `
+      ${this.announceHtml()}
       <div class="card"><h3>🎚️ สวิตช์ฟีเจอร์</h3>
         ${T('selfie_required', '🤳 บังคับเซลฟี่ตอนเช็คอิน', 'โค้ดพร้อมแล้ว เปิดเมื่อไหร่ก็ได้')}
         ${T('checkout_enabled', '📝 เช็คเอาท์ + รายงานผลงานเย็น', 'เปิดแล้วคะแนนความขยันเปลี่ยนเป็นสูตรเต็ม 30/30/20/20')}
