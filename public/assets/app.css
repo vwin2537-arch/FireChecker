@@ -237,6 +237,8 @@ input, select, textarea { font-family: inherit; }
 .list-row .lr-main { flex:1; min-width:0; }
 .list-row .lr-title { font-size:14.5px; font-weight:400; }
 .list-row .lr-sub { font-size:12px; color:var(--ink-3); }
+.night-count { flex-shrink:0; white-space:nowrap; font-size:13px; color:var(--ink-2); }
+.night-count b { font-size:15px; color:var(--ink); }
 .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
 .dot-ok { background:var(--ok); } .dot-late { background:var(--late); }
 .dot-leave { background:var(--leave); } .dot-absent { background:var(--absent); }
@@ -307,6 +309,7 @@ table.tbl { width:100%; border-collapse:collapse; font-size:13.5px; min-width:56
 .cal-day.mine { background:var(--leave-bg); border-color:#bfd3fb; }
 .cal-day.past { opacity:.4; }
 .cal-day .cd-badge { font-size:9.5px; line-height:1; color:var(--leave); font-weight:500; }
+.cal-day .cd-cake { position:absolute; top:2px; left:3px; font-size:11px; line-height:1; }
 .cal-day.sel .cd-badge { color:#fff; }
 
 /* ---------- activity feed ---------- */

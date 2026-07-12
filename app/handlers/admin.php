@@ -61,7 +61,8 @@ function h_admin_data(): never {
 
     // ---------- สถิติเวรกลางคืนเดือนนี้ (จำนวนคืนต่อคน — ดูความเป็นธรรม) ----------
     $st = db()->prepare(
-        "SELECT u.name, u.position, COUNT(*) nights
+        "SELECT u.name, u.position, COUNT(*) nights,
+                GROUP_CONCAT(DAY(n.duty_date) ORDER BY n.duty_date SEPARATOR ',') days
          FROM night_shifts n JOIN users u ON u.id = n.user_id
          WHERE DATE_FORMAT(n.duty_date,'%Y-%m') = ?
          GROUP BY n.user_id, u.name, u.position ORDER BY nights DESC, u.name");
@@ -182,7 +183,7 @@ function engagement_ranking(string $ym): array {
     }
     $nWork = count($workdays);
 
-    $users = db()->query("SELECT id, name, position, created_at FROM users WHERE role = 'staff' AND status = 'active' ORDER BY name")->fetchAll();
+    $users = db()->query("SELECT id, name, position, birthdate, created_at FROM users WHERE role = 'staff' AND status = 'active' ORDER BY name")->fetchAll();
 
     $st = db()->prepare("SELECT * FROM attendance WHERE work_date BETWEEN ? AND ?");
     $st->execute([$start, $end]);
@@ -223,7 +224,7 @@ function engagement_ranking(string $ym): array {
         $avgIn = $present > 0 ? sprintf('%02d:%02d', intdiv(intdiv($sumMinIn, $present), 60), intdiv($sumMinIn, $present) % 60) : null;
 
         $out[] = [
-            'id' => $uid, 'name' => $u['name'], 'position' => $u['position'],
+            'id' => $uid, 'name' => $u['name'], 'position' => $u['position'], 'birthdate' => $u['birthdate'],
             'planned' => $planned, 'present' => $present, 'ontime' => $ontime, 'late' => $late,
             'absent' => $absent, 'leave' => $leave, 'reported' => $reported, 'report_ontime' => $reportOntime,
             'avg_in' => $avgIn, 'score' => $score,

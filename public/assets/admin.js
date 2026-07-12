@@ -149,10 +149,10 @@ const Admin = {
       ${this.nightTonightHtml(d)}
       ${(d.night_stats || []).length ? `<div class="card">
         <h3>🌙 เวรกลางคืนเดือนนี้ <span class="h-right">รวม ${d.night_stats.reduce((s, n) => s + +n.nights, 0)} คืน</span></h3>
-        <div class="tbl-wrap"><table class="tbl"><tr><th>ชื่อ</th><th class="num">จำนวนคืน</th></tr>
-          ${d.night_stats.map(n => `<tr><td><b>${esc(n.name)}</b>${n.position ? `<div class="tiny">${esc(n.position)}</div>` : ''}</td>
-            <td class="num"><b>${n.nights}</b></td></tr>`).join('')}
-        </table></div></div>` : ''}
+        ${d.night_stats.map(n => `<div class="list-row">
+          <div class="lr-main"><div class="lr-title">${esc(n.name)}${n.days ? ` <span class="tiny">(${n.days})</span>` : ''}</div></div>
+          <span class="night-count"><b>${n.nights}</b> คืน</span></div>`).join('')}
+      </div>` : ''}
       <div class="card">
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
         ${this.rankingHtml(d.ranking)}
@@ -223,7 +223,7 @@ const Admin = {
         <tr><th>#</th><th>ชื่อ</th><th class="num">คะแนน</th><th class="num">ต้องมา</th><th class="num">มา</th>
         <th class="num">ตรงเวลา</th><th class="num">สาย</th><th class="num">ลา</th><th class="num">ขาด</th><th class="num">เฉลี่ยเข้า</th></tr>
         ${ranking.map((r, i) => `<tr>
-          <td>${i + 1}</td><td><b>${esc(r.name)}</b><div class="tiny">${esc(r.position || '')}</div></td>
+          <td>${i + 1}</td><td><b>${esc(r.name)}${ageFrom(r.birthdate) !== null ? ` (${ageFrom(r.birthdate)})` : ''}</b><div class="tiny">${esc(r.position || '')}</div></td>
           <td class="num"><b style="color:${r.score === null ? 'var(--ink-3)' : r.score >= 80 ? C_OK : r.score >= 50 ? C_LATE : C_ABSENT}">${r.score ?? '—'}</b></td>
           <td class="num">${r.planned}</td><td class="num">${r.present}</td>
           <td class="num" style="color:${C_OK}">${r.ontime}</td><td class="num" style="color:${C_LATE}">${r.late}</td>
@@ -376,6 +376,12 @@ const Admin = {
     shown.forEach(o => (byDate[o.off_date] = byDate[o.off_date] || []).push(o));
     this.aByDate = byDate;
 
+    // แผนที่วันเกิดเจ้าหน้าที่ (MM-DD → รายชื่อ) ตามขอบเขตที่เลือกดู
+    const bstaff = single ? staff.filter(u => u.id == this.aUser) : staff;
+    const bday = {};
+    bstaff.forEach(u => { if (/^\d{4}-\d{2}-\d{2}$/.test(u.birthdate || '')) (bday[u.birthdate.slice(5)] = bday[u.birthdate.slice(5)] || []).push(u.name); });
+    this.aBday = bday;
+
     byId('view').innerHTML = `
       ${pendCard}
       <div class="card">
@@ -391,8 +397,8 @@ const Admin = {
           </select></div>
         <div class="cal-grid">${['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map(x => `<div class="cal-dow">${x}</div>`).join('')}${this.heatCells(byDate, staff.length, single)}</div>
         <div class="tiny" style="margin-top:8px">${single
-          ? '🟠 ลาป่วย • 🟣 ลากิจ • 🔵 วันหยุด • แตะวันเพื่อดู/ลบ'
-          : 'ยิ่งเข้ม = หยุดกันเยอะ • ตัวเลข = จำนวนคนหยุด • ⚠️ = มีเกินโควต้า • แตะวันเพื่อดูรายชื่อ/ลบ'}</div>
+          ? '🟠 ลาป่วย • 🟣 ลากิจ • 🔵 วันหยุด • 🎂 วันเกิด • แตะวันเพื่อดู/ลบ'
+          : 'ยิ่งเข้ม = หยุดกันเยอะ • ตัวเลข = จำนวนคนหยุด • ⚠️ = มีเกินโควต้า • 🎂 = วันเกิด • แตะวันเพื่อดูรายชื่อ'}</div>
       </div>
       <div class="card"><h3>➕ บันทึกลาแทนเจ้าหน้าที่ <span class="h-right">เช่น โทรมาลาป่วยตอนเช้า</span></h3>
         <div class="field"><label>เจ้าหน้าที่</label><select class="select" id="aoUser">
@@ -422,6 +428,7 @@ const Admin = {
       const items = byDate[ds] || [];
       const n = items.length;
       const over = items.some(o => +o.over_quota);
+      const hasBday = !!(this.aBday && this.aBday[ds.slice(5)]);
       const cls = ['cal-day']; if (dow === 0) cls.push('sun'); if (ds === today) cls.push('today');
       let style = '', badge = '';
       if (n && single) {                       // รายคน — สีตามประเภท
@@ -432,8 +439,9 @@ const Admin = {
         style = `background:rgba(37,99,235,${(0.15 + t * 0.75).toFixed(2)});border-color:transparent${dark ? ';color:#fff' : ''}`;
         badge = `<span class="cd-badge"${dark ? ' style="color:#fff"' : ''}>${n}${over ? '⚠️' : ''}</span>`;
       }
-      const click = n ? `onclick="Admin.dayDetail('${ds}')"` : '';
-      cells += `<div class="${cls.join(' ')}" style="${style}" ${click}>${dd}${badge}</div>`;
+      const cake = hasBday ? '<span class="cd-cake">🎂</span>' : '';
+      const click = (n || hasBday) ? `onclick="Admin.dayDetail('${ds}')"` : '';
+      cells += `<div class="${cls.join(' ')}" style="${style}" ${click}>${dd}${cake}${badge}</div>`;
     }
     return cells;
   },
@@ -441,13 +449,16 @@ const Admin = {
   // แตะวันในปฏิทิน → รายชื่อคนหยุดวันนั้น + ปุ่มลบ
   dayDetail(ds) {
     const list = this.aByDate[ds] || [];
+    const bdayNames = (this.aBday && this.aBday[ds.slice(5)]) || [];
+    const bdayHtml = bdayNames.length
+      ? `<div style="padding:7px 0;border-bottom:1px solid var(--line);text-align:left">🎂 วันเกิด: ${bdayNames.map(esc).join(', ')}</div>` : '';
     Swal.fire({
       title: thaiDate(ds), showConfirmButton: false, showCloseButton: true,
-      html: list.map(o =>
-        `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
-          <span>${esc(o.name)} <span class="tiny">(${offLabel(o.type)})${+o.over_quota ? ' ⚠️เกินโควต้า' : ''}</span></span>
-          <button class="link-btn" style="color:var(--absent);font-size:13px" onclick="Admin.delOff(${o.id})">ลบ</button>
-        </div>`).join('') || 'ไม่มีข้อมูล',
+      html: bdayHtml + (list.map(o =>
+        `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+          <span style="text-align:left">${esc(o.name)} <span class="tiny">(${offLabel(o.type)})${+o.over_quota ? ' ⚠️เกินโควต้า' : ''}</span>${o.note ? `<div class="tiny" style="color:var(--ink-2);margin-top:2px">📝 ${esc(o.note)}</div>` : ''}</span>
+          <button class="link-btn" style="color:var(--absent);font-size:13px;flex-shrink:0" onclick="Admin.delOff(${o.id})">ลบ</button>
+        </div>`).join('')) || (bdayHtml ? '' : 'ไม่มีข้อมูล'),
     });
   },
 
