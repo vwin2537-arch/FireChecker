@@ -108,6 +108,13 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **client:** ไอคอน 📬 ใน `.t-right` topbar staff (`App.openMailbox()` + `.mail-dot`), popup ผ่าน Swal. admin.js `announceHtml`/`nightTonightHtml`/`nightRosterLoad` อยู่ใน `analyticsHtml` (โชว์ทั้งวันปกติ/วันหยุด). style `.mbox*`/`.mail-*`/`.nr-date` (app.css)
 - migration: probe `notifications` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
 
+## แต่งหน้าแดชบอร์ด/ปฏิทิน (v28 — admin.js/admin.php/app.css)
+
+- **การ์ด "🌙 เวรกลางคืนเดือนนี้":** `night_stats` query เพิ่ม `GROUP_CONCAT(DAY(duty_date) ORDER BY duty_date) days` → client เปลี่ยนจาก `<table>` เป็น `.list-row` (ตัด position ออก, ชื่อ + `(days)` ซ้าย, `.night-count` `N คืน` ขวา flex-shrink) — **เลิกใช้ tbl-wrap** เพราะเลื่อนขวาหาคอลัมน์
+- **ตารางอันดับความขยัน:** `engagement_ranking` SELECT+ส่ง `birthdate` ต่อคน → client `ageFrom(r.birthdate)` ต่อท้ายชื่อ `(อายุ)` (null=ไม่โชว์). `ageFrom` เป็น global app.js เรียกจาก admin.js ได้
+- **ป๊อบอัพวันหยุด (`dayDetail`):** `dayoff_month` ส่ง `note` อยู่แล้ว → แสดง `📝 เหตุผล` ใต้ชื่อ (align-items:flex-start)
+- **เค้กวันเกิดในปฏิทินวันหยุด:** `vDayoff` สร้าง `this.aBday` map `MM-DD→[ชื่อ]` จาก `users_list` (scope ตาม "ดูของ" — รายคน/ทุกคน). `heatCells` วาง `.cd-cake` 🎂 มุมซ้ายบน (absolute) + cell คลิกได้ถ้า `n||hasBday`. `dayDetail` prepend รายชื่อวันเกิด (รองรับวันที่มีแต่เกิดไม่มีลา). style `.cd-cake`/`.night-count` (app.css)
+
 ## Deploy
 
 Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
