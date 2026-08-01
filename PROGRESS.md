@@ -2,9 +2,11 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 12 ก.ค. 2026 — **แต่งหน้าแดชบอร์ด/ปฏิทิน (v28) deploy แล้ว** (`railway up` tarball → ดัน v26–v28 ขึ้น live พร้อมกัน = mailbox 📬 + คืนนี้ใครเข้าเวร + จัดลำดับการ์ด v27 อยู่ prod แล้ว): (1) การ์ด "เวรกลางคืนเดือนนี้" ตัดตำแหน่งออก → แสดงวันที่เข้าเวรเป็นตัวเลข `(1,5,7)` เปลี่ยนตารางเป็น list ไม่ต้องเลื่อนขวา (2) ป๊อบอัพวันหยุด แสดงเหตุผลการลา (note) (3) ตารางอันดับความขยัน เพิ่มอายุต่อท้ายชื่อ `(34)` (4) ปฏิทินวันหยุด เค้ก 🎂 ในช่องวันเกิด จนท. + แตะดูรายชื่อ. **Technical → CLAUDE.md**.
+อัปเดตล่าสุด: 1 ส.ค. 2026 — **รายงานอันดับความขยันรายเดือน (v29) deploy แล้ว** (`railway up`, commit `e14d365`): ปุ่มในแดชบอร์ดแอดมิน → โปสเตอร์ overlay เลือกเดือน (default = เดือนที่แล้ว) → 🖼️ บันทึกรูป PNG (html2canvas ส่ง LINE ได้) + 🖨️ ปริ้น (@media print A4 แปะบอร์ด). เนื้อหา: สรุปทีม + 🥇🥈🥉 ท็อป3 + ตารางเต็มเรียงคะแนน. reuse `engagement_ranking()` ไม่แตะสูตร. **Technical → CLAUDE.md "รายงานอันดับความขยันรายเดือน"**.
 
-**Verify:** `php -l`+`node --check` ผ่าน · รันจริง localhost + seed data: `night_stats.days=1,5,7`, `ranking.birthdate` มา, `dayoff.note` มา, node harness ยืนยัน `ageFrom→34` + bday map ขึ้น 🎂 ตรงวัน · deploy live: curl `?v=28`+`firecheck-v28` HTTP 200 + grep โค้ดใหม่บน live admin.js/app.css ครบ. ⚠️ commit v22–v28 อยู่ local main **ยังไม่ push GitHub** (auto-mode บล็อก push-to-main — พี่วิน push เอง; แต่ prod live แล้วผ่าน tarball).
+**Verify:** `php -l`+`node --check` ผ่าน · local + seed 6 คน ก.ค.: API `report_month` ข้อมูลตรง (สมชาย 100, สรุปทีม), **กดปุ่มจริง (mouse click) → download `ความขยัน-2026-07.png`** (`elementFromPoint` ยืนยันปุ่มไม่ทับ), capture บน **WebKit(=iPhone/LINE)** ไทย+เหรียญเป๊ะเท่า Chromium, print CSS เหลือแต่โปสเตอร์ · deploy live: curl `?v=29`+html2canvas + endpoint `report_month` ตอบ auth error (ไม่ใช่ 404) HTTP 200. ⚠️ commit v22–v29 อยู่ local main **ยังไม่ push GitHub** (auto-mode บล็อก push-to-main — พี่วิน push เอง; prod live แล้วผ่าน tarball).
+
+อัปเดตก่อนหน้า: 12 ก.ค. 2026 — **แต่งหน้าแดชบอร์ด/ปฏิทิน (v28) deploy แล้ว** (`railway up` tarball → ดัน v26–v28 ขึ้น live พร้อมกัน): การ์ดเวรกลางคืนแสดงวันที่ `(1,5,7)`, ป๊อบอัพวันหยุดแสดง note, ตารางอันดับเพิ่มอายุ `(34)`, ปฏิทินเค้ก 🎂 วันเกิด. **Technical → CLAUDE.md**.
 
 อัปเดตก่อนหน้า: 10 ก.ค. 2026 — **กล่องข้อความ + คืนนี้ใครเข้าเวร (v26)**: กล่องข้อความ 📬 ฝั่ง จนท. (จุดแดง เปิดอ่านแล้วหาย) รับ ประกาศ/อนุมัติลา/ไม่อนุมัติลา · แดชบอร์ด "🌙 คืนนี้ใครเข้าเวร" + date picker. ตาราง `notifications`. v27 = จัดการ์ดเวรกลางคืนเหนือคะแนน + ย้ายประกาศไปหน้าตั้งค่า. **Technical → CLAUDE.md "กล่องข้อความ / Mailbox"** (deploy พร้อม v28).
 
