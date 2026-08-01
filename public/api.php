@@ -48,6 +48,7 @@ const ACTIONS = [
     'user_enable'     => 'h_user_enable',
     'user_reset'      => 'h_user_reset',
     'report_range'    => 'h_report_range',
+    'report_month'    => 'h_report_month',
     'settings_get'    => 'h_settings_get',
     'settings_save'   => 'h_settings_save',
     'dayoff_admin_add'=> 'h_dayoff_admin_add',

@@ -4,6 +4,13 @@
    ===================================================== */
 
 const C_OK = '#2e7d32', C_LATE = '#d97706', C_LEAVE = '#2563eb', C_ABSENT = '#dc2626';
+
+// ชื่อเดือนไทย + พ.ศ. จาก "YYYY-MM" เช่น "2026-07" → "กรกฎาคม 2569"
+const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+function rpMonthLabel(ym) {
+  return TH_MONTHS[+ym.slice(5, 7) - 1] + ' ' + (+ym.slice(0, 4) + 543);
+}
 const CHART_BASE = {
   responsive: true, maintainAspectRatio: false,
   plugins: { legend: { position: 'bottom', labels: { font: { family: 'Kanit', size: 12 }, boxWidth: 12, boxHeight: 12, usePointStyle: true } } },
@@ -155,6 +162,7 @@ const Admin = {
       </div>` : ''}
       <div class="card">
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
+        <button class="btn btn-primary btn-block" style="margin-bottom:12px" onclick="Admin.openReport()">📄 ออกรายงานรายเดือน (ปริ้น / บันทึกรูปส่ง LINE)</button>
         ${this.rankingHtml(d.ranking)}
       </div>
       <div class="grid-2-lg">
@@ -230,6 +238,114 @@ const Admin = {
           <td class="num" style="color:${C_LEAVE}">${r.leave}</td><td class="num" style="color:${C_ABSENT}">${r.absent}</td>
           <td class="num">${r.avg_in ?? '—'}</td></tr>`).join('')}
       </table></div>`;
+  },
+
+  // ===== รายงานอันดับความขยันรายเดือน (overlay สำหรับปริ้น / บันทึกรูปส่ง LINE) =====
+  openReport() {
+    const now = new Date();
+    const ym = (dt) => dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+    const curYm = ym(now);
+    // เดือนปัจจุบัน (ถึงวันนี้) + ย้อนหลัง 12 เดือน — default = เดือนที่แล้ว
+    const opts = [`<option value="${curYm}">${rpMonthLabel(curYm)} (ถึงวันนี้)</option>`];
+    for (let i = 1; i <= 12; i++) {
+      const v = ym(new Date(now.getFullYear(), now.getMonth() - i, 1));
+      opts.push(`<option value="${v}">${rpMonthLabel(v)}</option>`);
+    }
+    const ov = document.createElement('div');
+    ov.id = 'reportOverlay';
+    ov.className = 'rpt-overlay';
+    ov.innerHTML = `
+      <div class="rpt-bar">
+        <select id="rptMonth" class="rpt-sel" onchange="Admin.reportLoad()">${opts.join('')}</select>
+        <button class="btn btn-primary" onclick="Admin.reportSave()">🖼️ บันทึกรูป</button>
+        <button class="btn" onclick="Admin.reportPrint()">🖨️ ปริ้น</button>
+        <button class="btn rpt-close" onclick="Admin.reportClose()">✕ ปิด</button>
+      </div>
+      <div class="rpt-scroll"><div id="rptPaper" class="rpt-paper"><div class="empty" style="padding:60px">กำลังโหลด…</div></div></div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('rpt-open');
+    byId('rptMonth').selectedIndex = 1;   // เดือนที่แล้ว
+    this.reportLoad();
+  },
+
+  async reportLoad() {
+    const paper = byId('rptPaper');
+    paper.innerHTML = '<div class="empty" style="padding:60px">กำลังโหลด…</div>';
+    try {
+      const d = await App.api('report_month', { month: byId('rptMonth').value });
+      paper.innerHTML = this.reportPaperHtml(d);
+    } catch (e) {
+      paper.innerHTML = '<div class="empty" style="padding:60px">โหลดรายงานไม่สำเร็จ</div>';
+    }
+  },
+
+  rpStat(v, l) { return `<div class="rp-stat"><div class="rp-sv">${v}</div><div class="rp-sl">${l}</div></div>`; },
+
+  reportPaperHtml(d) {
+    const s = d.summary;
+    const medals = ['🥇', '🥈', '🥉'];
+    const top = d.ranking.filter(r => r.score !== null).slice(0, 3).map((r, i) => `
+      <div class="rp-podium-item rp-p${i + 1}">
+        <div class="rp-mico">${medals[i]}</div>
+        <div class="rp-mname">${esc(r.name)}</div>
+        <div class="rp-mscore">${r.score}</div><div class="rp-mlbl">คะแนน</div>
+      </div>`).join('');
+    return `
+      <div class="rp-head">
+        <div class="rp-fire">🔥</div>
+        <div class="rp-htext">
+          <div class="rp-station">สถานีควบคุมไฟป่าสลักพระ-เอราวัณ</div>
+          <div class="rp-title">รายงานอันดับความขยันประจำเดือน</div>
+          <div class="rp-month">${d.month_label}</div>
+        </div>
+      </div>
+      <div class="rp-sumrow">
+        ${this.rpStat(d.staff_count, 'เจ้าหน้าที่ (คน)')}
+        ${this.rpStat(d.workdays, 'วันทำการ')}
+        ${this.rpStat(s.ontime_pct === null ? '—' : s.ontime_pct + '%', 'ตรงเวลาทั้งทีม')}
+        ${this.rpStat(s.late, 'มาสาย (ครั้ง)')}
+        ${this.rpStat(s.absent, 'ขาด (ครั้ง)')}
+        ${this.rpStat(s.leave, 'ลา (ครั้ง)')}
+      </div>
+      ${top ? `<div class="rp-podium">${top}</div>` : ''}
+      <table class="rp-tbl">
+        <thead><tr><th>อันดับ</th><th class="l">ชื่อ-สกุล</th><th>คะแนน</th><th>มา</th><th>ตรงเวลา</th><th>สาย</th><th>ลา</th><th>ขาด</th></tr></thead>
+        <tbody>${d.ranking.map((r, i) => `<tr>
+          <td class="rp-rank">${r.score === null ? '—' : i + 1}</td>
+          <td class="l"><b>${esc(r.name)}</b>${r.position ? `<div class="rp-pos">${esc(r.position)}</div>` : ''}</td>
+          <td class="rp-score">${r.score ?? '—'}</td>
+          <td>${r.present}</td><td>${r.ontime}</td><td>${r.late}</td><td>${r.leave}</td><td>${r.absent}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      <div class="rp-foot">ออกรายงานเมื่อ ${d.generated_at} น. · จัดอันดับจากคะแนนการมาทำงานและการตรงต่อเวลา · ระบบเช็คชื่อ FireCheck</div>`;
+  },
+
+  async reportSave() {
+    if (typeof html2canvas !== 'function') return toast('โหลดตัวสร้างรูปไม่สำเร็จ ลองรีเฟรช', 'error');
+    toast('กำลังสร้างรูป…');
+    await document.fonts.ready;
+    const canvas = await html2canvas(byId('rptPaper'), { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `ความขยัน-${byId('rptMonth').value}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast('บันทึกรูปแล้ว 📥');
+    }, 'image/png');
+  },
+
+  reportPrint() {
+    document.body.classList.add('rpt-printing');
+    const done = () => { document.body.classList.remove('rpt-printing'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    setTimeout(() => window.print(), 60);
+    setTimeout(done, 60000);
+  },
+
+  reportClose() {
+    const ov = byId('reportOverlay'); if (ov) ov.remove();
+    document.body.classList.remove('rpt-open');
   },
 
   // โดนัทองค์ประกอบการมาวันนี้ (ตรงเวลา/สาย/ลา/ยังไม่มา) — ตัวเลขกลางวงวางเป็น HTML ทับ

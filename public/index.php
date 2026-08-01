@@ -17,7 +17,8 @@ header('Pragma: no-cache');
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
-<link rel="stylesheet" href="assets/app.css?v=28">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<link rel="stylesheet" href="assets/app.css?v=29">
 </head>
 <body>
 <div id="app">
@@ -27,8 +28,8 @@ header('Pragma: no-cache');
     <div class="spinner"></div>
   </div>
 </div>
-<script src="assets/app.js?v=28"></script>
-<script src="assets/admin.js?v=28"></script>
+<script src="assets/app.js?v=29"></script>
+<script src="assets/admin.js?v=29"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
 App.init();

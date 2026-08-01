@@ -234,6 +234,57 @@ function engagement_ranking(string $ym): array {
     return $out;
 }
 
+/** ชื่อเดือนไทย + พ.ศ. จาก "YYYY-MM" เช่น "2026-07" → "กรกฎาคม 2569" */
+function thai_month_label(string $ym): string {
+    static $m = [1=>'มกราคม',2=>'กุมภาพันธ์',3=>'มีนาคม',4=>'เมษายน',5=>'พฤษภาคม',6=>'มิถุนายน',
+        7=>'กรกฎาคม',8=>'สิงหาคม',9=>'กันยายน',10=>'ตุลาคม',11=>'พฤศจิกายน',12=>'ธันวาคม'];
+    return $m[(int)substr($ym, 5, 2)] . ' ' . ((int)substr($ym, 0, 4) + 543);
+}
+
+/**
+ * รายงานอันดับความขยันรายเดือน (สำหรับปริ้น/ส่ง LINE) — reuse engagement_ranking() + สรุปรวมทีม
+ * รับ param month "YYYY-MM" (default = เดือนที่แล้ว), กันเดือนอนาคต
+ */
+function h_report_month(): never {
+    require_admin();
+    $ym = (string)(param('month') ?: date('Y-m', strtotime('first day of last month')));
+    if (!preg_match('/^\d{4}-\d{2}$/', $ym))   fail('รูปแบบเดือนไม่ถูกต้อง');
+    if ($ym > date('Y-m'))                     fail('เลือกเดือนในอนาคตไม่ได้');
+
+    $ranking = engagement_ranking($ym);
+
+    // จำนวนวันทำการของเดือน (ไม่รวมวันอาทิตย์/วันหยุด, ถึงวันนี้ถ้าเป็นเดือนปัจจุบัน)
+    $start = $ym . '-01';
+    $end   = min(date('Y-m-d'), date('Y-m-t', strtotime($start)));
+    $nWork = 0;
+    for ($d = new DateTime($start); $d->format('Y-m-d') <= $end; $d->modify('+1 day'))
+        if (!is_station_holiday($d->format('Y-m-d'))) $nWork++;
+
+    // สรุปรวมทั้งทีม
+    $present = $ontime = $late = $absent = $leave = 0; $sumScore = 0; $nScored = 0;
+    foreach ($ranking as $r) {
+        $present += $r['present']; $ontime += $r['ontime']; $late += $r['late'];
+        $absent  += $r['absent'];  $leave  += $r['leave'];
+        if ($r['score'] !== null) { $sumScore += $r['score']; $nScored++; }
+    }
+
+    ok([
+        'month'        => $ym,
+        'month_label'  => thai_month_label($ym),
+        'generated_at' => date('d/m/') . (date('Y') + 543) . ' ' . date('H:i'),
+        'workdays'     => $nWork,
+        'staff_count'  => count($ranking),
+        'ranking'      => $ranking,
+        'score_mode'   => setting('checkout_enabled', '0') === '1' ? 'full' : 'checkin_only',
+        'summary'      => [
+            'present'    => $present, 'ontime' => $ontime, 'late' => $late,
+            'absent'     => $absent,  'leave'  => $leave,
+            'ontime_pct' => $present > 0 ? round($ontime / $present * 100) : null,
+            'avg_score'  => $nScored > 0 ? round($sumScore / $nScored, 1) : null,
+        ],
+    ]);
+}
+
 // ---------- จัดการผู้ใช้ ----------
 
 function h_users_list(): never {
