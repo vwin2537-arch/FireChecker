@@ -2,9 +2,11 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 1 ส.ค. 2026 — **รายงานอันดับความขยันรายเดือน (v29) deploy แล้ว** (`railway up`, commit `e14d365`): ปุ่มในแดชบอร์ดแอดมิน → โปสเตอร์ overlay เลือกเดือน (default = เดือนที่แล้ว) → 🖼️ บันทึกรูป PNG (html2canvas ส่ง LINE ได้) + 🖨️ ปริ้น (@media print A4 แปะบอร์ด). เนื้อหา: สรุปทีม + 🥇🥈🥉 ท็อป3 + ตารางเต็มเรียงคะแนน. reuse `engagement_ranking()` ไม่แตะสูตร. **Technical → CLAUDE.md "รายงานอันดับความขยันรายเดือน"**.
+อัปเดตล่าสุด: 1 ส.ค. 2026 — **อนุญาตเช็คนอกสถานที่รายคน (v30) deploy แล้ว** (`railway up`, commit `b8861d5`): แอดมินเลือกคน (หลายคน) + ช่วงวัน + เหตุผล → คนนั้นเช็คจากที่ไหนก็ได้ (ข้าม GPS) เฉพาะวันที่ตั้ง · **ต่างจาก offsite_days เดิม (ทั้งสถานี)**: ข้าม GPS อย่างเดียว เวลา/สาย ปกติ. มีออปชัน **"ไปราชการ ไม่นับสาย"** (default on) กันคนไปประชุมเช้าโดนนับสาย. แจ้งเข้ากล่องข้อความ 📬 ให้เจ้าตัว. ตาราง `offsite_users`. **Technical → CLAUDE.md "อนุญาตเช็คนอกสถานที่รายคน"**.
 
-**Verify:** `php -l`+`node --check` ผ่าน · local + seed 6 คน ก.ค.: API `report_month` ข้อมูลตรง (สมชาย 100, สรุปทีม), **กดปุ่มจริง (mouse click) → download `ความขยัน-2026-07.png`** (`elementFromPoint` ยืนยันปุ่มไม่ทับ), capture บน **WebKit(=iPhone/LINE)** ไทย+เหรียญเป๊ะเท่า Chromium, print CSS เหลือแต่โปสเตอร์ · deploy live: curl `?v=29`+html2canvas + endpoint `report_month` ตอบ auth error (ไม่ใช่ 404) HTTP 200. ⚠️ commit v22–v29 อยู่ local main **ยังไม่ push GitHub** (auto-mode บล็อก push-to-main — พี่วิน push เอง; prod live แล้วผ่าน tarball).
+**Verify:** `php -l`+`node --check` ผ่าน · local seed staff: migration `offsite_users`+`no_late` รัน, add(หลายคน+ช่วงวัน)→row+notify ต่อคน, **checkin ไม่ส่ง GPS: คนมี offsite ผ่าน vs control fail GPS** (พิสูจน์ scope รายคน), `no_late=1`→late=false / `=0`→late=true (เวลาเดียวกัน), distance_m ยังเก็บ (258km), banner+ปุ่ม+note ฝั่ง จนท. ตรง no_late, การ์ดแอดมิน UI (ติ๊กหลายคน+checkbox default on) ไม่มี console error · deploy live: `?v=30` + endpoint `offsite_user_*` auth error (ไม่ใช่ 404) HTTP 200. ⚠️ commit v22–v30 อยู่ local main **ยังไม่ push GitHub** (พี่วิน push เอง; prod live ผ่าน tarball).
+
+อัปเดตก่อนหน้า: 1 ส.ค. 2026 — **รายงานอันดับความขยันรายเดือน (v29)** (commit `e14d365`): ปุ่มแดชบอร์ดแอดมิน → โปสเตอร์ overlay เลือกเดือน → 🖼️ บันทึกรูป PNG (html2canvas ส่ง LINE) + 🖨️ ปริ้น A4. สรุปทีม + 🥇🥈🥉 + ตารางเต็ม. reuse `engagement_ranking()`. **Technical → CLAUDE.md "รายงานอันดับความขยันรายเดือน"**.
 
 อัปเดตก่อนหน้า: 12 ก.ค. 2026 — **แต่งหน้าแดชบอร์ด/ปฏิทิน (v28) deploy แล้ว** (`railway up` tarball → ดัน v26–v28 ขึ้น live พร้อมกัน): การ์ดเวรกลางคืนแสดงวันที่ `(1,5,7)`, ป๊อบอัพวันหยุดแสดง note, ตารางอันดับเพิ่มอายุ `(34)`, ปฏิทินเค้ก 🎂 วันเกิด. **Technical → CLAUDE.md**.
 

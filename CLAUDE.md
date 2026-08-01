@@ -126,6 +126,18 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **โทนบวก** — ไม่มีแถบแดงประจานคนสาย/ขาด (ตามที่พี่วินเลือก). คนที่ไม่เคยเช็คชื่อ (score=null/0) จมท้ายตาราง อันดับโชว์ `—` ถ้า score null
 - migration: ไม่มี (ใช้ตาราง/คอลัมน์เดิมล้วน)
 
+## อนุญาตเช็คนอกสถานที่รายคน (v30 — `offsite_users` + attendance.php/admin.php)
+
+เจาะรายบุคคล เช่น ได้รับคำสั่งไปประชุม/ราชการ — คนนั้นเช็คจากที่ไหนก็ได้เฉพาะวันที่ตั้ง. **แยกจาก `offsite_days` เดิม (ทั้งสถานี) เก็บคู่กัน**
+
+- **ตาราง `offsite_users`** (`user_id`+`off_date` UNIQUE, `reason`, `no_late`) — แตกช่วงวันเป็น **row ต่อคน/วัน** ตอน insert (ลบ/query ราย row ง่าย). helper `offsite_user_for($uid,$date)` คืน row/null
+- **ต่างจาก offsite_days (ทั้งสถานี) ตรง scope เวลา:** per-user = **ข้าม GPS อย่างเดียว** เวลาเปิด+คิดสาย = กฎสถานีปกติ (offsite_days override ทั้ง start/end+late). ใน `h_checkin`: `$offsiteUser` เพิ่มเงื่อนไขข้าม GPS `if (!$offsite && !$offsiteUser && gps_enforce)` เท่านั้น — เวลา/สาย ไหลผ่าน branch ปกติเอง (`!$isHoliday`). **ยังคำนวณ+เก็บ `distance_m`/lat/lng ไว้ดูว่าเช็คจากที่ไหน** (โปร่งใส แม้ข้าม radius)
+- **`no_late` (default on ฝั่ง UI):** วันไปราชการไม่นับสาย — `h_checkin` หลังคิดสายปกติแล้ว `if ($offsiteUser && no_late) $late = 0`. กันคนไปประชุมเช้า (เช็คจากที่ประชุม 9-10 โมง) โดนนับสาย + ไม่ให้ไปโผล่สายในรายงานความขยัน v29. **ปุ่ม/clock-note ฝั่ง จนท. (`startClock`) ต้องเช็ค `no_late` ด้วย** ไม่งั้น sub ปุ่มเตือน "จะนับสาย" ทั้งที่ไม่นับ
+- **ไม่ยุ่งกฎวันอาทิตย์** (ต่างจาก offsite_days ที่ทะลุวันหยุด) — per-user ใช้วันทำงานปกติ; ถ้าประชุมตรงอาทิตย์ใช้ `sunday_work` แยก (row offsite_user วันอาทิตย์ = inert)
+- **แอดมิน:** การ์ด "🧍 อนุญาตเช็คนอกสถานที่ (รายคน)" ในหน้าตั้งค่า — เลือกคนหลายคน (checkbox chips จาก `users_list`) + ช่วงวัน + เหตุผล + checkbox `no_late`. handler `offsite_user_list/add/del` (**ไม่ผ่าน settings_save**). `add` รับ `user_ids[]`+`start_date`+`end_date`+`no_late`, validate staff active + วันไม่ย้อนหลัง + ช่วง ≤62 วัน, **แจ้งเข้ากล่องข้อความ (`notify_push` type announcement) 1 ครั้ง/คน/ช่วง**
+- **client:** `h_app_data` ส่ง `today.offsite_user` (row/null) → app.js banner หน้า Home + `doCheckin` ข้าม GPS-fail block ด้วย `&& !offsite_user` + `startClock`/clock-note เช็ค `no_late`. การ์ดแอดมิน `offsiteUserRefresh/Add/Del` (admin.js), style `.osu-*` (app.css)
+- migration: probe `offsite_users` (42S02→schema) + guarded ALTER `no_late` (probe information_schema — DB ที่สร้างตารางก่อนมี no_late) — pattern เดียวกับ gender/birthdate
+
 ## Deploy
 
 Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
