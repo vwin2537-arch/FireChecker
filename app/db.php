@@ -112,6 +112,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM offsite_users LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
@@ -161,6 +167,15 @@ function ensure_admin(): void {
     )->fetchColumn();
     if (!(int)$hasNote) {
         db()->exec("ALTER TABLE attendance ADD COLUMN note VARCHAR(255) NULL AFTER photos_json");
+    }
+
+    // migrate: offsite_users.no_late (วันไปราชการไม่นับสาย) — DB ที่สร้าง offsite_users ไปก่อนหน้ายังไม่มีคอลัมน์นี้
+    $hasNoLate = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'offsite_users' AND COLUMN_NAME = 'no_late'"
+    )->fetchColumn();
+    if (!(int)$hasNoLate) {
+        db()->exec("ALTER TABLE offsite_users ADD COLUMN no_late TINYINT(1) NOT NULL DEFAULT 0 AFTER reason");
     }
 }
 

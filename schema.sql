@@ -92,6 +92,19 @@ CREATE TABLE IF NOT EXISTS offsite_days (
   UNIQUE KEY uq_offsite_date (off_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- อนุญาตเช็คชื่อนอกสถานที่ "รายคน" (เจาะบุคคล เช่น ได้รับคำสั่งไปประชุม) — 1 แถว/คน/วัน
+-- ต่างจาก offsite_days (ทั้งสถานี): ข้าม GPS อย่างเดียว เวลาเปิด+คิดสาย = กฎสถานีปกติ
+CREATE TABLE IF NOT EXISTS offsite_users (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  off_date   DATE NOT NULL,
+  reason     VARCHAR(255) NOT NULL DEFAULT '',
+  no_late    TINYINT(1) NOT NULL DEFAULT 0,   -- 1 = วันไปราชการ ไม่นับสาย (มาเมื่อไหร่ก็ตรงเวลา)
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_offsite_user_date (user_id, off_date),
+  KEY idx_offsite_user_date (off_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- กล่องข้อความเจ้าหน้าที่ (mailbox) — 1 แถว/คน/ข้อความ (broadcast = fan-out หลายแถว)
 -- read_at NULL = ยังไม่อ่าน (จุดแดง); เปิดกล่อง = set read_at ทั้งหมด
 CREATE TABLE IF NOT EXISTS notifications (

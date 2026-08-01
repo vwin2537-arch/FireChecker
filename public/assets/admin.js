@@ -1361,6 +1361,19 @@ const Admin = {
         </div>
         <button class="btn btn-primary btn-block" onclick="Admin.offsiteAdd()">➕ เพิ่มวันนอกสถานที่</button>
       </div>
+      <div class="card"><h3>🧍 อนุญาตเช็คนอกสถานที่ (รายคน)</h3>
+        <div class="tiny" style="margin-bottom:10px">เจาะรายคน เช่น ได้รับคำสั่งไปประชุม — คนที่เลือกเช็คจากที่ไหนก็ได้ (ข้าม GPS) ในช่วงวันที่กำหนด · เวลาเปิด+คิดสาย = ปกติ · ระบบแจ้งเข้ากล่องข้อความให้เจ้าตัว</div>
+        <div id="osuList" class="tiny">กำลังโหลด...</div>
+        <div class="field" style="margin-top:12px"><label>เลือกเจ้าหน้าที่ (ได้หลายคน)</label>
+          <div id="osuPeople" class="osu-people">กำลังโหลด...</div></div>
+        <div class="grid-2">
+          <div class="field"><label>ตั้งแต่วันที่</label><input type="date" class="input" id="osuStart" value="${todayStr()}"></div>
+          <div class="field"><label>ถึงวันที่</label><input type="date" class="input" id="osuEnd" value="${todayStr()}"></div>
+        </div>
+        <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osuReason" maxlength="255" placeholder="เช่น ประชุมที่ว่าการอำเภอ"></div>
+        <label class="osu-nolate"><input type="checkbox" id="osuNoLate" checked> ✅ วันไปราชการ <b>ไม่นับสาย</b> (มาเมื่อไหร่ก็ถือว่าตรงเวลา — เหมาะกับคนไปประชุมตั้งแต่เช้า)</label>
+        <button class="btn btn-primary btn-block" onclick="Admin.offsiteUserAdd()">➕ อนุญาต + แจ้งเจ้าหน้าที่</button>
+      </div>
       <div class="card"><h3>🏷️ ทั่วไป</h3>${I('station_name', 'ชื่อสถานี')}
         <div class="setting-row" style="border:none;padding-top:4px">
           <div class="sr-main"><div class="sr-title">🔑 เปลี่ยนรหัสผ่านแอดมิน</div>
@@ -1388,6 +1401,7 @@ const Admin = {
       <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
     this.gdriveRefreshStatus();
     this.offsiteRefresh();
+    this.offsiteUserRefresh();
   },
 
   // วันเช็คชื่อนอกสถานที่ — โหลด/แสดง list (handler แยกจาก settings_save)
@@ -1419,6 +1433,44 @@ const Admin = {
     await App.api('offsite_del', { id });
     toast('ลบแล้ว');
     this.offsiteRefresh();
+  },
+
+  // อนุญาตเช็คนอกสถานที่รายคน — เลือกหลายคน + ช่วงวัน (handler แยกจาก settings_save)
+  async offsiteUserRefresh() {
+    const listEl = byId('osuList'), pplEl = byId('osuPeople');
+    if (!listEl || !pplEl) return;
+    const [u, d] = await Promise.all([App.api('users_list'), App.api('offsite_user_list')]);
+    const staff = u.users.filter(x => x.role === 'staff' && x.status === 'active');
+    pplEl.innerHTML = staff.length
+      ? staff.map(s => `<label class="osu-chk"><input type="checkbox" value="${s.id}"> ${esc(s.name)}</label>`).join('')
+      : '<span style="color:var(--muted)">ยังไม่มีเจ้าหน้าที่</span>';
+    listEl.innerHTML = d.items.length
+      ? d.items.map(o => `<div class="list-row">
+          <div class="lr-main"><div class="lr-title">${thaiDate(o.off_date)} · ${esc(o.name)}${+o.no_late ? ' <span class="osu-tag">ไม่นับสาย</span>' : ''}</div>
+            ${o.reason ? `<div class="lr-sub">${esc(o.reason)}</div>` : ''}</div>
+          <button class="link-btn" style="color:var(--absent);font-size:13px" onclick="Admin.offsiteUserDel(${o.id})">ลบ</button>
+        </div>`).join('')
+      : '<div style="color:var(--muted);padding:6px 0">ยังไม่มีรายการที่อนุญาตไว้</div>';
+  },
+
+  async offsiteUserAdd() {
+    const ids = [...document.querySelectorAll('#osuPeople input:checked')].map(c => +c.value);
+    if (!ids.length) return toast('เลือกเจ้าหน้าที่อย่างน้อย 1 คน', 'error');
+    const d = await App.api('offsite_user_add', {
+      user_ids: ids, start_date: byId('osuStart').value, end_date: byId('osuEnd').value,
+      reason: byId('osuReason').value.trim(), no_late: byId('osuNoLate').checked ? 1 : 0,
+    });
+    toast(d.message);
+    byId('osuReason').value = '';
+    this.offsiteUserRefresh();
+  },
+
+  async offsiteUserDel(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบรายการนี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    await App.api('offsite_user_del', { id });
+    toast('ลบแล้ว');
+    this.offsiteUserRefresh();
   },
 
   async gdriveRefreshStatus() {

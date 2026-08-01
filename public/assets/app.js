@@ -348,12 +348,16 @@ const App = {
         <div class="db-title">วันนี้คุณแจ้ง${label}ไว้</div>
         <div class="db-sub">ถ้ามาทำงาน ให้ยกเลิกที่แท็บ "วันหยุด" ก่อนเช็คชื่อ</div></div>`;
     } else {
-      const os = t.offsite;
-      const osBanner = os ? `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#065f46">📍 วันนี้เช็คชื่อ<b>นอกสถานที่</b>ได้ทุกที่${os.reason ? ' — ' + esc(os.reason) : ''}<br>เช็คในช่วง <b>${os.start_time}–${os.end_time}</b> น. ไม่นับสาย</div>` : '';
+      const os = t.offsite, osUser = t.offsite_user;
+      const osBanner = os
+        ? `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#065f46">📍 วันนี้เช็คชื่อ<b>นอกสถานที่</b>ได้ทุกที่${os.reason ? ' — ' + esc(os.reason) : ''}<br>เช็คในช่วง <b>${os.start_time}–${os.end_time}</b> น. ไม่นับสาย</div>`
+        : osUser
+        ? `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#065f46">📍 วันนี้คุณได้รับอนุญาตเช็ค<b>นอกพื้นที่</b>${osUser.reason ? ' — ' + esc(osUser.reason) : ''}<br>${+osUser.no_late ? 'เช็คได้จากทุกที่ · ไปราชการ <b>ไม่นับสาย</b>' : `เช็คได้จากทุกที่ ในเวลางานปกติ (หลัง <b>${s.late_cutoff}</b> น. นับสาย)`}</div>`
+        : '';
       stateHtml = `${osBanner}<button class="big-check" id="btnCheckin" onclick="App.doCheckin()">
         <span class="bc-ico">📍</span>เช็คชื่อ<span class="bc-sub" id="bcSub"></span>
       </button>
-      <div class="clock-note">${os ? `เช็คนอกสถานที่ ${os.start_time}–${os.end_time} น. (ไม่นับสาย)` : `เปิดเช็คชื่อ ${s.checkin_open} น. • หลัง ${s.late_cutoff} น. นับว่าสาย`}</div>`;
+      <div class="clock-note">${os ? `เช็คนอกสถานที่ ${os.start_time}–${os.end_time} น. (ไม่นับสาย)` : (osUser && +osUser.no_late) ? `เปิดเช็คชื่อ ${s.checkin_open} น. • ไปราชการวันนี้ ไม่นับสาย` : `เปิดเช็คชื่อ ${s.checkin_open} น. • หลัง ${s.late_cutoff} น. นับว่าสาย`}</div>`;
     }
 
     const q = d.quota, qPct = Math.min(100, q.used / q.max * 100);
@@ -402,8 +406,9 @@ const App = {
   },
 
   startClock() {
-    const s = this.data.settings, os = this.data.today.offsite;   // วันนอกสถานที่คุมปุ่มด้วยช่วงเวลาของวันนั้น
+    const s = this.data.settings, os = this.data.today.offsite, osUser = this.data.today.offsite_user;   // วันนอกสถานที่คุมปุ่มด้วยช่วงเวลาของวันนั้น
     const openStr = os ? os.start_time : s.checkin_open, lateStr = os ? os.end_time : s.late_cutoff;
+    const noLate = osUser && +osUser.no_late;   // ไปราชการรายคน = ไม่นับสาย ปุ่มไม่ต้องเตือนสาย
     const tick = () => {
       const el = byId('clock'); if (!el) return clearInterval(this.clockTimer);
       const n = new Date();
@@ -413,7 +418,7 @@ const App = {
         const nowM = n.getHours() * 60 + n.getMinutes();
         const openM = hm(openStr), lateM = hm(lateStr);
         if (nowM < openM) { btn.disabled = true; sub.textContent = 'เปิดเวลา ' + openStr + ' น.'; }
-        else { btn.disabled = false; sub.textContent = nowM > lateM ? 'เลยเวลา — จะถูกนับว่าสาย' : 'แตะเพื่อเช็คชื่อ'; }
+        else { btn.disabled = false; sub.textContent = (nowM > lateM && !noLate) ? 'เลยเวลา — จะถูกนับว่าสาย' : 'แตะเพื่อเช็คชื่อ'; }
       }
     };
     tick();
@@ -441,7 +446,7 @@ const App = {
         Swal.close();
       } catch (err) {
         Swal.close();
-        if (s.gps_enforce && !this.data.today.offsite) {   // วันนอกสถานที่ไม่บังคับ GPS — หาไม่เจอก็เช็คต่อได้
+        if (s.gps_enforce && !this.data.today.offsite && !this.data.today.offsite_user) {   // นอกสถานที่ (ทั้งสถานี/รายคน) ไม่บังคับ GPS — หาไม่เจอก็เช็คต่อได้
           await Swal.fire({ icon: 'error', title: 'ไม่พบตำแหน่ง GPS', html: gpsErrorMessage(err), confirmButtonText: 'ตกลง' });
           return;
         }

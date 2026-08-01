@@ -55,7 +55,8 @@ function h_app_data(): never {
             'day_off'     => $offToday,
             'attendance'  => $att,
             'night'       => $nightToday,
-            'offsite'     => offsite_for($today),   // วันเช็คชื่อนอกสถานที่ (null = วันปกติ)
+            'offsite'     => offsite_for($today),                    // ทั้งสถานีนอกสถานที่ (null = วันปกติ)
+            'offsite_user'=> offsite_user_for($u['id'], $today),     // อนุญาตรายคน (null = ไม่ได้รับอนุญาต)
         ],
         'quota'    => ['used' => $quotaUsed, 'max' => (int)setting('off_quota_month', '10')],
         'upcoming' => $upcoming,
@@ -100,12 +101,20 @@ function offsite_for(string $date): ?array {
     return $st->fetch() ?: null;
 }
 
+/** อนุญาตเช็คนอกสถานที่รายคน ของ user+วันนี้ (row {off_date,reason,no_late} หรือ null) — ข้าม GPS; no_late=1 = ไม่นับสาย */
+function offsite_user_for(int $uid, string $date): ?array {
+    $st = db()->prepare('SELECT off_date, reason, no_late FROM offsite_users WHERE user_id = ? AND off_date = ?');
+    $st->execute([$uid, $date]);
+    return $st->fetch() ?: null;
+}
+
 function h_checkin(): never {
     $u     = require_user();
     $today = date('Y-m-d');
 
     $isHoliday = is_station_holiday($today);
-    $offsite   = offsite_for($today);   // วันเช็คชื่อนอกสถานที่ (ข้าม GPS + ใช้ช่วงเวลาของวันนั้น); null = วันปกติ
+    $offsite   = offsite_for($today);   // วันเช็คชื่อนอกสถานที่ทั้งสถานี (ข้าม GPS + ใช้ช่วงเวลาของวันนั้น); null = วันปกติ
+    $offsiteUser = offsite_user_for($u['id'], $today);   // อนุญาตนอกสถานที่รายคน (ข้าม GPS อย่างเดียว เวลา/สายปกติ)
     if ($isHoliday && !$offsite && setting('sunday_work_enabled', '1') !== '1')
         fail('วันนี้เป็นวันหยุดสถานี (วันอาทิตย์) ไม่ต้องเช็คชื่อค่ะ');
 
@@ -133,7 +142,7 @@ function h_checkin(): never {
     if ($lat !== null && $lng !== null) {
         $dist = distance_m($lat, $lng, (float)setting('gps_lat'), (float)setting('gps_lng'));
     }
-    if (!$offsite && setting('gps_enforce', '1') === '1') {   // วันนอกสถานที่ข้ามการบังคับรัศมี (ยังเก็บพิกัด/ระยะไว้ดู)
+    if (!$offsite && !$offsiteUser && setting('gps_enforce', '1') === '1') {   // นอกสถานที่ (ทั้งสถานี/รายคน) ข้ามการบังคับรัศมี (ยังเก็บพิกัด/ระยะไว้ดู)
         if ($dist === null) fail('ไม่พบพิกัด GPS — กรุณาเปิดตำแหน่งแล้วลองใหม่');
         $radius = (int)setting('gps_radius_m', '1000');
         if ($dist > $radius) fail("คุณอยู่ห่างสถานี {$dist} ม. (เกินรัศมี {$radius} ม.) เช็คชื่อไม่ได้");
@@ -162,6 +171,7 @@ function h_checkin(): never {
             if ($st->fetch()) { $late = 0; $exempted = true; }
         }
     }
+    if ($offsiteUser && (int)$offsiteUser['no_late']) $late = 0;   // วันไปราชการ (รายคน) ไม่นับสาย
     $note = mb_substr(trim((string)param('note', '')), 0, 255) ?: null;
 
     db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path, note)
@@ -172,7 +182,9 @@ function h_checkin(): never {
     if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'], $today);
 
     $msg = 'เช็คชื่อแล้ว ตรงเวลา 🎉';
-    if ($offsite)       $msg = $late ? 'เช็คชื่อแล้ว (นอกสถานที่ · สาย) 📍' : 'เช็คชื่อแล้ว (นอกสถานที่) 📍';
+    if ($offsite)         $msg = $late ? 'เช็คชื่อแล้ว (นอกสถานที่ · สาย) 📍' : 'เช็คชื่อแล้ว (นอกสถานที่) 📍';
+    elseif ($offsiteUser) $msg = (int)$offsiteUser['no_late'] ? 'เช็คชื่อแล้ว (นอกพื้นที่ · ไปราชการ ไม่นับสาย) 📍'
+                                : ($late ? 'เช็คชื่อแล้ว (นอกพื้นที่ · สาย) 📍' : 'เช็คชื่อแล้ว (นอกพื้นที่ · ได้รับอนุญาต) 📍');
     elseif ($late)      $msg = 'เช็คชื่อแล้ว (สาย)';
     elseif ($exempted)  $msg = 'เช็คชื่อแล้ว — ยกเว้นสาย (มาจากเวรกลางคืน) 🌙';
     elseif ($isHoliday) $msg = 'เช็คชื่อแล้ว (ทำงานวันหยุด) 🎉';

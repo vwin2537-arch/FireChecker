@@ -471,3 +471,63 @@ function h_offsite_del(): never {
     db()->prepare('DELETE FROM offsite_days WHERE id = ?')->execute([(int)param('id', 0)]);
     ok(['message' => 'ลบแล้ว']);
 }
+
+// ---------- อนุญาตเช็คนอกสถานที่รายคน (offsite_users) ----------
+
+function h_offsite_user_list(): never {
+    require_admin();
+    $st = db()->prepare(
+        "SELECT ou.id, ou.user_id, ou.off_date, ou.reason, ou.no_late, u.name, u.position
+           FROM offsite_users ou JOIN users u ON u.id = ou.user_id
+          WHERE ou.off_date >= ? ORDER BY ou.off_date, u.name");
+    $st->execute([date('Y-m-d')]);
+    ok(['items' => $st->fetchAll()]);
+}
+
+function h_offsite_user_add(): never {
+    require_admin();
+    $uidsRaw = param('user_ids', []);
+    $uids    = is_array($uidsRaw) ? $uidsRaw : explode(',', (string)$uidsRaw);
+    $uids    = array_values(array_unique(array_filter(array_map('intval', $uids))));
+    $start   = trim((string)param('start_date', ''));
+    $end     = trim((string)param('end_date', '')) ?: $start;
+    $reason  = mb_substr(trim((string)param('reason', '')), 0, 255);
+    $noLate  = (int)!!param('no_late', 0);   // 1 = วันไปราชการ ไม่นับสาย
+
+    if (!$uids) fail('เลือกเจ้าหน้าที่อย่างน้อย 1 คน');
+    $dateRe = '/^\d{4}-\d{2}-\d{2}$/';
+    if (!preg_match($dateRe, $start) || !strtotime($start)) fail('วันที่เริ่มไม่ถูกต้อง');
+    if (!preg_match($dateRe, $end) || !strtotime($end))     fail('วันที่สิ้นสุดไม่ถูกต้อง');
+    if ($end < $start)          fail('วันสิ้นสุดต้องไม่ก่อนวันเริ่ม');
+    if ($start < date('Y-m-d'))  fail('เลือกวันย้อนหลังไม่ได้');
+    if ((strtotime($end) - strtotime($start)) / 86400 > 62) fail('ช่วงวันยาวเกินไป (สูงสุด 62 วัน)');
+
+    // เฉพาะ staff active เท่านั้น
+    $in     = implode(',', array_fill(0, count($uids), '?'));
+    $st     = db()->prepare("SELECT id, name FROM users WHERE role = 'staff' AND status = 'active' AND id IN ($in)");
+    $st->execute($uids);
+    $valid  = $st->fetchAll(PDO::FETCH_KEY_PAIR);   // [id => name]
+    if (!$valid) fail('ไม่พบเจ้าหน้าที่ที่เลือก');
+
+    // แตกช่วงวันเป็นราย row ต่อคน/วัน
+    $dates = [];
+    for ($d = new DateTime($start); $d->format('Y-m-d') <= $end; $d->modify('+1 day')) $dates[] = $d->format('Y-m-d');
+
+    $ins = db()->prepare('INSERT INTO offsite_users (user_id, off_date, reason, no_late) VALUES (?, ?, ?, ?)
+                          ON DUPLICATE KEY UPDATE reason = VALUES(reason), no_late = VALUES(no_late)');
+    foreach ($valid as $uid => $name) {
+        foreach ($dates as $dt) $ins->execute([$uid, $dt, $reason, $noLate]);
+        // แจ้งเข้ากล่องข้อความให้เจ้าตัวรู้ว่าได้รับอนุญาต
+        $range = count($dates) > 1 ? thai_date($start) . ' – ' . thai_date($end) : thai_date($start);
+        $lateNote = $noLate ? 'เช็คได้จากทุกที่ (ไปราชการ ไม่นับสาย)' : 'เช็คชื่อได้จากทุกที่ ในเวลางานปกติ';
+        notify_push((int)$uid, 'announcement', '📍 ได้รับอนุญาตเช็คนอกพื้นที่',
+            "วันที่ {$range}" . ($reason ? " ({$reason})" : '') . " — {$lateNote}");
+    }
+    ok(['message' => 'บันทึกแล้ว ' . count($valid) . ' คน · ' . count($dates) . ' วัน']);
+}
+
+function h_offsite_user_del(): never {
+    require_admin();
+    db()->prepare('DELETE FROM offsite_users WHERE id = ?')->execute([(int)param('id', 0)]);
+    ok(['message' => 'ลบแล้ว']);
+}
