@@ -626,7 +626,7 @@ const App = {
     html += `<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:var(--leave);display:inline-block"></span> ${offLabel(type)} • <b>${d.added.length} วัน</b></div>`;
     if (d.pending.length) html += `<div style="margin-top:12px;padding:11px 13px;background:var(--leave-bg);border-radius:12px;color:var(--leave);font-weight:400">🔔 แจ้งหัวหน้าสถานีทาง LINE แล้ว<br><span style="font-weight:300">⏳ รออนุมัติ ${d.pending.length} วัน</span></div>`;
     else if (isLeave) html += `<div style="margin-top:12px;padding:11px 13px;background:var(--ok-bg);border-radius:12px;color:var(--ok);font-weight:400">🔔 แจ้งหัวหน้าสถานีทาง LINE แล้ว</div>`;
-    if (d.over_quota.length) html += `<div style="margin-top:10px;color:var(--late)">⚠️ เกินโควต้า ${d.over_quota.length} วัน — แจ้งหัวหน้าแล้ว</div>`;
+    if (d.over_quota.length) html += `<div style="margin-top:10px;color:var(--late)">⚠️ เกินโควต้าวันหยุดเดือนนี้ ${d.over_quota.length} วัน — ต้องรอหัวหน้าอนุมัติ</div>`;
     if (d.skipped.length) html += `<div style="margin-top:10px;font-size:12.5px;color:var(--ink-3)">ข้าม: ${d.skipped.map(s => `${thaiDate(s[0], false)} (${s[1]})`).join(', ')}</div>`;
     html += `</div>`;
     await Swal.fire({ icon: 'success', title: 'ส่งคำขอแล้ว', html, confirmButtonText: 'ตกลง' });

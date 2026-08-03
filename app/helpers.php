@@ -90,7 +90,32 @@ function thai_date(string $ymd, bool $withDay = true): string {
 
 /** วันอาทิตย์ + เปิดใช้ sunday_off → วันหยุดสถานี */
 function is_station_holiday(string $ymd): bool {
-    return setting('sunday_off', '1') === '1' && date('w', strtotime($ymd)) === '0';
+    if (setting('sunday_off', '1') === '1' && date('w', strtotime($ymd)) === '0') return true;
+    return isset(holiday_set()[$ymd]);   // วันหยุดนักขัตฤกษ์ที่แอดมินตั้งไว้
+}
+
+/** วันหยุดนักขัตฤกษ์ทั้งหมด (cache ต่อ request) — คีย์ = 'Y-m-d' เพื่อเช็คเร็วในลูปรายวัน */
+function holiday_set(): array {
+    static $set = null;
+    if ($set === null) {
+        $set = [];
+        try {
+            foreach (db()->query('SELECT holiday_date FROM public_holidays')->fetchAll(PDO::FETCH_COLUMN) as $d)
+                $set[$d] = true;
+        } catch (PDOException $e) { /* ตารางยังไม่ถูกสร้าง (cron รันก่อน ensure_admin) → ถือว่าไม่มีนักขัตฯ */ }
+    }
+    return $set;
+}
+
+/** โควต้าวันหยุดของเดือน Y-m = จำนวนวันหยุดสถานี (อาทิตย์ + นักขัตฯวันธรรมดา ไม่นับซ้ำ) */
+function station_holidays_in_month(string $ym): int {
+    static $memo = [];
+    if (isset($memo[$ym])) return $memo[$ym];
+    $days = (int)date('t', strtotime($ym . '-01'));
+    $n = 0;
+    for ($i = 1; $i <= $days; $i++)
+        if (is_station_holiday(sprintf('%s-%02d', $ym, $i))) $n++;
+    return $memo[$ym] = $n;
 }
 
 /** เซฟรูป base64 (data URI) ลง UPLOAD_DIR/{yyyy-mm}/ คืน path สัมพัทธ์ หรือ null ถ้าไม่สำเร็จ */

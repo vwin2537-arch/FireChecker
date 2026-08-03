@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS offsite_users (
   KEY idx_offsite_user_date (off_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- วันหยุดนักขัตฤกษ์ (แอดมินกรอกเอง) — is_station_holiday() นับเป็นวันหยุดสถานีเหมือนวันอาทิตย์
+-- ใช้คำนวณโควต้าวันหยุดรายเดือน (= จำนวนอาทิตย์ + นักขัตฯวันธรรมดา)
+CREATE TABLE IF NOT EXISTS public_holidays (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  holiday_date DATE NOT NULL,
+  name         VARCHAR(255) NOT NULL DEFAULT '',
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_holiday_date (holiday_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- กล่องข้อความเจ้าหน้าที่ (mailbox) — 1 แถว/คน/ข้อความ (broadcast = fan-out หลายแถว)
 -- read_at NULL = ยังไม่อ่าน (จุดแดง); เปิดกล่อง = set read_at ทั้งหมด
 CREATE TABLE IF NOT EXISTS notifications (

@@ -118,6 +118,13 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM public_holidays LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
+    seed_public_holidays();   // ใส่วันหยุดนักขัตฤกษ์ที่เหลือของปีให้ครั้งแรก (ตารางว่าง)
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
@@ -205,4 +212,22 @@ function seed_fitness_presets(): void {
     ];
     $st = db()->prepare('INSERT INTO fitness_items (name, unit, direction, criteria_json, sort_order) VALUES (?, ?, ?, ?, ?)');
     foreach ($items as $it) $st->execute($it);
+}
+
+/** ใส่วันหยุดนักขัตฤกษ์ตั้งต้นครั้งแรก (ตารางว่าง) — เฉพาะวันในอนาคต แอดมินเพิ่ม/ลบได้ภายหลัง
+ *  ที่มา: ประกาศวันหยุดราชการ 2569 (สำนักนายกฯ) — seed เฉพาะครึ่งปีหลังที่ยังไม่ผ่าน
+ */
+function seed_public_holidays(): void {
+    if ((int)db()->query('SELECT COUNT(*) FROM public_holidays')->fetchColumn() > 0) return;
+    $today = date('Y-m-d');
+    $days = [
+        ['2026-08-12', 'วันแม่แห่งชาติ'],
+        ['2026-10-13', 'วันคล้ายวันสวรรคต ร.9'],
+        ['2026-10-23', 'วันปิยมหาราช'],
+        ['2026-12-07', 'ชดเชยวันพ่อแห่งชาติ'],
+        ['2026-12-10', 'วันรัฐธรรมนูญ'],
+        ['2026-12-31', 'วันสิ้นปี'],
+    ];
+    $st = db()->prepare('INSERT IGNORE INTO public_holidays (holiday_date, name) VALUES (?, ?)');
+    foreach ($days as $d) if ($d[0] >= $today) $st->execute($d);
 }

@@ -154,12 +154,7 @@ const Admin = {
   analyticsHtml(d) {
     return `
       ${this.nightTonightHtml(d)}
-      ${(d.night_stats || []).length ? `<div class="card">
-        <h3>🌙 เวรกลางคืนเดือนนี้ <span class="h-right">รวม ${d.night_stats.reduce((s, n) => s + +n.nights, 0)} คืน</span></h3>
-        ${d.night_stats.map(n => `<div class="list-row">
-          <div class="lr-main"><div class="lr-title">${esc(n.name)}${n.days ? ` <span class="tiny">(${n.days})</span>` : ''}</div></div>
-          <span class="night-count"><b>${n.nights}</b> คืน</span></div>`).join('')}
-      </div>` : ''}
+      ${this.nightMonthHtml(d)}
       <div class="card">
         <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
         <button class="btn btn-primary btn-block" style="margin-bottom:12px" onclick="Admin.openReport()">📄 ออกรายงานรายเดือน (ปริ้น / บันทึกรูปส่ง LINE)</button>
@@ -216,6 +211,31 @@ const Admin = {
     const date = byId('nrDate').value;
     const d = await App.api('night_roster', { date });
     byId('nrBody').innerHTML = this.nightRosterBody(d.items, d.date);
+  },
+
+  // การ์ด "เวรกลางคืนรายเดือน" — สรุปต่อคน (กี่คืน + วันไหน) + เลือกย้อนเดือนได้
+  nightMonthHtml(d) {
+    return `<div class="card">
+      <h3>🌙 เวรกลางคืนรายเดือน <span class="h-right"><input type="month" id="nmMonth" value="${d.night_month || ''}" max="${d.night_month || ''}" onchange="Admin.nightMonthLoad()" class="nr-date"></span></h3>
+      <div id="nmBody">${this.nightMonthBody(d.night_stats || [], d.night_summary || {})}</div>
+    </div>`;
+  },
+
+  nightMonthBody(stats, sum) {
+    const bar = `<div class="nm-sum">
+      <span><b>${+sum.nights || 0}</b> คืนที่มีเวร</span>
+      <span><b>${+sum.people || 0}</b> คน</span>
+      <span><b>${+sum.man_nights || 0}</b> คน-คืน</span></div>`;
+    if (!stats.length) return bar + '<div class="empty" style="padding:16px"><span class="e-ico">🌙</span>เดือนนี้ยังไม่มีการเข้าเวร</div>';
+    return bar + stats.map(n => `<div class="list-row">
+      <div class="lr-main"><div class="lr-title">${esc(n.name)}${n.days ? ` <span class="tiny">(${n.days})</span>` : ''}</div></div>
+      <span class="night-count"><b>${n.nights}</b> คืน</span></div>`).join('');
+  },
+
+  async nightMonthLoad() {
+    const month = byId('nmMonth').value;
+    const d = await App.api('night_month', { month });
+    byId('nmBody').innerHTML = this.nightMonthBody(d.stats, d.summary);
   },
 
   rankingHtml(ranking) {
@@ -1345,8 +1365,17 @@ const Admin = {
       </div>
       <div class="card"><h3>📍 พิกัดสถานี</h3>
         <div class="grid-2">${I('gps_lat', 'ละติจูด')}${I('gps_lng', 'ลองจิจูด')}</div>
-        <div class="grid-2">${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}${I('off_quota_month', 'โควต้าวันหยุด (วัน/เดือน)', 'number')}</div>
+        <div class="field">${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}</div>
         <button class="btn btn-ghost btn-sm" onclick="Admin.useHere()">📌 ใช้ตำแหน่งปัจจุบันของฉัน</button>
+      </div>
+      <div class="card"><h3>🎌 วันหยุดนักขัตฤกษ์</h3>
+        <div class="tiny" style="margin-bottom:10px">วันหยุดราชการ — ระบบถือเป็นวันหยุดสถานี (ไม่นับขาด ไม่ต้องเช็คชื่อ) และรวมเป็น<b>โควต้าวันหยุดของเดือนนั้นให้อัตโนมัติ</b> (โควต้า = วันอาทิตย์ + นักขัตฯในเดือน)</div>
+        <div id="holidayList" class="tiny">กำลังโหลด...</div>
+        <div class="grid-2" style="margin-top:12px">
+          <div class="field"><label>วันที่</label><input type="date" class="input" id="hoDate" value="${todayStr()}"></div>
+          <div class="field"><label>ชื่อวันหยุด</label><input class="input" id="hoName" maxlength="255" placeholder="เช่น วันปิยมหาราช"></div>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="Admin.holidayAdd()">➕ เพิ่มวันหยุด</button>
       </div>
       <div class="card"><h3>📍 วันเช็คชื่อนอกสถานที่</h3>
         <div class="tiny" style="margin-bottom:10px">วันที่สั่ง จนท. ไปกิจกรรมนอกสถานี — วันนั้นทุกคนเช็คชื่อจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย</div>
@@ -1400,8 +1429,39 @@ const Admin = {
       </div>
       <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
     this.gdriveRefreshStatus();
+    this.holidayRefresh();
     this.offsiteRefresh();
     this.offsiteUserRefresh();
+  },
+
+  // วันหยุดนักขัตฤกษ์ — โหลด/แสดง list (handler แยกจาก settings_save)
+  async holidayRefresh() {
+    const el = byId('holidayList');
+    if (!el) return;
+    const d = await App.api('holiday_list');
+    el.innerHTML = d.items.length ? d.items.map(o => `
+      <div class="list-row">
+        <div class="lr-main"><div class="lr-title">${thaiDate(o.holiday_date)}</div>
+          <div class="lr-sub">${esc(o.name)}</div></div>
+        <button class="link-btn" style="color:var(--absent);font-size:13px" onclick="Admin.holidayDel(${o.id})">ลบ</button>
+      </div>`).join('') : '<div style="color:var(--muted);padding:6px 0">ยังไม่มีวันหยุดนักขัตฤกษ์ที่ตั้งไว้</div>';
+  },
+
+  async holidayAdd() {
+    const name = byId('hoName').value.trim();
+    if (!name) return toast('กรุณาระบุชื่อวันหยุด');
+    const d = await App.api('holiday_add', { holiday_date: byId('hoDate').value, name });
+    toast(d.message);
+    byId('hoName').value = '';
+    this.holidayRefresh();
+  },
+
+  async holidayDel(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบวันหยุดนี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    await App.api('holiday_del', { id });
+    toast('ลบแล้ว');
+    this.holidayRefresh();
   },
 
   // วันเช็คชื่อนอกสถานที่ — โหลด/แสดง list (handler แยกจาก settings_save)
@@ -1522,7 +1582,7 @@ const Admin = {
     const keys = ['selfie_required', 'checkout_enabled', 'gps_enforce', 'sunday_off',
       'sunday_work_enabled', 'night_shift_enabled', 'night_checkin_open',
       'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
-      'gps_lat', 'gps_lng', 'gps_radius_m', 'off_quota_month', 'station_name', 'line_token', 'line_group_id',
+      'gps_lat', 'gps_lng', 'gps_radius_m', 'station_name', 'line_token', 'line_group_id',
       'gdrive_client_id', 'gdrive_client_secret'];
     const settings = {};
     keys.forEach(k => {

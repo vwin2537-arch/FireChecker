@@ -60,14 +60,7 @@ function h_admin_data(): never {
     }
 
     // ---------- สถิติเวรกลางคืนเดือนนี้ (จำนวนคืนต่อคน — ดูความเป็นธรรม) ----------
-    $st = db()->prepare(
-        "SELECT u.name, u.position, COUNT(*) nights,
-                GROUP_CONCAT(DAY(n.duty_date) ORDER BY n.duty_date SEPARATOR ',') days
-         FROM night_shifts n JOIN users u ON u.id = n.user_id
-         WHERE DATE_FORMAT(n.duty_date,'%Y-%m') = ?
-         GROUP BY n.user_id, u.name, u.position ORDER BY nights DESC, u.name");
-    $st->execute([date('Y-m')]);
-    $nightStats = $st->fetchAll();
+    $nightMonth = night_month_data(date('Y-m'));
 
     // ---------- เข้าเวรกลางคืน "คืนนี้" (ใครลงเวรบ้าง) ----------
     $nightDate = tonight_duty_date();
@@ -98,17 +91,14 @@ function h_admin_data(): never {
     // ---------- Ranking + Engagement Score (เดือนนี้) ----------
     $ranking = engagement_ranking(date('Y-m'));
 
-    // ---------- เตือนเกินโควต้า (เดือนนี้ขึ้นไป) ----------
+    // ---------- เตือนเกินโควต้า (เดือนนี้ขึ้นไป) — over_quota ถูก flag ตอน insert ตามโควต้ารายเดือนแล้ว ----------
     $st = db()->prepare(
-        "SELECT u.name, DATE_FORMAT(o.off_date,'%Y-%m') ym,
-                SUM(o.type = 'dayoff') n, MAX(o.over_quota) has_over
+        "SELECT u.name, DATE_FORMAT(o.off_date,'%Y-%m') ym, SUM(o.type = 'dayoff') n
          FROM day_offs o JOIN users u ON u.id = o.user_id
-         WHERE o.off_date >= DATE_FORMAT(?, '%Y-%m-01') AND u.status = 'active'
+         WHERE o.off_date >= DATE_FORMAT(?, '%Y-%m-01') AND u.status = 'active' AND o.over_quota = 1
          GROUP BY o.user_id, u.name, ym
-         HAVING SUM(o.type = 'dayoff') > ? OR MAX(o.over_quota) = 1
          ORDER BY ym, n DESC");
-    $quota = (int)setting('off_quota_month', '10');
-    $st->execute([$today, $quota]);
+    $st->execute([$today]);
     $overQuota = $st->fetchAll();
 
     // ---------- กิจกรรมล่าสุด ----------
@@ -149,7 +139,9 @@ function h_admin_data(): never {
             'holiday_workers' => $holidayWorkers,
         ],
         'weekday'      => $weekday,
-        'night_stats'  => $nightStats,
+        'night_stats'   => $nightMonth['stats'],
+        'night_summary' => $nightMonth['summary'],
+        'night_month'   => date('Y-m'),
         'night_tonight'      => $nightTonight,
         'night_tonight_date' => $nightDate,
         'ranking'      => $ranking,
@@ -295,7 +287,7 @@ function h_users_list(): never {
                 (SELECT COUNT(*) FROM day_offs o
                   WHERE o.user_id = u.id AND o.type = 'dayoff' AND DATE_FORMAT(o.off_date,'%Y-%m') = '{$ym}') quota_used
          FROM users u ORDER BY u.role, u.status, u.name")->fetchAll();
-    ok(['users' => $rows, 'quota_max' => (int)setting('off_quota_month', '10')]);
+    ok(['users' => $rows, 'quota_max' => station_holidays_in_month($ym)]);
 }
 
 /** validate 'YYYY-MM-DD' + ช่วงอายุสมเหตุผล (15-80 ปี) — คืน string วันเกิด หรือ null ถ้าว่าง/ผิด */
@@ -387,6 +379,39 @@ function h_report_range(): never {
     ok(['from' => $from, 'to' => $to, 'attendance' => $att, 'day_offs' => $offs, 'night_shifts' => $nights]);
 }
 
+/**
+ * สถิติเวรกลางคืนของเดือน "YYYY-MM" — จำนวนคืนต่อคน + วันที่ๆ เข้าเวร + สรุปรวมทั้งเดือน
+ * ใช้ร่วมกันทั้งการ์ดแดชบอร์ด (เดือนปัจจุบัน) และ h_night_month (month picker ย้อนหลัง)
+ */
+function night_month_data(string $ym): array {
+    $st = db()->prepare(
+        "SELECT u.name, u.position, COUNT(*) nights,
+                GROUP_CONCAT(DAY(n.duty_date) ORDER BY n.duty_date SEPARATOR ',') days
+         FROM night_shifts n JOIN users u ON u.id = n.user_id
+         WHERE DATE_FORMAT(n.duty_date,'%Y-%m') = ?
+         GROUP BY n.user_id, u.name, u.position ORDER BY nights DESC, u.name");
+    $st->execute([$ym]);
+    $stats = $st->fetchAll();
+
+    // สรุปรวม: กี่คืนที่มีคนเข้าเวร (distinct วัน), กี่คนที่เข้าเวร, รวมคน-คืน
+    $st = db()->prepare(
+        "SELECT COUNT(DISTINCT duty_date) nights, COUNT(DISTINCT user_id) people, COUNT(*) man_nights
+         FROM night_shifts WHERE DATE_FORMAT(duty_date,'%Y-%m') = ?");
+    $st->execute([$ym]);
+
+    return ['stats' => $stats, 'summary' => $st->fetch()];
+}
+
+/** สถิติเวรกลางคืนของเดือนที่เลือก (month picker บนแดชบอร์ด) — default เดือนปัจจุบัน, กันเดือนอนาคต */
+function h_night_month(): never {
+    require_admin();
+    $ym = (string)(param('month') ?: date('Y-m'));
+    if (!preg_match('/^\d{4}-\d{2}$/', $ym)) fail('รูปแบบเดือนไม่ถูกต้อง');
+    if ($ym > date('Y-m'))                   fail('เลือกเดือนในอนาคตไม่ได้');
+    $nm = night_month_data($ym);
+    ok(['month' => $ym, 'month_label' => thai_month_label($ym), 'stats' => $nm['stats'], 'summary' => $nm['summary']]);
+}
+
 /** รายชื่อคนเข้าเวรกลางคืนของวันที่ระบุ (default = คืนนี้) — สำหรับ date picker บนแดชบอร์ด */
 function h_night_roster(): never {
     require_admin();
@@ -403,7 +428,7 @@ function h_night_roster(): never {
 const EDITABLE_SETTINGS = [
     'station_name', 'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
     'gps_lat', 'gps_lng', 'gps_radius_m', 'gps_enforce',
-    'selfie_required', 'checkout_enabled', 'off_quota_month', 'sunday_off',
+    'selfie_required', 'checkout_enabled', 'sunday_off',
     'night_shift_enabled', 'night_checkin_open', 'sunday_work_enabled',
     'line_token', 'line_group_id',
     'gdrive_client_id', 'gdrive_client_secret',
@@ -419,7 +444,7 @@ function h_settings_save(): never {
     require_admin();
     $in = (array)param('settings', []);
     $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff', 'night_checkin_open'];
-    $numKeys  = ['gps_radius_m', 'off_quota_month'];
+    $numKeys  = ['gps_radius_m'];
     $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off', 'night_shift_enabled', 'sunday_work_enabled'];
 
     foreach ($in as $k => $v) {
@@ -469,6 +494,35 @@ function h_offsite_add(): never {
 function h_offsite_del(): never {
     require_admin();
     db()->prepare('DELETE FROM offsite_days WHERE id = ?')->execute([(int)param('id', 0)]);
+    ok(['message' => 'ลบแล้ว']);
+}
+
+// ---------- วันหยุดนักขัตฤกษ์ (public_holidays) ----------
+
+/** รายการวันหยุดนักขัตฤกษ์ที่ตั้งไว้ (วันนี้ขึ้นไป) — สำหรับหน้าตั้งค่าแอดมิน */
+function h_holiday_list(): never {
+    require_admin();
+    $st = db()->prepare('SELECT id, holiday_date, name FROM public_holidays WHERE holiday_date >= ? ORDER BY holiday_date');
+    $st->execute([date('Y-m-d')]);
+    ok(['items' => $st->fetchAll()]);
+}
+
+function h_holiday_add(): never {
+    require_admin();
+    $date = trim((string)param('holiday_date', ''));
+    $name = mb_substr(trim((string)param('name', '')), 0, 255);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) fail('วันที่ไม่ถูกต้อง');
+    if ($name === '') fail('กรุณาระบุชื่อวันหยุด');
+
+    db()->prepare('INSERT INTO public_holidays (holiday_date, name) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE name = VALUES(name)')
+        ->execute([$date, $name]);
+    ok(['message' => 'บันทึกวันหยุดนักขัตฤกษ์แล้ว']);
+}
+
+function h_holiday_del(): never {
+    require_admin();
+    db()->prepare('DELETE FROM public_holidays WHERE id = ?')->execute([(int)param('id', 0)]);
     ok(['message' => 'ลบแล้ว']);
 }
 

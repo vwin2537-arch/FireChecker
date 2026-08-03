@@ -58,7 +58,7 @@ function h_app_data(): never {
             'offsite'     => offsite_for($today),                    // ทั้งสถานีนอกสถานที่ (null = วันปกติ)
             'offsite_user'=> offsite_user_for($u['id'], $today),     // อนุญาตรายคน (null = ไม่ได้รับอนุญาต)
         ],
-        'quota'    => ['used' => $quotaUsed, 'max' => (int)setting('off_quota_month', '10')],
+        'quota'    => ['used' => $quotaUsed, 'max' => station_holidays_in_month(date('Y-m'))],
         'upcoming' => $upcoming,
         'history'  => $history,
         'library_unread' => $libUnread,
@@ -81,7 +81,6 @@ function client_settings(): array {
         'gps_lat'          => (float)setting('gps_lat'),
         'gps_lng'          => (float)setting('gps_lng'),
         'gps_radius_m'     => (int)setting('gps_radius_m', '1000'),
-        'off_quota_month'  => (int)setting('off_quota_month', '10'),
         'sunday_off'       => setting('sunday_off', '1') === '1',
         'night_shift_enabled' => setting('night_shift_enabled', '1') === '1',
         'night_checkin_open'  => setting('night_checkin_open', '18:00'),
