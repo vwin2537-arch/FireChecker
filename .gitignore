@@ -7,3 +7,7 @@ token.pkl
 public/uploads/*
 !public/uploads/.gitkeep
 .DS_Store
+
+# รูปเช็คชื่อที่โหลดจาก Drive มาใช้ลงทะเบียนใบหน้า (ข้อมูลส่วนบุคคล ห้าม commit)
+รูปเช็คชื่อสถานีไฟป่า/
+รูปเช็คชื่อสถานีไฟป่า-*.zip

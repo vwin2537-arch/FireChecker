@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>FaceLab — วัดผลก่อนทำระบบยืนยันใบหน้า (ไฟล์ทิ้ง ห้าม deploy)</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", sans-serif; margin: 0; padding: 20px; background: #0f172a; color: #e2e8f0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .warn { background: #7f1d1d; padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+  .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  button { background: #16a34a; color: #fff; border: 0; padding: 10px 16px; border-radius: 8px; font-size: 15px; cursor: pointer; font-family: inherit; }
+  button:disabled { background: #475569; cursor: default; }
+  button.sec { background: #334155; }
+  input[type=file] { color: #94a3b8; }
+  pre { background: #0b1220; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; line-height: 1.5; white-space: pre; max-height: 70vh; }
+  .bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .bar > i { display: block; height: 100%; background: #16a34a; width: 0; transition: width .2s; }
+  .st { font-size: 13px; color: #94a3b8; }
+  video { width: 320px; border-radius: 8px; background: #000; }
+  .go { color: #4ade80; font-weight: 600; }
+  .nogo { color: #f87171; font-weight: 600; }
+</style>
+<!-- วิธีใช้: คัดลอกไฟล์นี้ไป public/ ชั่วคราว + สร้าง symlink public/_lab ชี้โฟลเดอร์รูป + manifest แล้วลบทิ้งเมื่อวัดเสร็จ -->
+</head>
+<body>
+<h1>🔬 FaceLab — ด่านวัดผลก่อนสร้างระบบยืนยันใบหน้า</h1>
+<div class="warn">⚠️ ไฟล์นี้เป็นของชั่วคราวสำหรับวัดผลบนเครื่อง dev เท่านั้น — <b>ต้องลบก่อน deploy</b> (ไม่มี auth ไม่แตะ DB)</div>
+
+<div class="card">
+  <div style="margin-bottom:8px"><b>1️⃣ เลือกโฟลเดอร์รูป</b> <span class="st">→ เลือก <code>รูปเช็คชื่อสถานีไฟป่า/</code> (มีโฟลเดอร์ย่อยรายวัน)</span></div>
+  <input type="file" id="dir" webkitdirectory multiple>
+  <div style="margin-top:8px"><button id="loadMan" class="sec">📄 หรือโหลดจาก manifest (facelab_files.json + _lab/)</button></div>
+  <div id="pickInfo" class="st" style="margin-top:8px">ยังไม่ได้เลือก</div>
+</div>
+
+<div class="card">
+  <div style="margin-bottom:8px"><b>2️⃣ วัดผล</b></div>
+  <button id="runTiny" disabled>▶ วัดด้วย tiny_face_detector</button>
+  <button id="runSsd" class="sec" disabled>▶ วัดซ้ำด้วย ssd_mobilenetv1</button>
+  <div class="bar"><i id="pbar"></i></div>
+  <div id="prog" class="st">พร้อม</div>
+</div>
+
+<div class="card">
+  <div style="margin-bottom:8px"><b>3️⃣ ทดสอบกล้องสด (Step 0b)</b> <span class="st">→ ให้คนที่อยู่ในรูปนั่งหน้ากล้อง เก็บ 20 เฟรม</span></div>
+  <video id="vid" autoplay muted playsinline></video>
+  <div style="margin-top:8px">
+    <select id="whoSel" style="padding:8px;border-radius:6px;background:#0b1220;color:#e2e8f0;border:1px solid #334155"></select>
+    <button id="runLive" class="sec" disabled>▶ เก็บ 20 เฟรม</button>
+  </div>
+  <div id="liveSt" class="st" style="margin-top:6px">—</div>
+</div>
+
+<div class="card">
+  <div style="margin-bottom:8px"><b>📋 รายงาน</b> <button id="copy" class="sec" style="padding:4px 10px;font-size:13px">คัดลอก</button></div>
+  <pre id="out">ยังไม่มีผล</pre>
+</div>
+
+<script src="assets/face-api.js"></script>
+<script>
+// ===================== helpers =====================
+const byId = (i) => document.getElementById(i);
+const R = [];                       // บรรทัดรายงาน
+const say = (s = '') => { R.push(s); byId('out').textContent = R.join('\n'); };
+const f3 = (x) => (x === null || x === undefined || Number.isNaN(x)) ? '—' : (+x).toFixed(3);
+const f4 = (x) => (x === null || x === undefined || Number.isNaN(x)) ? '—' : (+x).toFixed(4);
+
+function euclid(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); }
+function centroid(list) { const n = list[0].length, c = new Float32Array(n); for (const v of list) for (let i = 0; i < n; i++) c[i] += v[i]; for (let i = 0; i < n; i++) c[i] /= list.length; return c; }
+function quant(sorted, p) { if (!sorted.length) return null; const i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo); }
+function stats(arr) { const s = [...arr].sort((a, b) => a - b); return { n: s.length, min: s[0], max: s[s.length - 1], mean: s.reduce((a, b) => a + b, 0) / (s.length || 1), p5: quant(s, .05), p50: quant(s, .5), p95: quant(s, .95), p99: quant(s, .99) }; }
+function median(arr) { return quant([...arr].sort((a, b) => a - b), .5); }
+function mad(arr) { const m = median(arr); return median(arr.map(v => Math.abs(v - m))); }
+
+/** สุ่มแบบ farthest-point: เก็บความหลากหลายของท่า (ไม่ใช่เอาแค่ใกล้ centroid) */
+function farthestPointSample(descs, k) {
+  if (descs.length <= k) return descs.map((_, i) => i);
+  const c = centroid(descs);
+  let seed = 0, best = Infinity;
+  descs.forEach((d, i) => { const x = euclid(d, c); if (x < best) { best = x; seed = i; } });
+  const picked = [seed];
+  const dmin = descs.map(d => euclid(d, descs[seed]));
+  while (picked.length < k) {
+    let bi = -1, bd = -1;
+    for (let i = 0; i < descs.length; i++) if (!picked.includes(i) && dmin[i] > bd) { bd = dmin[i]; bi = i; }
+    picked.push(bi);
+    for (let i = 0; i < descs.length; i++) dmin[i] = Math.min(dmin[i], euclid(descs[i], descs[bi]));
+  }
+  return picked;
+}
+
+/** ชื่อคนจากชื่อไฟล์ — ต้องเหมือนกับตัว parse ในหน้าแอดมินเป๊ะ */
+function parseName(fname) {
+  return fname.replace(/\.[^.]+$/, '')
+    .replace(/_\(เวรกลางคืน\)$/, '')
+    .replace(/^\d{4}_/, '')
+    .replace(/_/g, ' ').replace(/\s+/g, ' ').trim().normalize('NFC');
+}
+
+// ===================== เลือกไฟล์ =====================
+// FILES = [{name, file?|url?}] — มาจาก picker หรือ manifest ก็ได้
+let FILES = [];
+function afterPick() {
+  const names = [...new Set(FILES.map(f => parseName(f.name)))].sort();
+  byId('pickInfo').innerHTML = `พบ <b>${FILES.length}</b> รูป · <b>${names.length}</b> ชื่อ`;
+  byId('runTiny').disabled = byId('runSsd').disabled = FILES.length === 0;
+  byId('whoSel').innerHTML = names.map(n => `<option>${n}</option>`).join('');
+}
+byId('dir').onchange = (e) => {
+  FILES = [...e.target.files].filter(f => /\.(jpe?g|png)$/i.test(f.name) && !f.name.startsWith('.'))
+    .map(f => ({ name: f.name, file: f }));
+  afterPick();
+};
+byId('loadMan').onclick = async () => {
+  const list = await (await fetch('facelab_files.json')).json();
+  FILES = list.map(p => ({ name: p.split('/').pop(), url: '_lab/' + p.split('/').map(encodeURIComponent).join('/') }));
+  afterPick();
+};
+/** คืน Blob ของรูป ไม่ว่าจะมาจาก picker หรือ manifest */
+async function blobOf(f) { return f.file || (await fetch(f.url)).blob(); }
+
+// ===================== โหลดโมเดล =====================
+let loaded = {};
+async function loadModels(which) {
+  if (loaded[which]) return;
+  await faceapi.nets.faceLandmark68Net.loadFromUri('assets/models');
+  await faceapi.nets.faceRecognitionNet.loadFromUri('assets/models');
+  if (which === 'tiny') await faceapi.nets.tinyFaceDetector.loadFromUri('assets/models');
+  else await faceapi.nets.ssdMobilenetv1.loadFromUri('assets/models');
+  loaded[which] = true;
+}
+const optsFor = (which) => which === 'tiny'
+  ? new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })
+  : new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
+
+// ===================== PASS 1 — สกัด descriptor ทุกรูป =====================
+const CV = document.createElement('canvas'), CX = CV.getContext('2d', { willReadFrequently: true });
+async function extractAll(which) {
+  const opts = optsFor(which), out = [];
+  const t0 = performance.now();
+  for (let i = 0; i < FILES.length; i++) {
+    const f = FILES[i];
+    let rec = { file: f.name, person: parseName(f.name), n: 0, score: null, bw: null, desc: null };
+    try {
+      const bmp = await createImageBitmap(await blobOf(f));
+      CV.width = bmp.width; CV.height = bmp.height;
+      CX.drawImage(bmp, 0, 0); bmp.close();
+      const dets = await faceapi.detectAllFaces(CV, opts).withFaceLandmarks().withFaceDescriptors();
+      rec.n = dets.length;
+      if (dets.length) {
+        const big = dets.reduce((a, b) => (a.detection.box.width >= b.detection.box.width ? a : b));
+        rec.score = big.detection.score; rec.bw = big.detection.box.width;
+        rec.desc = Array.from(big.descriptor);
+      }
+    } catch (err) { rec.err = String(err).slice(0, 80); }
+    out.push(rec);
+    if (i % 3 === 0 || i === FILES.length - 1) {
+      const pct = Math.round((i + 1) / FILES.length * 100);
+      byId('pbar').style.width = pct + '%';
+      const per = (performance.now() - t0) / (i + 1);
+      byId('prog').textContent = `${which}: ${i + 1}/${FILES.length} (${pct}%) · ${Math.round(per)} ms/รูป · เหลือ ~${Math.round(per * (FILES.length - i - 1) / 1000)} วิ · ${f.name}`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  return out;
+}
+
+// ===================== PASS 2 — ท่อจริง (hygiene + cap 12) =====================
+const CAP = 12, MIN_SCORE = 0.5, MIN_BW = 80;
+function buildGallery(recs) {
+  const byPerson = {};
+  for (const r of recs) (byPerson[r.person] ||= []).push(r);
+  const gal = {}, dropped = {};
+  for (const [p, list] of Object.entries(byPerson)) {
+    const drops = [];
+    let keep = list.filter(r => {
+      if (r.n === 0) { drops.push([r.file, 'ไม่พบใบหน้า', null]); return false; }
+      if (r.n > 1) { drops.push([r.file, `พบ ${r.n} หน้า`, null]); return false; }
+      if (r.score < MIN_SCORE) { drops.push([r.file, `score ${f3(r.score)} ต่ำ`, null]); return false; }
+      if (r.bw < MIN_BW) { drops.push([r.file, `หน้าเล็ก ${Math.round(r.bw)}px`, null]); return false; }
+      return true;
+    });
+    // ตัด outlier 2 รอบ: ไกลจาก centroid เกิน median+2·MAD
+    for (let pass = 0; pass < 2 && keep.length >= 4; pass++) {
+      const c = centroid(keep.map(r => r.desc));
+      const ds = keep.map(r => euclid(r.desc, c));
+      const lim = median(ds) + 2 * mad(ds);
+      const next = [];
+      keep.forEach((r, i) => { if (ds[i] > lim) drops.push([r.file, `outlier d=${f3(ds[i])} > ${f3(lim)}`, ds[i]]); else next.push(r); });
+      if (next.length === keep.length) break;
+      keep = next;
+    }
+    const idx = farthestPointSample(keep.map(r => r.desc), CAP);
+    gal[p] = idx.map(i => keep[i]);
+    dropped[p] = { drops, afterHygiene: keep.length, capped: gal[p].length, total: list.length };
+  }
+  return { gal, dropped };
+}
+
+// ===================== รายงาน =====================
+const PAIRS = [
+  ['นายสิทธิชัย ศรแก้วดารา', 'นายพลวัฒน์ ศรแก้วดารา'],
+  ['นางแก้วใจ เอี่ยมทอง', 'น.ส.จิรัตติกาล เอี่ยมทอง'],
+];
+let LAST = null;   // เก็บผลไว้ให้ step 0b ใช้
+
+function report(which, recs) {
+  const { gal, dropped } = buildGallery(recs);
+  const people = Object.keys(gal).sort();
+  say(''); say('='.repeat(70));
+  say(`ผลวัด — detector = ${which}   (${new Date().toLocaleString('th-TH')})`);
+  say('='.repeat(70));
+
+  // ---- PASS 1 คุณภาพการตรวจจับ ----
+  const fail = recs.filter(r => r.n === 0), multi = recs.filter(r => r.n > 1), small = recs.filter(r => r.n >= 1 && r.bw < MIN_BW);
+  say(`\n[1] คุณภาพการตรวจจับ  (รูปทั้งหมด ${recs.length})`);
+  say(`  ไม่พบใบหน้า (det_fail) : ${fail.length}  = ${(fail.length / recs.length * 100).toFixed(1)}%   ${fail.length <= recs.length * 0.02 ? '✅ ผ่าน (≤2%)' : '❌ เกิน 2%'}`);
+  fail.slice(0, 15).forEach(r => say(`      - ${r.file}${r.err ? ' [' + r.err + ']' : ''}`));
+  if (fail.length > 15) say(`      ... อีก ${fail.length - 15} ไฟล์`);
+  say(`  พบหลายหน้า (multi_face): ${multi.length}`);
+  multi.slice(0, 10).forEach(r => say(`      - ${r.file} (${r.n} หน้า)`));
+  say(`  หน้าเล็ก <${MIN_BW}px        : ${small.length}`);
+
+  // ---- ขอบเขต descriptor (เอาไปใส่ validation ฝั่ง PHP) ----
+  const all = recs.filter(r => r.desc).map(r => r.desc);
+  const norms = all.map(d => Math.sqrt(d.reduce((s, v) => s + v * v, 0)));
+  let emin = Infinity, emax = -Infinity;
+  for (const d of all) for (const v of d) { if (v < emin) emin = v; if (v > emax) emax = v; }
+  const ns = stats(norms);
+  say(`\n[2] ขอบเขตค่า descriptor  (descriptor ทั้งหมด ${all.length} ตัว, 128 มิติ)`);
+  say(`  L2 norm : min ${f4(ns.min)}  p1 ${f4(quant([...norms].sort((a, b) => a - b), .01))}  mean ${f4(ns.mean)}  p99 ${f4(ns.p99)}  max ${f4(ns.max)}`);
+  say(`  ต่อ element : min ${f4(emin)}  max ${f4(emax)}`);
+  say(`  → PHP: FACE_NORM_MIN=${f3(ns.min * 0.8)} FACE_NORM_MAX=${f3(ns.max * 1.2)} FACE_ELEM_MIN=${f3(emin * 1.2 - 0.05)} FACE_ELEM_MAX=${f3(emax * 1.2 + 0.05)}`);
+
+  // ---- hygiene ต่อคน ----
+  say(`\n[3] ท่อจริง: hygiene + จำกัด ${CAP} descriptor/คน   (${people.length} คน)`);
+  for (const p of people) {
+    const d = dropped[p];
+    say(`  ${p.padEnd(30)} รูป ${String(d.total).padStart(3)} → ผ่าน hygiene ${String(d.afterHygiene).padStart(2)} → ใช้ ${String(d.capped).padStart(2)}${d.capped < 3 ? '   ⚠️ ไม่ถึง 3 = ยังไม่พร้อมใช้' : ''}`);
+    d.drops.forEach(x => say(`        ตัดออก: ${x[0]}  (${x[1]})`));
+  }
+
+  // ---- intra / inter ----
+  const intraAll = [];
+  const intraPer = {};
+  for (const p of people) {
+    const ds = gal[p].map(r => r.desc), v = [];
+    for (let i = 0; i < ds.length; i++) for (let j = i + 1; j < ds.length; j++) v.push(euclid(ds[i], ds[j]));
+    intraPer[p] = stats(v); intraAll.push(...v);
+  }
+  const ia = stats(intraAll);
+  say(`\n[4] ระยะภายในคนเดียวกัน (intra-person, ${intraAll.length} คู่)`);
+  say(`  p50 ${f4(ia.p50)}   p95 ${f4(ia.p95)}   p99 ${f4(ia.p99)}   max ${f4(ia.max)}`);
+  people.forEach(p => say(`  ${p.padEnd(30)} n=${String(intraPer[p].n).padStart(3)} mean ${f4(intraPer[p].mean)} p95 ${f4(intraPer[p].p95)} max ${f4(intraPer[p].max)}`));
+
+  const pairMin = [];
+  for (let a = 0; a < people.length; a++) for (let b = a + 1; b < people.length; b++) {
+    const A = gal[people[a]].map(r => r.desc), B = gal[people[b]].map(r => r.desc);
+    let mn = Infinity; const allD = [];
+    for (const x of A) for (const y of B) { const d = euclid(x, y); allD.push(d); if (d < mn) mn = d; }
+    pairMin.push({ a: people[a], b: people[b], min: mn, st: stats(allD) });
+  }
+  pairMin.sort((x, y) => x.min - y.min);
+  say(`\n[5] ระยะระหว่างคนต่างกัน (inter-person) — 10 คู่ที่ใกล้สุด (เสี่ยงสับสน)`);
+  say(`  ค่าต่ำสุดทั้งหมด = ${f4(pairMin[0].min)}`);
+  pairMin.slice(0, 10).forEach(p => say(`  min ${f4(p.min)}  p5 ${f4(p.st.p5)}  mean ${f4(p.st.mean)}   ${p.a}  ×  ${p.b}`));
+
+  say(`\n[6] คู่ที่ระบุให้ตรวจเจาะจง`);
+  for (const [a, b] of PAIRS) {
+    const hit = pairMin.find(p => (p.a === a && p.b === b) || (p.a === b && p.b === a));
+    if (!hit) { say(`  ⚠️ ไม่พบคู่ ${a} × ${b} (ชื่อในโฟลเดอร์อาจต่างจากนี้)`); continue; }
+    say(`  ${a}  ×  ${b}`);
+    say(`     min ${f4(hit.min)}   p5 ${f4(hit.st.p5)}   mean ${f4(hit.st.mean)}`);
+  }
+
+  // ---- genuine / impostor trials ----
+  const surv = recs.filter(r => r.desc && r.n === 1);
+  const genuine = [], impostor = [];
+  for (const r of surv) {
+    if (gal[r.person]) {
+      const set = gal[r.person].filter(g => g.file !== r.file || g.person !== r.person);
+      const useSet = gal[r.person].filter(g => g.file !== r.file);
+      const S = useSet.length ? useSet : set;
+      if (S.length) genuine.push({ r, d: Math.min(...S.map(g => euclid(r.desc, g.desc))) });
+    }
+    for (const q of people) {
+      if (q === r.person) continue;
+      impostor.push({ r, q, d: Math.min(...gal[q].map(g => euclid(r.desc, g.desc))) });
+    }
+  }
+  say(`\n[7] ทดลองจริง: genuine ${genuine.length} ครั้ง · impostor ${impostor.length} ครั้ง`);
+  const gs = stats(genuine.map(x => x.d)), is_ = stats(impostor.map(x => x.d));
+  say(`  genuine  : p50 ${f4(gs.p50)} p95 ${f4(gs.p95)} max ${f4(gs.max)}`);
+  say(`  impostor : min ${f4(is_.min)} p5 ${f4(is_.p5)} p50 ${f4(is_.p50)}`);
+
+  say(`\n[8] ตาราง ROC (t = เกณฑ์ตัดสิน)`);
+  say(`     t      FAR(รับคนอื่น)        FRR(ปฏิเสธเจ้าตัว)`);
+  let tZero = null;
+  for (let t = 0.30; t <= 0.7501; t += 0.01) {
+    const far = impostor.filter(x => x.d <= t).length, frr = genuine.filter(x => x.d > t).length;
+    if (far === 0) tZero = t;
+    say(`   ${t.toFixed(2)}   ${String(far).padStart(5)} (${(far / impostor.length * 100).toFixed(2)}%)   ${String(frr).padStart(4)} (${(frr / genuine.length * 100).toFixed(2)}%)`);
+  }
+  const tStar = tZero === null ? null : Math.round((tZero - 0.03) * 100) / 100;
+  say(`\n[9] เลือกเกณฑ์`);
+  say(`  t_zero (FAR=0 สูงสุด) = ${f3(tZero)}`);
+  say(`  t_star = t_zero - 0.03 = ${f3(tStar)}   ← ค่าที่จะใส่ setting face_match_threshold`);
+  if (tStar !== null) {
+    const frrN = genuine.filter(x => x.d > tStar).length;
+    say(`  FRR ที่ t_star = ${frrN}/${genuine.length} = ${(frrN / genuine.length * 100).toFixed(2)}%`);
+    const perP = {};
+    genuine.forEach(x => { (perP[x.r.person] ||= { n: 0, f: 0 }).n++; if (x.d > tStar) perP[x.r.person].f++; });
+    say(`  FRR รายคน (แย่สุดก่อน):`);
+    Object.entries(perP).sort((a, b) => (b[1].f / b[1].n) - (a[1].f / a[1].n))
+      .forEach(([p, v]) => say(`     ${p.padEnd(30)} ${v.f}/${v.n} = ${(v.f / v.n * 100).toFixed(1)}%${v.f / v.n > 0.2 ? '  ❌ เกิน 20%' : ''}`));
+  }
+
+  // ---- ประตูผ่าน/ไม่ผ่าน ----
+  const c1 = fail.length <= recs.length * 0.02;
+  const c2 = tStar !== null && genuine.filter(x => x.d > tStar).length / genuine.length <= 0.05;
+  const perPfail = (() => { if (tStar === null) return true; const m = {}; genuine.forEach(x => { (m[x.r.person] ||= { n: 0, f: 0 }).n++; if (x.d > tStar) m[x.r.person].f++; }); return Object.values(m).some(v => v.f / v.n > 0.2); })();
+  const c3 = !perPfail;
+  const c4 = tStar !== null && PAIRS.every(([a, b]) => { const h = pairMin.find(p => (p.a === a && p.b === b) || (p.a === b && p.b === a)); return h && h.min > tStar + 0.05; });
+  say(`\n[10] ประตูตัดสิน (GO / NO-GO)`);
+  say(`  1) det_fail ≤ 2%                        ${c1 ? '✅' : '❌'}`);
+  say(`  2) มี t ที่ FAR=0 และ FRR ≤ 5%          ${c2 ? '✅' : '❌'}`);
+  say(`  3) ไม่มีใคร FRR > 20%                    ${c3 ? '✅' : '❌'}`);
+  say(`  4) คู่นามสกุลซ้ำ min > t_star + 0.05     ${c4 ? '✅' : '❌'}`);
+  say(`  5) กล้องสด (Step 0b)                     → กดปุ่มข้อ 3 แล้วดูผลด้านล่าง`);
+  say(`  ผลรวม 4 ข้อแรก: ${c1 && c2 && c3 && c4 ? '✅ GO' : '❌ NO-GO'}`);
+
+  LAST = { which, gal, tStar, intraP95: ia.p95 };
+  return LAST;
+}
+
+byId('runTiny').onclick = () => go('tiny');
+byId('runSsd').onclick = () => go('ssd');
+async function go(which) {
+  byId('runTiny').disabled = byId('runSsd').disabled = true;
+  byId('prog').textContent = 'โหลดโมเดล...';
+  try {
+    await loadModels(which);
+    say(`backend = ${faceapi.tf.getBackend()}`);
+    const recs = await extractAll(which);
+    report(which, recs);
+    byId('runLive').disabled = false;
+  } catch (e) { say('❌ ERROR: ' + (e.stack || e)); }
+  byId('runTiny').disabled = byId('runSsd').disabled = false;
+  byId('prog').textContent = 'เสร็จ';
+}
+
+// ===================== STEP 0b — กล้องสด =====================
+byId('runLive').onclick = async () => {
+  if (!LAST) return;
+  const who = byId('whoSel').value;
+  if (!LAST.gal[who]) { byId('liveSt').textContent = 'ไม่มีคนนี้ในคลัง'; return; }
+  const v = byId('vid');
+  byId('runLive').disabled = true;
+  try {
+    v.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    await new Promise(r => v.onloadedmetadata = r);
+    const opts = optsFor(LAST.which), set = LAST.gal[who].map(r => r.desc), ds = [];
+    for (let i = 0; i < 20; i++) {
+      byId('liveSt').textContent = `เก็บเฟรม ${i + 1}/20 ...`;
+      const det = await faceapi.detectSingleFace(v, opts).withFaceLandmarks().withFaceDescriptor();
+      if (det) ds.push(Math.min(...set.map(d => euclid(Array.from(det.descriptor), d))));
+      await new Promise(r => setTimeout(r, 200));
+    }
+    v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null;
+    const st = stats(ds);
+    say(`\n[11] Step 0b — กล้องสด: ${who}   (จับได้ ${ds.length}/20 เฟรม)`);
+    say(`  ระยะต่อเฟรม: min ${f4(st.min)}  p50 ${f4(st.p50)}  max ${f4(st.max)}`);
+    say(`  เทียบ intra p95 ของรูปนิ่ง = ${f4(LAST.intraP95)}   → ${st.p50 <= LAST.intraP95 ? '✅ อยู่ในช่วงเดียวกัน' : '❌ เลื่อนสูงกว่ารูปนิ่ง'}`);
+    say(`  ทุกเฟรม ≤ t_star (${f3(LAST.tStar)}) ? ${ds.every(d => d <= LAST.tStar) ? '✅ ผ่าน' : '❌ มี ' + ds.filter(d => d > LAST.tStar).length + ' เฟรมเกิน'}`);
+    byId('liveSt').textContent = 'เสร็จ — ดูผลข้อ [11] ในรายงาน';
+  } catch (e) {
+    byId('liveSt').textContent = '❌ ' + e;
+    if (v.srcObject) { v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null; }
+  }
+  byId('runLive').disabled = false;
+};
+
+byId('copy').onclick = () => navigator.clipboard.writeText(R.join('\n')).then(() => byId('copy').textContent = 'คัดลอกแล้ว ✓');
+say('พร้อม — เลือกโฟลเดอร์รูปก่อนค่ะ');
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ require_once __DIR__ . '/../app/handlers/library.php';
 require_once __DIR__ . '/../app/handlers/quiz.php';
 require_once __DIR__ . '/../app/handlers/health.php';
 require_once __DIR__ . '/../app/handlers/notify.php';
+require_once __DIR__ . '/../app/handlers/face.php';
 require_once __DIR__ . '/../app/drive.php';
 
 const ACTIONS = [
@@ -33,6 +34,7 @@ const ACTIONS = [
     'night_checkin'   => 'h_night_checkin',
     'checkout'        => 'h_checkout',
     'my_history'      => 'h_my_history',
+    'face_verify'     => 'h_face_verify',
     'dayoff_add'      => 'h_dayoff_add',
     'dayoff_cancel'   => 'h_dayoff_cancel',
     'dayoff_month'    => 'h_dayoff_month',
@@ -65,6 +67,9 @@ const ACTIONS = [
     'leave_pending'   => 'h_leave_pending',
     'leave_approve'   => 'h_leave_approve',
     'leave_reject'    => 'h_leave_reject',
+    'face_enroll_save'   => 'h_face_enroll_save',
+    'face_enroll_clear'  => 'h_face_enroll_clear',
+    'face_enroll_status' => 'h_face_enroll_status',
     'night_roster'    => 'h_night_roster',
     'night_month'     => 'h_night_month',
 

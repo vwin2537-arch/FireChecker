@@ -124,6 +124,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM face_descriptors LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
     seed_public_holidays();   // ใส่วันหยุดนักขัตฤกษ์ที่เหลือของปีให้ครั้งแรก (ตารางว่าง)
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
 
@@ -183,6 +189,21 @@ function ensure_admin(): void {
     )->fetchColumn();
     if (!(int)$hasNoLate) {
         db()->exec("ALTER TABLE offsite_users ADD COLUMN no_late TINYINT(1) NOT NULL DEFAULT 0 AFTER reason");
+    }
+
+    // migrate: attendance.face_flag/face_dist/face_photo (ยืนยันใบหน้า v33) — DB เดิมยังไม่มี
+    // probe คอลัมน์แรกคุมทั้งชุด แล้วเพิ่มพร้อมกันใน ALTER เดียว (ลด query ต่อ request — ensure_admin รันทุกครั้ง)
+    $hasFace = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'face_flag'"
+    )->fetchColumn();
+    if (!(int)$hasFace) {
+        db()->exec("ALTER TABLE attendance
+                    ADD COLUMN face_flag  TINYINT(1) NOT NULL DEFAULT 0 AFTER note,
+                    ADD COLUMN face_dist  DECIMAL(6,4) NULL AFTER face_flag,
+                    ADD COLUMN face_photo VARCHAR(255) NULL AFTER face_dist");
+        db()->exec("ALTER TABLE night_shifts
+                    ADD COLUMN face_flag TINYINT(1) NOT NULL DEFAULT 0 AFTER selfie_path");
     }
 }
 

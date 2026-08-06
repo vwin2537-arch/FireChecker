@@ -8,6 +8,7 @@ function roster_for(string $date): array {
     $st = db()->prepare(
         "SELECT u.id, u.name, u.position,
                 a.time_in, a.late, a.time_out, a.report_late, a.distance_m, a.selfie_path,
+                a.face_flag, a.face_dist, a.face_photo,
                 o.type AS off_type, o.note AS off_note, o.over_quota
          FROM users u
          LEFT JOIN attendance a ON a.user_id = u.id AND a.work_date = ?
@@ -132,12 +133,21 @@ function h_admin_data(): never {
     // ---------- คำขอลารออนุมัติ (badge + แถบเตือน) ----------
     $pendingLeaves = leave_pending_list();
 
+    // ---------- ยืนยันใบหน้าไม่ผ่านวันนี้ (แถบเตือน v33) ----------
+    $st = db()->prepare(
+        "SELECT u.name, a.time_in, a.face_dist, a.face_photo
+         FROM attendance a JOIN users u ON u.id = a.user_id
+         WHERE a.work_date = ? AND a.face_flag = 1 ORDER BY a.time_in");
+    $st->execute([$today]);
+    $faceFlags = $st->fetchAll();
+
     ok([
         'today' => [
             'date' => $today, 'thai_date' => thai_date($today), 'is_holiday' => $isHoliday,
             'counts' => $todayCounts, 'roster' => array_values($roster),
             'holiday_workers' => $holidayWorkers,
         ],
+        'face_flags' => $faceFlags,
         'weekday'      => $weekday,
         'night_stats'   => $nightMonth['stats'],
         'night_summary' => $nightMonth['summary'],
@@ -285,9 +295,12 @@ function h_users_list(): never {
     $rows = db()->query(
         "SELECT u.id, u.username, u.name, u.position, u.gender, u.birthdate, u.role, u.status, u.created_at,
                 (SELECT COUNT(*) FROM day_offs o
-                  WHERE o.user_id = u.id AND o.type = 'dayoff' AND DATE_FORMAT(o.off_date,'%Y-%m') = '{$ym}') quota_used
+                  WHERE o.user_id = u.id AND o.type = 'dayoff' AND DATE_FORMAT(o.off_date,'%Y-%m') = '{$ym}') quota_used,
+                (SELECT COUNT(*) FROM face_descriptors f WHERE f.user_id = u.id) face_n
          FROM users u ORDER BY u.role, u.status, u.name")->fetchAll();
-    ok(['users' => $rows, 'quota_max' => station_holidays_in_month($ym)]);
+    ok(['users' => $rows, 'quota_max' => station_holidays_in_month($ym),
+        'face_min_desc' => (int)setting('face_min_desc', '3'),
+        'face_verify_enabled' => setting('face_verify_enabled', '0') === '1']);
 }
 
 /** validate 'YYYY-MM-DD' + ช่วงอายุสมเหตุผล (15-80 ปี) — คืน string วันเกิด หรือ null ถ้าว่าง/ผิด */
@@ -430,6 +443,7 @@ const EDITABLE_SETTINGS = [
     'gps_lat', 'gps_lng', 'gps_radius_m', 'gps_enforce',
     'selfie_required', 'checkout_enabled', 'sunday_off',
     'night_shift_enabled', 'night_checkin_open', 'sunday_work_enabled',
+    'face_verify_enabled', 'face_match_threshold', 'face_max_attempts', 'face_min_desc',
     'line_token', 'line_group_id',
     'gdrive_client_id', 'gdrive_client_secret',
 ];
@@ -445,7 +459,8 @@ function h_settings_save(): never {
     $in = (array)param('settings', []);
     $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff', 'night_checkin_open'];
     $numKeys  = ['gps_radius_m'];
-    $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off', 'night_shift_enabled', 'sunday_work_enabled'];
+    $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off', 'night_shift_enabled',
+                 'sunday_work_enabled', 'face_verify_enabled'];
 
     foreach ($in as $k => $v) {
         if (!in_array($k, EDITABLE_SETTINGS, true)) continue;
@@ -454,6 +469,13 @@ function h_settings_save(): never {
         if (in_array($k, $numKeys, true))  $v = (string)max(0, (int)$v);
         if (in_array($k, $boolKeys, true)) $v = $v === '1' ? '1' : '0';
         if (($k === 'gps_lat' || $k === 'gps_lng') && !is_numeric($v)) fail('พิกัด GPS ไม่ถูกต้อง');
+        // ยืนยันใบหน้า: เกณฑ์ระยะต้องอยู่ในช่วงที่วัดมาแล้วสมเหตุผล / จำนวนครั้งกับจำนวน descriptor ขั้นต่ำ clamp ไว้
+        if ($k === 'face_match_threshold') {
+            if (!is_numeric($v) || (float)$v < 0.20 || (float)$v > 0.90) fail('เกณฑ์ใบหน้าต้องอยู่ระหว่าง 0.20-0.90');
+            $v = number_format((float)$v, 2, '.', '');
+        }
+        if ($k === 'face_max_attempts') $v = (string)max(1, min(5, (int)$v));
+        if ($k === 'face_min_desc')     $v = (string)max(1, min(10, (int)$v));
         save_setting($k, $v);
     }
     ok(['message' => 'บันทึกการตั้งค่าแล้ว']);

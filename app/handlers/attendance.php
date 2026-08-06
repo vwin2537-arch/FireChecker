@@ -57,6 +57,7 @@ function h_app_data(): never {
             'night'       => $nightToday,
             'offsite'     => offsite_for($today),                    // ทั้งสถานีนอกสถานที่ (null = วันปกติ)
             'offsite_user'=> offsite_user_for($u['id'], $today),     // อนุญาตรายคน (null = ไม่ได้รับอนุญาต)
+            'face_ready'  => face_enrolled($u['id']),                // ลงทะเบียนใบหน้าครบพอใช้งานหรือยัง (false = ข้ามการยืนยัน)
         ],
         'quota'    => ['used' => $quotaUsed, 'max' => station_holidays_in_month(date('Y-m'))],
         'upcoming' => $upcoming,
@@ -85,6 +86,7 @@ function client_settings(): array {
         'night_shift_enabled' => setting('night_shift_enabled', '1') === '1',
         'night_checkin_open'  => setting('night_checkin_open', '18:00'),
         'sunday_work_enabled' => setting('sunday_work_enabled', '1') === '1',
+        'face_verify_enabled' => setting('face_verify_enabled', '0') === '1',   // ไม่ส่ง threshold ให้ client — เซิร์ฟเวอร์ตัดสินเท่านั้น
     ];
 }
 
@@ -147,6 +149,10 @@ function h_checkin(): never {
         if ($dist > $radius) fail("คุณอยู่ห่างสถานี {$dist} ม. (เกินรัศมี {$radius} ม.) เช็คชื่อไม่ได้");
     }
 
+    // ---- ยืนยันใบหน้า (v33 — สวิตช์ face_verify_enabled) ----
+    // เซิร์ฟเวอร์อ่านตั๋วที่ h_face_verify เขียนไว้เอง — client บอกว่า "ผ่าน" ไม่มีผล
+    [$faceFlag, $faceDist, $facePhoto] = face_gate_for($u['id'], $today, 'checkin');
+
     // ---- เซลฟี่ (เปิด/ปิดได้จากตั้งค่า) ----
     $selfiePath = null;
     $selfie = param('selfie');
@@ -173,9 +179,12 @@ function h_checkin(): never {
     if ($offsiteUser && (int)$offsiteUser['no_late']) $late = 0;   // วันไปราชการ (รายคน) ไม่นับสาย
     $note = mb_substr(trim((string)param('note', '')), 0, 255) ?: null;
 
-    db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path, note)
-                   VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)')
-        ->execute([$u['id'], $today, $late, $lat, $lng, $dist, $selfiePath, $note]);
+    db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, lat, lng, distance_m, selfie_path, note,
+                                           face_flag, face_dist, face_photo)
+                   VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$u['id'], $today, $late, $lat, $lng, $dist, $selfiePath, $note,
+                   $faceFlag, $faceDist, $facePhoto]);
+    face_mark_used($u['id'], $today, 'checkin');
 
     // สำเนารูปขึ้น Google Drive เบื้องหลัง (ไม่หน่วงเช็คอิน — คิว retry จนสำเร็จ)
     if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'], $today);
@@ -187,13 +196,15 @@ function h_checkin(): never {
     elseif ($late)      $msg = 'เช็คชื่อแล้ว (สาย)';
     elseif ($exempted)  $msg = 'เช็คชื่อแล้ว — ยกเว้นสาย (มาจากเวรกลางคืน) 🌙';
     elseif ($isHoliday) $msg = 'เช็คชื่อแล้ว (ทำงานวันหยุด) 🎉';
+    if ($faceFlag === 1) $msg .= ' ⚠️ ยืนยันใบหน้าไม่ผ่าน (หัวหน้าจะเห็นหมายเหตุ)';
 
     ok([
-        'late'     => (bool)$late,
-        'exempted' => $exempted,
-        'holiday'  => $isHoliday,
-        'time_in'  => date('H:i:s'),
-        'message'  => $msg,
+        'late'      => (bool)$late,
+        'exempted'  => $exempted,
+        'holiday'   => $isHoliday,
+        'face_flag' => $faceFlag,
+        'time_in'   => date('H:i:s'),
+        'message'   => $msg,
     ]);
 }
 
@@ -225,6 +236,9 @@ function h_night_checkin(): never {
         if ($dist > $radius) fail("คุณอยู่ห่างสถานี {$dist} ม. (เกินรัศมี {$radius} ม.) ลงเวรไม่ได้");
     }
 
+    // ---- ยืนยันใบหน้า (v33) — ตั๋วผูกกับ duty_date ไม่ใช่วันนี้ (คนกดหลังเที่ยงคืน) ----
+    [$faceFlag, , ] = face_gate_for($u['id'], $dutyDate, 'night');
+
     // ---- เซลฟี่ (ใช้สวิตช์ selfie_required เดียวกับเช็คชื่อ) ----
     $selfiePath = null;
     $selfie = param('selfie');
@@ -236,16 +250,19 @@ function h_night_checkin(): never {
         $selfiePath = save_photo($selfie, 'night_u' . $u['id']);
     }
 
-    db()->prepare('INSERT INTO night_shifts (user_id, duty_date, time_in, lat, lng, distance_m, selfie_path)
-                   VALUES (?, ?, NOW(), ?, ?, ?, ?)')
-        ->execute([$u['id'], $dutyDate, $lat, $lng, $dist, $selfiePath]);
+    db()->prepare('INSERT INTO night_shifts (user_id, duty_date, time_in, lat, lng, distance_m, selfie_path, face_flag)
+                   VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)')
+        ->execute([$u['id'], $dutyDate, $lat, $lng, $dist, $selfiePath, $faceFlag]);
+    face_mark_used($u['id'], $dutyDate, 'night');
 
     if ($selfiePath) gdrive_enqueue($selfiePath, $u['name'] . ' (เวรกลางคืน)', $dutyDate);
 
     ok([
         'time_in'   => date('H:i:s'),
         'duty_date' => $dutyDate,
-        'message'   => 'ลงเวรกลางคืนแล้ว 🌙 ขอบคุณที่เฝ้าสถานีค่ะ',
+        'face_flag' => $faceFlag,
+        'message'   => 'ลงเวรกลางคืนแล้ว 🌙 ขอบคุณที่เฝ้าสถานีค่ะ'
+                       . ($faceFlag === 1 ? ' ⚠️ ยืนยันใบหน้าไม่ผ่าน (หัวหน้าจะเห็นหมายเหตุ)' : ''),
     ]);
 }
 

@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS attendance (
   report_late TINYINT(1) NULL,
   photos_json TEXT NULL,
   note        VARCHAR(255) NULL,             -- หมายเหตุตอนเช็คชื่อ (ใช้กับงานวันอาทิตย์ เช่น "มาชดเชยวันลา")
+  face_flag   TINYINT(1) NOT NULL DEFAULT 0, -- ยืนยันใบหน้า (v33): 0=ผ่าน/ปิดระบบ · 1=ไม่ผ่านครบ 3 ครั้ง · 2=ยังไม่ลงทะเบียนใบหน้า
+  face_dist   DECIMAL(6,4) NULL,             -- ระยะที่ใกล้ที่สุดตอนเช็คชื่อ (เอาไว้ปรับเกณฑ์จากข้อมูลจริง)
+  face_photo  VARCHAR(255) NULL,             -- รูปตอนพลาด (เฉพาะ face_flag=1 ให้หัวหน้าดู)
   UNIQUE KEY uq_user_date (user_id, work_date),
   KEY idx_work_date (work_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -58,6 +61,7 @@ CREATE TABLE IF NOT EXISTS night_shifts (
   lng         DECIMAL(10,6) NULL,
   distance_m  INT NULL,
   selfie_path VARCHAR(255) NULL,
+  face_flag   TINYINT(1) NOT NULL DEFAULT 0, -- ยืนยันใบหน้า (v33) ความหมายเดียวกับ attendance.face_flag
   UNIQUE KEY uq_user_night (user_id, duty_date),
   KEY idx_duty_date (duty_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -294,6 +298,41 @@ CREATE TABLE IF NOT EXISTS line_queue (
   KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- ยืนยันใบหน้าตอนเช็คชื่อ (v33) ----------
+-- descriptor = เวกเตอร์ใบหน้า 128 มิติ (float32) ที่เบราว์เซอร์คำนวณจากรูป — เก็บหลายแถวต่อคน
+-- เทียบด้วยระยะยุคลิด "ใกล้ที่สุด" (min-distance) ไม่ใช่ค่าเฉลี่ย — descriptor ไม่ได้ normalize ค่าเฉลี่ยจึงไม่มีความหมาย
+-- ไม่เก็บรูปที่ใช้ลงทะเบียน เก็บแต่เวกเตอร์ (ย้อนกลับเป็นรูปไม่ได้)
+CREATE TABLE IF NOT EXISTS face_descriptors (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  descriptor VARBINARY(512) NOT NULL,          -- 128 × float32 little-endian = 512 ไบต์ (pack('g*') / unpack('g128'))
+  src_name   VARCHAR(255) NOT NULL DEFAULT '', -- ชื่อไฟล์ต้นทาง (ตรวจย้อนหลังได้ว่าเวกเตอร์นี้มาจากรูปไหน)
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- สถานะการยืนยันหน้า 1 แถว/คน/วัน/บริบท — เป็น "ตั๋ว" ฝั่งเซิร์ฟเวอร์ที่ h_checkin อ่าน
+-- (ไม่ใช้ token เพราะแถวนี้ผูก user_id จาก auth อยู่แล้ว — ความสดใช้ verified_at ภายใน 5 นาที)
+-- นับครั้งที่ลองฝั่งเซิร์ฟเวอร์เท่านั้น: client ที่เลิกถามเอง จะเช็คชื่อแบบไม่ติดธงไม่ได้
+CREATE TABLE IF NOT EXISTS face_attempts (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  user_id      INT NOT NULL,
+  attempt_date DATE NOT NULL,                     -- checkin = วันนี้ / night = tonight_duty_date()
+  context      ENUM('checkin','night') NOT NULL DEFAULT 'checkin',
+  tries        INT NOT NULL DEFAULT 0,            -- ครบ face_max_attempts = ผ่านได้แต่ติดธง
+  probes       INT NOT NULL DEFAULT 0,            -- จำนวนครั้งที่ยิง API ทั้งหมด (กันไล่เดาเวกเตอร์)
+  best_dist    DECIMAL(6,4) NULL,                 -- ระยะที่ใกล้ที่สุดที่เคยทำได้ (ดูย้อนหลัง/ปรับเกณฑ์)
+  fail_reason  VARCHAR(20) NOT NULL DEFAULT '',   -- no_match / no_face / no_camera / no_lib
+  photo_path   VARCHAR(255) NULL,                 -- รูปตอนพลาดครั้งสุดท้าย (เก็บเฉพาะเคสติดธง ให้หัวหน้าดู)
+  verified_at  DATETIME NULL,                     -- ผ่านเมื่อไหร่ (h_checkin รับเฉพาะภายใน 5 นาที)
+  used_at      DATETIME NULL,                     -- h_checkin ใช้ตั๋วนี้ไปแล้วเมื่อไหร่
+  updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_user_date_ctx (user_id, attempt_date, context),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- ค่าตั้งต้น (แก้ได้จากหน้าตั้งค่าแอดมิน) ----------
 INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('station_name',     'สถานีควบคุมไฟป่าสลักพระ-เอราวัณ'),
@@ -312,6 +351,10 @@ INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('night_shift_enabled', '1'),
   ('night_checkin_open',  '18:00'),
   ('sunday_work_enabled', '1'),
+  ('face_verify_enabled',  '0'),      -- ยืนยันใบหน้าตอนเช็คชื่อ (v33) — เปิดหลังลงทะเบียนใบหน้าครบแล้ว
+  ('face_match_threshold', '0.40'),   -- เกณฑ์ระยะ ยิ่งน้อยยิ่งเข้ม — วัดจากรูปจริง 460 ใบ (FAR 0.30% / FRR 3.8%) ดู PROGRESS v33
+  ('face_max_attempts',    '3'),      -- ลองกี่ครั้งก่อนปล่อยผ่านแบบติดธง
+  ('face_min_desc',        '3'),      -- มี descriptor น้อยกว่านี้ = ถือว่ายังไม่ลงทะเบียน (ข้ามการยืนยัน)
   ('line_token',       ''),
   ('line_group_id',    ''),
   ('gdrive_client_id',     ''),

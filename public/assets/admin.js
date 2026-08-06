@@ -70,6 +70,9 @@ const Admin = {
     if (d.over_quota.length) alerts += `<div class="alert-bar">⚠️ วันหยุดเกินโควต้า: <b>${d.over_quota.map(o =>
       `${esc(o.name)} (${o.n} วัน เดือน ${thaiMonth(o.ym)})`).join(', ')}</b>
       <button class="btn btn-sm btn-primary" onclick="Admin.go('dayoff')">ดูปฏิทิน</button></div>`;
+    if ((d.face_flags || []).length) alerts += `<div class="alert-bar">🙂 ยืนยันใบหน้าไม่ผ่านวันนี้ <b>${d.face_flags.length} คน</b>
+      — ${d.face_flags.map(f => esc(f.name)).join(', ')}
+      <button class="btn btn-sm btn-primary" onclick="Admin.faceFlagList()">ดูรูป</button></div>`;
 
     // วันหยุดสถานี — โชว์คนที่มาทำงาน/เข้าเวรวันหยุด + ส่วนวิเคราะห์
     if (d.today.is_holiday) {
@@ -143,7 +146,7 @@ const Admin = {
       <div class="rg-head"><span class="dot dot-${dotClass}"></span>${icon} ${label} <b>${list.length}</b></div>
       <div class="roster">${list.map(r => `
         <div class="roster-cell s-${state}">
-          <div><div class="rc-name">${esc(r.name)}</div>
+          <div><div class="rc-name">${esc(r.name)}${faceFlagChip(r)}</div>
           <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
             state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
         </div>`).join('')}</div>
@@ -435,7 +438,7 @@ const Admin = {
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>วันที่</th><th>ชื่อ</th><th>เวลาเข้า</th><th>สถานะ</th><th class="num">ระยะ (ม.)</th><th>รายงาน</th></tr>
           ${d.attendance.map(a => `<tr>
-            <td>${thaiDate(a.work_date)}</td><td>${esc(a.name)}${a.note ? `<div class="tiny">📝 ${esc(a.note)}</div>` : ''}</td>
+            <td>${thaiDate(a.work_date)}</td><td>${esc(a.name)}${faceFlagChip(a)}${a.note ? `<div class="tiny">📝 ${esc(a.note)}</div>` : ''}</td>
             <td>${a.time_in.substr(11, 5)}${a.time_out ? ' – ' + a.time_out.substr(11, 5) : ''}</td>
             <td><span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span></td>
             <td class="num">${a.distance_m ?? '—'}</td>
@@ -472,9 +475,11 @@ const Admin = {
 
   exportCsv() {
     const d = this.lastReport;
-    const rows = [['วันที่', 'ชื่อ', 'เวลาเข้า', 'เวลาออก', 'สถานะ', 'ระยะ_เมตร', 'หมายเหตุ', 'รายงาน']];
+    const rows = [['วันที่', 'ชื่อ', 'เวลาเข้า', 'เวลาออก', 'สถานะ', 'ระยะ_เมตร', 'ยืนยันใบหน้า', 'หมายเหตุ', 'รายงาน']];
+    const faceTxt = (f) => ({ 1: 'ไม่ผ่าน', 2: 'ยังไม่ลงทะเบียน' })[+f] || 'ผ่าน';
     d.attendance.forEach(a => rows.push([a.work_date, a.name, a.time_in.substr(11, 8),
-      a.time_out ? a.time_out.substr(11, 8) : '', +a.late ? 'สาย' : 'ตรงเวลา', a.distance_m ?? '', a.note || '', (a.report_text || '').replace(/\n/g, ' ')]));
+      a.time_out ? a.time_out.substr(11, 8) : '', +a.late ? 'สาย' : 'ตรงเวลา', a.distance_m ?? '',
+      faceTxt(a.face_flag), a.note || '', (a.report_text || '').replace(/\n/g, ' ')]));
     rows.push([]); rows.push(['วันที่', 'ชื่อ', 'ประเภทลา', 'หมายเหตุ']);
     d.day_offs.forEach(o => rows.push([o.off_date, o.name, offLabel(o.type), o.note || '']));
     if ((d.night_shifts || []).length) {
@@ -652,10 +657,16 @@ const Admin = {
         <div class="tiny" style="margin-top:8px">เพิ่มแล้วให้เจ้าตัวเปิดเว็บ → "ลงทะเบียน" → เลือกชื่อ → ตั้งชื่อผู้ใช้+รหัสผ่านเอง ใช้ได้เลย</div>
       </div>
 
+      <div class="card"><h3>🙂 ลงทะเบียนใบหน้า</h3>
+        <div class="tiny" style="margin-bottom:10px">สอนระบบให้จำหน้าเจ้าหน้าที่จากรูปเช็คชื่อเดิม — เก็บแค่ "เวกเตอร์" ไม่เก็บรูป
+          ${d.face_verify_enabled ? '' : '<br>⚠️ สวิตช์ยืนยันใบหน้ายัง<b>ปิด</b>อยู่ (เปิดที่เมนูตั้งค่า หลังลงทะเบียนครบแล้ว)'}</div>
+        <button class="btn btn-primary btn-block" onclick="Admin.faceEnrollOpen()">📂 ลงทะเบียนจากโฟลเดอร์รูป (ทำบนคอม)</button>
+      </div>
+
       <div class="card"><h3>👥 เจ้าหน้าที่ทั้งหมด (${staff.length})</h3>
         <div class="tiny" style="margin-bottom:8px">💡 ตั้งเพศ+วันเกิดให้ครบ — เพศใช้กรองเวรกลางคืน (เฉพาะชาย) · เพศ+วันเกิดใช้เทียบเกณฑ์ทดสอบสมรรถภาพ</div>
         <div class="tbl-wrap"><table class="tbl">
-          <tr><th>ชื่อ</th><th>เพศ</th><th>วันเกิด</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
+          <tr><th>ชื่อ</th><th>เพศ</th><th>วันเกิด</th><th>ใบหน้า</th><th>สถานะ</th><th class="num">หยุดเดือนนี้</th><th></th></tr>
           ${staff.map(u => `<tr>
             <td><b>${esc(u.name)}</b><div class="tiny">${u.username ? '@' + esc(u.username) + ' ' : ''}${esc(u.position || '')}</div></td>
             <td><select class="select" style="min-width:86px;padding:4px 6px" onchange="Admin.setGender(${u.id}, this.value)">
@@ -663,6 +674,10 @@ const Admin = {
               <option value="male"${u.gender === 'male' ? ' selected' : ''}>ชาย</option>
               <option value="female"${u.gender === 'female' ? ' selected' : ''}>หญิง</option></select></td>
             <td><input type="date" class="input" style="min-width:130px;padding:4px 6px" value="${u.birthdate || ''}" onchange="Admin.setBirthdate(${u.id}, this.value)"></td>
+            <td style="white-space:nowrap">${(+u.face_n >= d.face_min_desc)
+              ? `<span class="chip chip-ok">${u.face_n} รูป</span>`
+              : `<span class="chip chip-absent">${+u.face_n ? u.face_n + ' รูป' : 'ยังไม่มี'}</span>`}
+              ${+u.face_n ? `<button class="btn btn-danger-ghost btn-sm" style="margin-left:4px" onclick="Admin.faceClear(${u.id},'${esc(u.name)}')">ลบ</button>` : ''}</td>
             <td>${{ active: '<span class="chip chip-ok">ใช้งาน</span>', unregistered: '<span class="chip chip-plain">ยังไม่ลงทะเบียน</span>',
                    disabled: '<span class="chip chip-absent">ปิดใช้งาน</span>' }[u.status] || u.status}</td>
             <td class="num">${u.quota_used}/${d.quota_max}</td>
@@ -670,7 +685,7 @@ const Admin = {
               ${u.status === 'active' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_reset',${u.id},'รีเซ็ตรหัสผ่าน? เจ้าตัวต้องลงทะเบียนใหม่')">รีเซ็ตรหัส</button>
                 <button class="btn btn-danger-ghost btn-sm" onclick="Admin.userAct('user_disable',${u.id},'ปิดใช้งานบัญชีนี้?')">ปิด</button>` : ''}
               ${u.status === 'disabled' ? `<button class="btn btn-ghost btn-sm" onclick="Admin.userAct('user_enable',${u.id})">เปิดใช้งาน</button>` : ''}
-            </td></tr>`).join('') || '<tr><td colspan="6" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
+            </td></tr>`).join('') || '<tr><td colspan="7" class="empty">ยังไม่มีเจ้าหน้าที่</td></tr>'}
         </table></div>
       </div>`;
   },
@@ -1355,6 +1370,16 @@ const Admin = {
         ${T('sunday_off', '🌴 วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด')}
         ${T('sunday_work_enabled', '📅 เปิดเช็คชื่อวันอาทิตย์', 'ให้คนมาทำงาน/เข้าเวรวันหยุด กดเช็คชื่อได้ (ไม่นับสาย)')}
         ${T('night_shift_enabled', '🌙 เวรกลางคืน (เฝ้าสำนักงาน)', 'เฉพาะ จนท.ชาย — ยกเว้นสายเช้าถัดมาให้อัตโนมัติ')}
+        ${T('face_verify_enabled', '🙂 ยืนยันใบหน้าตอนเช็คชื่อ', 'สแกนหน้าสดแทนการเก็บรูป — ไม่ผ่าน 3 ครั้งยังเช็คชื่อได้ แต่ติดหมายเหตุให้หัวหน้าเห็น (ต้องลงทะเบียนใบหน้าที่แท็บเจ้าหน้าที่ก่อน)')}
+      </div>
+      <div class="card"><h3>🙂 เกณฑ์ยืนยันใบหน้า</h3>
+        <div class="tiny" style="margin-bottom:10px">ค่าตั้งต้นวัดมาจากรูปเช็คชื่อจริง 460 ใบของสถานี (รับคนอื่นผิด 0.30% · ปฏิเสธเจ้าตัว 3.8%)
+          — <b>ยิ่งน้อยยิ่งเข้ม</b> ถ้าเจ้าหน้าที่บ่นว่าไม่ผ่านบ่อย ค่อยๆ เพิ่มทีละ 0.02</div>
+        <div class="grid-2">
+          ${I('face_match_threshold', 'เกณฑ์ระยะ (0.20-0.90)', 'number', 'step=0.01 min=0.2 max=0.9')}
+          ${I('face_max_attempts', 'ลองได้กี่ครั้ง (1-5)', 'number', 'step=1 min=1 max=5')}
+        </div>
+        <div class="field">${I('face_min_desc', 'ต้องมีใบหน้าอย่างน้อยกี่รูปถึงใช้งาน (1-10)', 'number', 'step=1 min=1 max=10')}</div>
       </div>
       <div class="card"><h3>⏰ เวลา</h3>
         <div class="grid-2">
@@ -1583,6 +1608,7 @@ const Admin = {
       'sunday_work_enabled', 'night_shift_enabled', 'night_checkin_open',
       'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
       'gps_lat', 'gps_lng', 'gps_radius_m', 'station_name', 'line_token', 'line_group_id',
+      'face_verify_enabled', 'face_match_threshold', 'face_max_attempts', 'face_min_desc',
       'gdrive_client_id', 'gdrive_client_secret'];
     const settings = {};
     keys.forEach(k => {
@@ -1602,4 +1628,365 @@ const Admin = {
         <pre style="text-align:left;font-family:Kanit;font-size:13px;white-space:pre-wrap;background:#f4f6f2;padding:12px;border-radius:10px">${esc(d.preview || '')}</pre>`,
       confirmButtonText: 'ปิด', width: 520 });
   },
+
+  // ==========================================================
+  // ลงทะเบียนใบหน้า (v33) — คำนวณในเบราว์เซอร์ ส่งขึ้นเซิร์ฟเวอร์แค่เวกเตอร์
+  // ทำเป็น overlay ไม่ใช่การ์ด เพราะ vUsers() re-render ทุกครั้งที่กดอะไร จะล้าง state 460 ไฟล์ทิ้ง
+  // ==========================================================
+  feFiles: [],      // [{name, file}]
+  feGroups: {},     // ชื่อจากไฟล์ → [file...]
+  feMatch: {},      // ชื่อจากไฟล์ → user_id ('' = ไม่ลงทะเบียน)
+  feUsers: [],
+  feResult: null,   // ผลหลังคำนวณ { ชื่อ: {keep:[{desc,src}], drops:[[file,reason]], warn:[] } }
+  feStop: false,
+
+  async faceEnrollOpen() {
+    this.feFiles = []; this.feGroups = {}; this.feMatch = {}; this.feResult = null; this.feStop = false;
+    const d = await App.api('users_list');
+    this.feUsers = d.users.filter(u => u.role === 'staff' && u.status !== 'pending');
+    this.feMinDesc = d.face_min_desc;
+
+    const ov = document.createElement('div');
+    ov.id = 'faceEnrollOv';
+    ov.className = 'fe-ov';
+    ov.innerHTML = `
+      <div class="fe-bar">
+        <b>🙂 ลงทะเบียนใบหน้าเจ้าหน้าที่</b>
+        <button class="btn btn-ghost btn-sm" onclick="Admin.faceEnrollClose()">✕ ปิด</button>
+      </div>
+      <div class="fe-scroll">
+        <div class="card"><h3>🆕 เจ้าหน้าที่คนใหม่ — ถ่าย 3 รูป</h3>
+          <div class="tiny" style="margin-bottom:10px">ใช้ตอนมีคนใหม่เข้ามาทำงาน หรือคนที่รูปเดิมไม่พอ
+            — <b>ถ่ายหน้าตรง 3-5 รูป</b> (หันซ้าย/ตรง/ขวาเล็กน้อย แสงสว่าง ไม่ใส่หมวก/แว่นกันแดด)</div>
+          <div class="field"><label>เลือกเจ้าหน้าที่</label>
+            <select class="select" id="feOneUser">${this.feUsers.filter(u => u.status === 'active')
+              .map(u => `<option value="${u.id}">${esc(u.name)}${+u.face_n ? ` (มีแล้ว ${u.face_n} รูป)` : ' — ยังไม่มีใบหน้า'}</option>`).join('')}</select></div>
+          <input type="file" id="feOneFiles" accept="image/*" multiple capture="user" style="font-size:13px">
+          <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.feOneSave()">🙂 วิเคราะห์ + บันทึกใบหน้า</button>
+          <div id="feOneOut" class="tiny" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card"><h3>1️⃣ เลือกโฟลเดอร์รูป <span class="h-right">ลงทะเบียนยกทีมจากรูปเช็คชื่อเดิม</span></h3>
+          <div class="tiny" style="margin-bottom:10px">เลือกโฟลเดอร์ <b>รูปเช็คชื่อสถานีไฟป่า</b> ที่โหลดจาก Google Drive (มีโฟลเดอร์ย่อยรายวัน)
+            — ระบบอ่านชื่อคนจากชื่อไฟล์ให้เอง · <b>ทำบนคอมพิวเตอร์</b> (มือถือเลือกโฟลเดอร์ไม่ได้)</div>
+          <input type="file" id="feDir" webkitdirectory multiple accept="image/*" style="font-size:13px">
+          <div class="tiny" style="margin-top:6px">หรือเลือกไฟล์รูปหลายไฟล์: <input type="file" id="feMulti" multiple accept="image/*" style="font-size:13px"></div>
+          <div id="fePick" class="tiny" style="margin-top:8px">ยังไม่ได้เลือก</div>
+        </div>
+        <div id="feMatchCard"></div>
+        <div id="feRunCard"></div>
+        <div id="feReport"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    byId('feDir').onchange   = (e) => this.fePick(e.target.files);
+    byId('feMulti').onchange = (e) => this.fePick(e.target.files);
+  },
+
+  faceEnrollClose() {
+    this.feStop = true;
+    const ov = byId('faceEnrollOv'); if (ov) ov.remove();
+    this.vUsers();
+  },
+
+  /** อ่านชื่อคนจากชื่อไฟล์ — ต้องตรงกับที่ gdrive_enqueue ตั้งชื่อไว้ (HHMM_ชื่อ_สกุล[_(เวรกลางคืน)].jpg) */
+  feParseName(fname) {
+    return fname.replace(/\.[^.]+$/, '')
+      .replace(/_\(เวรกลางคืน\)$/, '')
+      .replace(/^\d{4}_/, '')
+      .replace(/_/g, ' ').replace(/\s+/g, ' ').trim().normalize('NFC');
+  },
+
+  fePick(fileList) {
+    this.feFiles = [...fileList].filter(f => /\.(jpe?g|png)$/i.test(f.name) && !f.name.startsWith('.'));
+    this.feGroups = {};
+    for (const f of this.feFiles) (this.feGroups[this.feParseName(f.name)] ||= []).push(f);
+    const names = Object.keys(this.feGroups).sort();
+    byId('fePick').innerHTML = `พบ <b>${this.feFiles.length}</b> รูป · <b>${names.length}</b> ชื่อ`;
+    this.feMatch = {};
+    names.forEach(n => this.feMatch[n] = this.feGuess(n));
+    this.feRenderMatch();
+  },
+
+  /** เดา user จากชื่อไฟล์ — ตรงเป๊ะก่อน ไม่งั้นตัดคำนำหน้าแล้วเทียบ (น.ส. vs นางสาว) */
+  feGuess(name) {
+    const strip = (s) => s.replace(/^(นาย|นางสาว|นาง|น\.ส\.|ว่าที่ร้อยตรี|ส\.อ\.|จ\.ส\.อ\.)\s*/, '').replace(/\s+/g, ' ').trim();
+    const exact = this.feUsers.find(u => u.name.normalize('NFC') === name);
+    if (exact) return String(exact.id);
+    const bare = strip(name);
+    const same = this.feUsers.filter(u => strip(u.name.normalize('NFC')) === bare);
+    return same.length === 1 ? String(same[0].id) : '';
+  },
+
+  feRenderMatch() {
+    const names = Object.keys(this.feGroups).sort();
+    if (!names.length) { byId('feMatchCard').innerHTML = ''; byId('feRunCard').innerHTML = ''; return; }
+    const opts = (sel) => `<option value=""${sel ? '' : ' selected'}>— ไม่ลงทะเบียน —</option>` +
+      this.feUsers.map(u => `<option value="${u.id}"${String(u.id) === sel ? ' selected' : ''}>${esc(u.name)}</option>`).join('');
+    const unmatched = names.filter(n => !this.feMatch[n]);
+    byId('feMatchCard').innerHTML = `
+      <div class="card"><h3>2️⃣ จับคู่ชื่อไฟล์กับเจ้าหน้าที่</h3>
+        ${unmatched.length ? `<div class="alert-bar" style="margin-bottom:10px">⛔ ยังจับคู่ไม่ได้ <b>${unmatched.length} ชื่อ</b> — ${unmatched.map(esc).join(', ')}</div>` : ''}
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>ชื่อจากไฟล์</th><th class="num">รูป</th><th>ลงทะเบียนให้</th></tr>
+          ${names.map(n => `<tr>
+            <td>${esc(n)}${this.feMatch[n] && this.feUsers.find(u => String(u.id) === this.feMatch[n])?.name.normalize('NFC') !== n
+                ? '<div class="tiny" style="color:var(--late)">⚠️ ชื่อไม่ตรงเป๊ะ ตรวจให้แน่ใจ</div>' : ''}</td>
+            <td class="num">${this.feGroups[n].length}</td>
+            <td><select class="select" style="min-width:190px;padding:4px 6px"
+                  onchange="Admin.feSetMatch('${esc(n).replace(/'/g, '&#39;')}', this.value)">${opts(this.feMatch[n])}</select></td>
+          </tr>`).join('')}
+        </table></div>
+        <label class="osu-nolate" style="margin-top:12px"><input type="checkbox" id="feConfirm" onchange="byId('feGo').disabled = !this.checked">
+          <span>ตรวจการจับคู่ด้านบนแล้ว ถูกต้องทุกชื่อ</span></label>
+      </div>`;
+    byId('feRunCard').innerHTML = `
+      <div class="card"><h3>3️⃣ คำนวณใบหน้า</h3>
+        <div class="tiny" style="margin-bottom:10px">คำนวณในเครื่องนี้ ไม่ส่งรูปออกไปไหน — <b>460 รูปใช้เวลา 5-10 นาที</b>
+          <br>⚠️ <b>อยู่ที่หน้านี้ อย่าสลับไปแท็บอื่น</b> (เบราว์เซอร์จะหน่วงแท็บที่ไม่ได้ดู ทำให้ช้าลงหลายเท่า)
+          — เลื่อนดูในหน้านี้ได้ปกติ · กด "หยุด" แล้วเริ่มใหม่ได้ตลอด</div>
+        <div class="fe-prog"><i id="feBar"></i></div>
+        <div id="feProg" class="tiny">พร้อม</div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-primary" id="feGo" disabled onclick="Admin.feCompute()">▶ เริ่มคำนวณ</button>
+          <button class="btn btn-ghost" onclick="Admin.feStop = true">⏸ หยุด</button>
+        </div>
+      </div>`;
+  },
+
+  feSetMatch(name, val) {
+    const key = Object.keys(this.feGroups).find(k => k === name || esc(k) === name);
+    if (key !== undefined) this.feMatch[key] = val;
+  },
+
+  async feCompute() {
+    this.feStop = false;
+    byId('feGo').disabled = true;
+    const targets = Object.keys(this.feGroups).filter(n => this.feMatch[n]);
+    if (!targets.length) { toast('ยังไม่ได้จับคู่ชื่อกับเจ้าหน้าที่', 'error'); byId('feGo').disabled = false; return; }
+
+    byId('feProg').textContent = 'กำลังโหลดโมเดลใบหน้า...';
+    try { await loadFaceModels(); }
+    catch (e) { byId('feProg').textContent = '❌ ' + e.message; byId('feGo').disabled = false; return; }
+
+    const files = targets.flatMap(n => this.feGroups[n].map(f => ({ n, f })));
+    const recs = [], t0 = Date.now();
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    for (let i = 0; i < files.length; i++) {
+      if (this.feStop) { byId('feProg').textContent = `หยุดแล้วที่ ${i}/${files.length} รูป`; break; }
+      const { n, f } = files[i];
+      let rec = { person: n, file: f.name, nFace: 0, score: 0, bw: 0, desc: null };
+      try {
+        const bmp = await createImageBitmap(f);
+        cv.width = bmp.width; cv.height = bmp.height;
+        cx.drawImage(bmp, 0, 0); bmp.close();
+        const dets = await faceapi.detectAllFaces(cv, faceOpts()).withFaceLandmarks().withFaceDescriptors();
+        rec.nFace = dets.length;
+        if (dets.length) {
+          const big = dets.reduce((a, b) => a.detection.box.width >= b.detection.box.width ? a : b);
+          rec.score = big.detection.score; rec.bw = big.detection.box.width;
+          rec.desc = Array.from(big.descriptor);
+        }
+      } catch { /* ไฟล์เสีย = ตกไปเป็น nFace 0 */ }
+      recs.push(rec);
+      // คืน event loop ให้แท็บไม่ค้าง — ทุก 8 รูป ไม่ใช่ทุก 3 เพราะแท็บที่ถูกซ่อน Chrome หน่วง setTimeout เป็น ~1 วิ
+      if (i % 8 === 0 || i === files.length - 1) {
+        const pct = Math.round((i + 1) / files.length * 100), per = (Date.now() - t0) / (i + 1);
+        byId('feBar').style.width = pct + '%';
+        byId('feProg').textContent = `${i + 1}/${files.length} (${pct}%) · เหลือ ~${Math.round(per * (files.length - i - 1) / 1000)} วิ · ${f.name}`
+          + (document.hidden ? ' · ⚠️ กลับมาดูหน้านี้จะเร็วขึ้น' : '');
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    this.feResult = this.feHygiene(recs);
+    this.feReport();
+    byId('feGo').disabled = false;
+  },
+
+  /** คัดกรอง descriptor ต่อคน — ต้องเหมือนกับที่วัดไว้ตอนเลือกเกณฑ์ (facelab) เป๊ะ */
+  feHygiene(recs) {
+    const CAP = 12, MIN_SCORE = 0.5, MIN_BW = 80;
+    const eu = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); };
+    const cen = (L) => { const c = new Float64Array(128); for (const v of L) for (let i = 0; i < 128; i++) c[i] += v[i]; return c.map(x => x / L.length); };
+    const med = (A) => { const s = [...A].sort((a, b) => a - b); const m = (s.length - 1) / 2; return (s[Math.floor(m)] + s[Math.ceil(m)]) / 2; };
+
+    const byP = {};
+    for (const r of recs) (byP[r.person] ||= []).push(r);
+    const out = {};
+    for (const [p, list] of Object.entries(byP)) {
+      const drops = [];
+      let keep = list.filter(r => {
+        if (r.nFace === 0) { drops.push([r.file, 'ไม่พบใบหน้า']); return false; }
+        if (r.nFace > 1)   { drops.push([r.file, `พบ ${r.nFace} หน้าในรูป`]); return false; }
+        if (r.score < MIN_SCORE) { drops.push([r.file, 'ภาพไม่ชัดพอ']); return false; }
+        if (r.bw < MIN_BW)       { drops.push([r.file, 'หน้าเล็กเกินไป']); return false; }
+        return true;
+      });
+      // ตัดรูปที่ไกลจากกลุ่มของตัวเอง 2 รอบ — กันรูปคนอื่นที่ถูกบันทึกผิดชื่อ
+      for (let pass = 0; pass < 2 && keep.length >= 4; pass++) {
+        const c = cen(keep.map(r => r.desc)), ds = keep.map(r => eu(r.desc, c));
+        const m = med(ds), lim = m + 2 * med(ds.map(v => Math.abs(v - m)));
+        const next = [];
+        keep.forEach((r, i) => ds[i] > lim ? drops.push([r.file, `หน้าไม่เหมือนรูปอื่นของคนนี้ (${ds[i].toFixed(2)})`]) : next.push(r));
+        if (next.length === keep.length) break;
+        keep = next;
+      }
+      out[p] = { keep, drops, total: list.length };
+    }
+
+    // เตือนถ้ารูปของคนหนึ่งไปใกล้คนอื่นมากกว่ากลุ่มตัวเอง (กันลงทะเบียนสลับคน)
+    const people = Object.keys(out);
+    for (const p of people) {
+      out[p].cross = [];
+      const c = out[p].keep.length ? cen(out[p].keep.map(r => r.desc)) : null;
+      if (!c) continue;
+      for (const r of out[p].keep) {
+        const own = eu(r.desc, c);
+        for (const q of people) {
+          if (q === p || !out[q].keep.length) continue;
+          const dq = Math.min(...out[q].keep.map(g => eu(r.desc, g.desc)));
+          if (dq < own) { out[p].cross.push([r.file, q]); break; }
+        }
+      }
+      // จำกัดจำนวน โดยเลือกให้กระจายท่าทาง (ไกลกันมากสุด) ไม่ใช่เอาแต่รูปที่คล้ายกัน
+      if (out[p].keep.length > CAP) {
+        const D = out[p].keep.map(r => r.desc);
+        let seed = 0, bd = Infinity;
+        D.forEach((d, i) => { const x = eu(d, c); if (x < bd) { bd = x; seed = i; } });
+        const pick = [seed], dmin = D.map(d => eu(d, D[seed]));
+        while (pick.length < CAP) {
+          let bi = -1, bx = -1;
+          for (let i = 0; i < D.length; i++) if (!pick.includes(i) && dmin[i] > bx) { bx = dmin[i]; bi = i; }
+          pick.push(bi);
+          for (let i = 0; i < D.length; i++) dmin[i] = Math.min(dmin[i], eu(D[i], D[bi]));
+        }
+        out[p].capped = pick.map(i => out[p].keep[i]);
+      } else out[p].capped = out[p].keep;
+    }
+    return out;
+  },
+
+  feReport() {
+    const R = this.feResult, names = Object.keys(R).sort();
+    const uName = (id) => this.feUsers.find(u => String(u.id) === String(id))?.name || '?';
+    const bad = names.filter(n => (R[n].cross || []).length);
+    const thin = names.filter(n => (R[n].capped || []).length < this.feMinDesc);
+    byId('feReport').innerHTML = `
+      <div class="card"><h3>4️⃣ ผลการคัดกรอง</h3>
+        ${bad.length ? `<div class="alert-bar" style="margin-bottom:10px">⛔ <b>${bad.length} คน</b> มีรูปที่หน้าไปเหมือนคนอื่นมากกว่าตัวเอง — อาจจับคู่ชื่อสลับ ตรวจก่อนบันทึก:
+          ${bad.map(n => esc(n) + ' (' + R[n].cross.map(c => esc(c[1])).join(', ') + ')').join(' · ')}</div>` : ''}
+        ${thin.length ? `<div class="alert-bar" style="margin-bottom:10px">⚠️ รูปไม่พอใช้งาน (ต้องมี ≥ ${this.feMinDesc}): <b>${thin.map(esc).join(', ')}</b>
+          — ต้องถ่ายรูปหน้าตรงเพิ่มให้คนนี้</div>` : ''}
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>ชื่อจากไฟล์</th><th>ลงทะเบียนให้</th><th class="num">รูป</th><th class="num">ใช้ได้</th><th class="num">จะบันทึก</th></tr>
+          ${names.map(n => `<tr>
+            <td>${esc(n)}</td><td>${esc(uName(this.feMatch[n]))}</td>
+            <td class="num">${R[n].total}</td><td class="num">${R[n].keep.length}</td>
+            <td class="num"><b>${(R[n].capped || []).length}</b></td></tr>
+            ${R[n].drops.length ? `<tr><td colspan="5" class="tiny" style="color:var(--ink-2);padding-left:16px">
+              ตัดออก: ${R[n].drops.map(d => esc(d[0]) + ' (' + d[1] + ')').join(' · ')}</td></tr>` : ''}`).join('')}
+        </table></div>
+        <div class="tiny" style="margin-top:10px">💡 <b>ถ่ายรูปเพิ่มให้คนที่รูปไม่พอ:</b> เลือก "เลือกไฟล์รูปหลายไฟล์" ข้อ 1️⃣ → เลือกรูปหน้าตรง 3-5 รูปของคนนั้น
+          → ชื่อไฟล์จะจับคู่ไม่ได้ (ปกติ) ให้เลือกชื่อคนจาก dropdown ให้ทุกแถว → ระบบรวมให้เป็นคนเดียวกันเอง</div>
+        <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.feSaveAll()">💾 บันทึกใบหน้าทั้งหมดลงระบบ</button>
+        <div id="feSaveProg" class="tiny" style="margin-top:8px"></div>
+      </div>`;
+  },
+
+  async feSaveAll() {
+    const R = this.feResult;
+    // ⚠️ รวมกลุ่มที่จับคู่ไปยังคนเดียวกันก่อนบันทึก — เช่นเลือกรูปเดี่ยวหลายไฟล์ (ชื่อไฟล์ไม่ซ้ำ) ให้คนเดียว
+    //    ถ้าไม่รวม จะยิง replace ทับกันเองเหลือรูปเดียว (เจอตอนคิดเคสถ่ายรูปเพิ่มให้คนที่รูปไม่พอ)
+    const byUser = {};
+    for (const n of Object.keys(R)) {
+      const uid = this.feMatch[n];
+      if (!uid || !(R[n].capped || []).length) continue;
+      (byUser[uid] ||= []).push(...R[n].capped);
+    }
+    const ids = Object.keys(byUser);
+    const uName = (id) => this.feUsers.find(u => String(u.id) === String(id))?.name || id;
+    let done = 0;
+    for (const uid of ids) {
+      byId('feSaveProg').textContent = `กำลังบันทึก ${done + 1}/${ids.length} — ${uName(uid)}`;
+      await App.api('face_enroll_save', {
+        user_id: +uid, replace: 1,
+        items: byUser[uid].slice(0, 12).map(r => ({ descriptor: r.desc, src_name: r.file })),
+      });
+      done++;
+    }
+    byId('feSaveProg').textContent = `บันทึกครบ ${done} คนแล้ว ✅`;
+    await Swal.fire({ icon: 'success', title: 'ลงทะเบียนใบหน้าแล้ว',
+      html: `บันทึก <b>${done}</b> คน<br><div class="tiny" style="margin-top:8px">เปิดสวิตช์ "ยืนยันใบหน้า" ที่เมนูตั้งค่าเพื่อเริ่มใช้งาน</div>`,
+      confirmButtonText: 'ตกลง' });
+  },
+
+  /** ลงทะเบียนใบหน้ารายคนจากรูปที่ถ่ายมาใหม่ (คนใหม่ / คนที่รูปเดิมไม่พอ) — เพิ่มทับของเดิม */
+  async feOneSave() {
+    const uid = +byId('feOneUser').value;
+    const files = [...byId('feOneFiles').files].filter(f => /\.(jpe?g|png|heic|webp)$/i.test(f.name) || f.type.startsWith('image/'));
+    const out = byId('feOneOut');
+    if (!files.length) { out.textContent = '⚠️ ยังไม่ได้เลือกรูป'; return; }
+
+    out.textContent = 'กำลังโหลดโมเดล...';
+    try { await loadFaceModels(); } catch (e) { out.textContent = '❌ ' + e.message; return; }
+
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    const keep = [], drops = [];
+    for (let i = 0; i < files.length; i++) {
+      out.textContent = `กำลังวิเคราะห์ ${i + 1}/${files.length}...`;
+      try {
+        const bmp = await createImageBitmap(files[i]);
+        cv.width = bmp.width; cv.height = bmp.height;
+        cx.drawImage(bmp, 0, 0); bmp.close();
+        const dets = await faceapi.detectAllFaces(cv, faceOpts()).withFaceLandmarks().withFaceDescriptors();
+        if (dets.length !== 1) { drops.push([files[i].name, dets.length ? `พบ ${dets.length} หน้าในรูป` : 'ไม่พบใบหน้า']); continue; }
+        const d = dets[0];
+        if (d.detection.score < 0.5)      { drops.push([files[i].name, 'ภาพไม่ชัดพอ']); continue; }
+        if (d.detection.box.width < 80)   { drops.push([files[i].name, 'หน้าเล็กเกินไป ถ่ายใกล้อีกนิด']); continue; }
+        keep.push({ desc: Array.from(d.descriptor), file: files[i].name });
+      } catch { drops.push([files[i].name, 'อ่านไฟล์ไม่ได้']); }
+    }
+    if (!keep.length) {
+      out.innerHTML = `❌ ไม่มีรูปที่ใช้ได้เลย<br>${drops.map(d => `• ${esc(d[0])} — ${d[1]}`).join('<br>')}`;
+      return;
+    }
+
+    const d = await App.api('face_enroll_save', { user_id: uid, replace: 1,
+      items: keep.slice(0, 12).map(r => ({ descriptor: r.desc, src_name: r.file })) });
+    out.innerHTML = `✅ ${esc(d.message)}${d.ready ? '' : ` <b style="color:var(--absent)">— ยังไม่พอใช้งาน ถ่ายเพิ่มอีก</b>`}
+      ${drops.length ? `<br><span style="color:var(--late)">ข้ามไป ${drops.length} รูป:</span> ${drops.map(x => esc(x[0]) + ' (' + x[1] + ')').join(' · ')}` : ''}`;
+    byId('feOneFiles').value = '';
+    const u = await App.api('users_list');
+    this.feUsers = u.users.filter(x => x.role === 'staff' && x.status !== 'pending');
+  },
+
+  async faceClear(id, name) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบข้อมูลใบหน้า?',
+      text: `ลบใบหน้าที่ลงทะเบียนไว้ของ ${name} — คนนี้จะเช็คชื่อได้แต่ติดหมายเหตุว่ายังไม่ลงทะเบียน`,
+      showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    const d = await App.api('face_enroll_clear', { user_id: id });
+    toast(d.message);
+    this.vUsers();
+  },
+
+  /** รายชื่อ+รูป คนที่ยืนยันใบหน้าไม่ผ่านวันนี้ */
+  faceFlagList() {
+    const list = App.adminData.face_flags || [];
+    Swal.fire({ icon: 'warning', title: 'ยืนยันใบหน้าไม่ผ่านวันนี้', width: 560,
+      html: `<div style="text-align:left">${list.map(f => `
+        <div class="list-row"><div class="lr-main"><div class="lr-title">${esc(f.name)}</div>
+          <div class="lr-sub">เช็คชื่อ ${f.time_in ? f.time_in.substr(11, 5) : '—'} น.${f.face_dist ? ' · ระยะ ' + f.face_dist : ''}</div></div>
+          ${f.face_photo ? `<a href="photo.php?p=${encodeURIComponent(f.face_photo)}&token=${App.token}" target="_blank">
+            <img src="photo.php?p=${encodeURIComponent(f.face_photo)}&token=${App.token}" style="width:52px;height:52px;object-fit:cover;border-radius:8px"></a>` : '<span class="tiny">ไม่มีรูป</span>'}
+        </div>`).join('')}</div>
+        <div class="tiny" style="margin-top:10px;text-align:left">⚠️ ไม่ผ่านอาจเป็นแค่แสง/หมวก/แว่น — ดูรูปแล้วตัดสินเองนะคะ</div>`,
+      confirmButtonText: 'ปิด' });
+  },
 };
+
+/** ป้ายธงยืนยันใบหน้า (ใช้ในตารางรายชื่อ) */
+function faceFlagChip(r) {
+  if (+r.face_flag === 1) return ` <span class="face-flag" onclick="Admin.faceFlagList()">⚠️ ยืนยันหน้าไม่ผ่าน</span>`;
+  if (+r.face_flag === 2) return ` <span class="face-flag f2">🆕 ยังไม่ลงทะเบียนหน้า</span>`;
+  return '';
+}

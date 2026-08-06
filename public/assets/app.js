@@ -354,7 +354,11 @@ const App = {
         : osUser
         ? `<div style="background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#065f46">📍 วันนี้คุณได้รับอนุญาตเช็ค<b>นอกพื้นที่</b>${osUser.reason ? ' — ' + esc(osUser.reason) : ''}<br>${+osUser.no_late ? 'เช็คได้จากทุกที่ · ไปราชการ <b>ไม่นับสาย</b>' : `เช็คได้จากทุกที่ ในเวลางานปกติ (หลัง <b>${s.late_cutoff}</b> น. นับสาย)`}</div>`
         : '';
-      stateHtml = `${osBanner}<button class="big-check" id="btnCheckin" onclick="App.doCheckin()">
+      // เตือนถ้าเปิดยืนยันใบหน้าแต่ยังไม่ได้ลงทะเบียนหน้าให้คนนี้ (เช็คชื่อได้ปกติ แต่หัวหน้าจะเห็นหมายเหตุ)
+      const faceBanner = (s.face_verify_enabled && !t.face_ready)
+        ? `<div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;color:#92400e">🙂 ยังไม่ได้<b>ลงทะเบียนใบหน้า</b>ของคุณ — เช็คชื่อได้ปกติ แต่แจ้งหัวหน้าให้ลงทะเบียนให้ด้วยนะคะ</div>`
+        : '';
+      stateHtml = `${osBanner}${faceBanner}<button class="big-check" id="btnCheckin" onclick="App.doCheckin()">
         <span class="bc-ico">📍</span>เช็คชื่อ<span class="bc-sub" id="bcSub"></span>
       </button>
       <div class="clock-note">${os ? `เช็คนอกสถานที่ ${os.start_time}–${os.end_time} น. (ไม่นับสาย)` : (osUser && +osUser.no_late) ? `เปิดเช็คชื่อ ${s.checkin_open} น. • ไปราชการวันนี้ ไม่นับสาย` : `เปิดเช็คชื่อ ${s.checkin_open} น. • หลัง ${s.late_cutoff} น. นับว่าสาย`}</div>`;
@@ -430,10 +434,15 @@ const App = {
     const s = this.data.settings;
     const btn = byId('btnCheckin'); if (btn) btn.disabled = true;   // วันหยุดใช้ปุ่มอื่น (ไม่มี btnCheckin)
     try {
-      // 1) ถ่ายเซลฟี่ก่อน — iOS/WebKit บังคับ inp.click() ต้องอยู่ในจังหวะ "กดสด" (transient activation)
+      // 1) กล้องก่อนเสมอ — iOS/WebKit บังคับ inp.click() ต้องอยู่ในจังหวะ "กดสด" (transient activation)
       //    ห้ามมี await คั่นก่อนบรรทัดนี้ ไม่งั้นสิทธิ์กดหมด กล้องจะไม่เปิด → ค้าง (เดิมหา GPS ก่อนเลยพัง)
       let selfie = null;
-      if (s.selfie_required) {
+      if (s.face_verify_enabled && this.data.today.face_ready) {
+        // ยืนยันใบหน้า: เฟรมที่ใช้ยืนยันใช้เป็นเซลฟี่ได้เลย ไม่ต้องเปิดกล้องสองรอบ
+        const fv = await faceVerifyFlow('checkin', faceCanLive());
+        if (fv === 'cancel') return;
+        if (s.selfie_required) selfie = fv.dataUrl || null;
+      } else if (s.selfie_required) {
         selfie = await captureSelfie();
         if (!selfie) return;   // ผู้ใช้ยกเลิก
       }
@@ -477,9 +486,13 @@ const App = {
   async doNightCheckin() {
     const s = this.data.settings;
     try {
-      // ลำดับเหมือนเช็คชื่อ: เซลฟี่ (ถ้าบังคับ) ก่อน GPS — iOS/WebKit ต้องเปิดกล้องในจังหวะกดสด
+      // ลำดับเหมือนเช็คชื่อ: กล้อง (ยืนยันหน้า/เซลฟี่) ก่อน GPS — iOS/WebKit ต้องเปิดกล้องในจังหวะกดสด
       let selfie = null;
-      if (s.selfie_required) {
+      if (s.face_verify_enabled && this.data.today.face_ready) {
+        const fv = await faceVerifyFlow('night', faceCanLive());
+        if (fv === 'cancel') return;
+        if (s.selfie_required) selfie = fv.dataUrl || null;
+      } else if (s.selfie_required) {
         selfie = await captureSelfie();
         if (!selfie) return;
       }
@@ -1108,6 +1121,246 @@ function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371000, dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/* =====================================================
+   ยืนยันใบหน้า (v33) — คำนวณ descriptor ในเครื่อง ส่งขึ้นเซิร์ฟเวอร์แค่เวกเตอร์ 128 ตัว
+   ⚠️ detector ต้องเป็น ssd_mobilenetv1 ให้ตรงกับตอนลงทะเบียน (วัดแล้ว tiny จับรูปเซลฟี่หน้าใหญ่ไม่ได้ 18.5%)
+      ถ้าเปลี่ยน detector ข้างใดข้างหนึ่ง กรอบ/แลนด์มาร์กจะเลื่อน = เกณฑ์ที่วัดมาใช้ไม่ได้
+   ===================================================== */
+const FACE_MODEL_URI = 'assets/models';
+let _faceLibP = null, _faceModelP = null;
+
+/** โหลด face-api.js (1.3MB) ครั้งเดียว — มี timeout กันค้างเงียบ */
+function loadFaceLib() {
+  if (_faceLibP) return _faceLibP;
+  _faceLibP = new Promise((resolve, reject) => {
+    if (window.faceapi) return resolve(window.faceapi);
+    const s = document.createElement('script');
+    s.src = 'assets/face-api.js?v=33';
+    s.onload = () => window.faceapi ? resolve(window.faceapi) : reject(new Error('lib ไม่โหลด'));
+    s.onerror = () => reject(new Error('โหลดไลบรารีใบหน้าไม่ได้'));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error('โหลดไลบรารีใบหน้านานเกินไป')), 15000);
+  }).catch(e => { _faceLibP = null; throw e; });
+  return _faceLibP;
+}
+
+/** โหลดน้ำหนักโมเดล (~12MB ครั้งแรก แล้ว browser cache) + ถอยไป cpu ถ้า WebGL ใช้ไม่ได้ */
+function loadFaceModels() {
+  if (_faceModelP) return _faceModelP;
+  _faceModelP = (async () => {
+    const f = await loadFaceLib();
+    await Promise.race([
+      Promise.all([
+        f.nets.ssdMobilenetv1.loadFromUri(FACE_MODEL_URI),
+        f.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URI),
+        f.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URI),
+      ]),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('โหลดโมเดลใบหน้านานเกินไป')), 40000)),
+    ]);
+    // เฟรมแรกบน iOS อาจล้มถ้า WebGL ไม่รองรับ float texture → ถอยไป cpu (ช้าแต่ได้ผลถูก)
+    try { await f.detectSingleFace(document.createElement('canvas'), faceOpts()); }
+    catch { try { await f.tf.setBackend('cpu'); await f.tf.ready(); } catch { /* ปล่อยให้พังตอนใช้จริง */ } }
+    return f;
+  })().catch(e => { _faceModelP = null; throw e; });
+  return _faceModelP;
+}
+
+const faceOpts = () => new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
+
+/** คำนวณ descriptor จาก <video>/<canvas>/<img> — คืน {desc, box} หรือ null ถ้าไม่พบหน้า */
+async function faceDescriptorFrom(el) {
+  const d = await faceapi.detectSingleFace(el, faceOpts()).withFaceLandmarks().withFaceDescriptor();
+  return d ? { desc: Array.from(d.descriptor), box: d.detection.box, score: d.detection.score } : null;
+}
+
+/** เปิดกล้องสด + กรอบจับหน้า → เก็บ 3 เฟรมนิ่งแล้วคืนทั้งหมด
+ *  คืน {descs:[[...],...], dataUrl} | 'denied' | 'timeout' | 'cancel'
+ *  เก็บ 3 เฟรมเพราะเฟรมเดียวอาจเบลอ/กระพริบตา — เซิร์ฟเวอร์เอาเฟรมที่ใกล้สุดไปตัดสิน
+ */
+async function faceLiveCapture() {
+  await loadFaceModels();
+  const ov = document.createElement('div');
+  ov.className = 'fov';
+  ov.innerHTML = `
+    <div class="fov-box">
+      <div class="fov-head">🙂 ยืนยันใบหน้า</div>
+      <div class="fov-stage">
+        <video class="fov-vid" autoplay muted playsinline></video>
+        <canvas class="fov-cv"></canvas>
+      </div>
+      <div class="fov-st">กำลังเปิดกล้อง...</div>
+      <div class="fov-act">
+        <button class="btn btn-ghost fov-cancel">ยกเลิก</button>
+        <button class="btn btn-primary fov-shot" disabled>📸 ถ่ายเลย</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const vid = ov.querySelector('.fov-vid'), cv = ov.querySelector('.fov-cv'), st = ov.querySelector('.fov-st');
+  let stream = null, closed = false, forced = false;
+  const cleanup = () => {
+    closed = true;
+    if (stream) stream.getTracks().forEach(t => t.stop());   // ต้องปิดกล้องทุกทางออก ไม่ให้ไฟกล้องค้าง
+    ov.remove();
+    document.removeEventListener('visibilitychange', onHide);
+  };
+  const onHide = () => { if (document.hidden && !closed) { result = 'cancel'; cleanup(); } };
+  let result = null;
+  ov.querySelector('.fov-cancel').onclick = () => { result = 'cancel'; cleanup(); };
+  ov.querySelector('.fov-shot').onclick = () => { forced = true; };
+  document.addEventListener('visibilitychange', onHide);
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+  } catch { cleanup(); return 'denied'; }
+  if (closed) return result || 'cancel';
+  vid.srcObject = stream;
+  await new Promise(r => vid.onloadedmetadata = r);
+  st.textContent = 'จัดหน้าให้อยู่ในกรอบ';
+  ov.querySelector('.fov-shot').disabled = false;
+
+  const cx = cv.getContext('2d');
+  const t0 = Date.now();
+  let stable = 0, lastCx = null, descs = [], shot = null;
+  try {
+    while (!closed && descs.length < 3) {
+      if (Date.now() - t0 > 30000) { cleanup(); return 'timeout'; }
+      const det = await faceapi.detectSingleFace(vid, faceOpts());
+      if (closed) break;
+      cv.width = vid.clientWidth; cv.height = vid.clientHeight;
+      cx.clearRect(0, 0, cv.width, cv.height);
+      let ready = false;
+      if (det) {
+        const b = faceapi.resizeResults(det, { width: cv.width, height: cv.height }).box;
+        const minSide = Math.min(vid.videoWidth, vid.videoHeight);
+        const bigEnough = det.box.width >= minSide * 0.3;
+        const centered = Math.abs((det.box.x + det.box.width / 2) / vid.videoWidth - 0.5) < 0.22;
+        const cxNow = det.box.x + det.box.width / 2;
+        const stillEnough = lastCx === null || Math.abs(cxNow - lastCx) < vid.videoWidth * 0.05;
+        lastCx = cxNow;
+        ready = det.score >= 0.6 && bigEnough && centered && stillEnough;
+        cx.strokeStyle = ready ? '#22c55e' : '#f59e0b';
+        cx.lineWidth = 3;
+        cx.strokeRect(b.x, b.y, b.width, b.height);
+        st.textContent = ready ? 'นิ่งไว้นะคะ...' : (!bigEnough ? 'ขยับเข้าใกล้อีกนิด' : !centered ? 'จัดหน้าให้อยู่กลางกรอบ' : 'กำลังจับภาพ...');
+      } else {
+        lastCx = null;
+        st.textContent = 'ยังไม่เห็นใบหน้า — หันเข้าหาแสงค่ะ';
+      }
+      stable = ready ? stable + 1 : 0;
+      if (stable >= 2 || forced) {
+        const snap = document.createElement('canvas');
+        snap.width = vid.videoWidth; snap.height = vid.videoHeight;
+        snap.getContext('2d').drawImage(vid, 0, 0);
+        const got = await faceDescriptorFrom(snap);
+        if (got) {
+          descs.push(got.desc);
+          if (!shot) shot = snap.toDataURL('image/jpeg', 0.6);   // เก็บเฟรมแรกไว้ใช้เป็นเซลฟี่/หลักฐาน
+          st.textContent = `เก็บภาพแล้ว ${descs.length}/3`;
+        }
+        if (forced) break;
+        stable = 0;
+      }
+    }
+  } finally { if (!closed) cleanup(); }
+  if (result === 'cancel') return 'cancel';
+  if (!descs.length) return 'timeout';
+  return { descs, dataUrl: shot };
+}
+
+/** ยืนยันใบหน้าให้ครบกระบวนการ — คืน {ok:true,dataUrl} | {flagged:true,dataUrl} | 'cancel'
+ *  liveFirst=false = ใช้ทางถอย (input capture) เพราะ getUserMedia ใช้ไม่ได้/เคยถูกปฏิเสธ
+ *  ⚠️ ห้ามมี await ก่อนเรียกฟังก์ชันนี้ตอน liveFirst=false — captureSelfie() ต้องอยู่ในจังหวะกดสด (iOS)
+ */
+async function faceVerifyFlow(ctx, liveFirst) {
+  let dataUrl = null, live = liveFirst, lastLeft = null;
+  for (let round = 0; round < 6; round++) {
+    let descs = null;
+    if (live) {
+      let cap;
+      try { cap = await faceLiveCapture(); }
+      catch (e) { await faceSkip(ctx, 'no_lib', null); return { flagged: true, dataUrl }; }
+      if (cap === 'cancel') return 'cancel';
+      if (cap === 'denied') {
+        // สิทธิ์ "กดสด" หมดไปกับ getUserMedia ที่ถูกปฏิเสธแล้ว → ต้องให้ผู้ใช้แตะใหม่ ก่อนเปิด file picker
+        localStorage.setItem('fc_gum', '0');
+        const c = await Swal.fire({ icon: 'info', title: 'เปิดกล้องสดไม่ได้',
+          text: 'แตะปุ่มด้านล่างเพื่อถ่ายรูปยืนยันแทนค่ะ', confirmButtonText: '📸 ถ่ายรูป',
+          showCancelButton: true, cancelButtonText: 'ยกเลิก' });
+        if (!c.isConfirmed) return 'cancel';
+        live = false;
+        continue;                                  // วนใหม่ในจังหวะกดสดของปุ่มนี้
+      }
+      if (cap === 'timeout') {
+        const c = await Swal.fire({ icon: 'warning', title: 'จับใบหน้าไม่ได้',
+          text: 'ลองใหม่อีกครั้ง หรือข้ามไปเช็คชื่อ (หัวหน้าจะเห็นหมายเหตุ)',
+          confirmButtonText: 'ลองใหม่', showCancelButton: true, cancelButtonText: 'ข้ามไปเช็คชื่อ' });
+        if (c.isConfirmed) continue;
+        await faceSkip(ctx, 'no_face', null);
+        return { flagged: true, dataUrl };
+      }
+      descs = cap.descs; dataUrl = cap.dataUrl;
+      localStorage.removeItem('fc_gum');
+    } else {
+      const img = await captureSelfie();
+      if (!img) return 'cancel';
+      dataUrl = img;
+      try {
+        await loadFaceModels();
+        const el = new Image();
+        await new Promise(r => { el.onload = r; el.onerror = r; el.src = img; });
+        const got = await faceDescriptorFrom(el);
+        if (!got) {
+          const c = await Swal.fire({ icon: 'warning', title: 'ไม่พบใบหน้าในรูป',
+            text: 'ถ่ายให้เห็นหน้าชัดๆ อีกครั้งค่ะ', confirmButtonText: 'ถ่ายใหม่',
+            showCancelButton: true, cancelButtonText: 'ข้ามไปเช็คชื่อ' });
+          if (c.isConfirmed) continue;
+          await faceSkip(ctx, 'no_face', dataUrl);
+          return { flagged: true, dataUrl };
+        }
+        descs = [got.desc];
+      } catch {
+        await faceSkip(ctx, 'no_lib', dataUrl);
+        return { flagged: true, dataUrl };
+      }
+    }
+
+    // เซิร์ฟเวอร์ตัดสิน — ส่งทีละเฟรม หยุดทันทีที่ผ่าน (แต่ละครั้งนับเป็น 1 try ฝั่งเซิร์ฟเวอร์)
+    // แนบรูปเฉพาะครั้งสุดท้ายที่เหลือ (attempts_left===1) → ทางที่ผ่านเลย ไม่มีรูปออกจากเครื่องเลย
+    let d = null;
+    for (const desc of descs) {
+      d = await App.api('face_verify', { context: ctx, descriptor: desc,
+        photo: lastLeft === 1 ? dataUrl : undefined });
+      lastLeft = d.attempts_left;
+      if (d.next !== 'retry') break;
+    }
+    if (d.next === 'checkin') { toast(d.message); return { ok: true, dataUrl }; }
+    if (d.next === 'checkin_flagged') {
+      await Swal.fire({ icon: 'warning', title: 'ยืนยันใบหน้าไม่ผ่าน',
+        text: 'เช็คชื่อได้ แต่หัวหน้าจะเห็นหมายเหตุว่ายืนยันไม่ผ่านค่ะ', confirmButtonText: 'เข้าใจแล้ว' });
+      return { flagged: true, dataUrl };
+    }
+    const c = await Swal.fire({ icon: 'error', title: 'ยังไม่ตรงกับใบหน้าที่ลงทะเบียน',
+      html: `เหลืออีก <b>${d.attempts_left}</b> ครั้ง<div style="margin-top:8px;font-size:13px;color:#64748b">
+             ถอดหมวก/แว่นกันแดด · หันเข้าหาแสง · ให้เห็นหน้าเต็มๆ</div>`,
+      confirmButtonText: 'ลองอีกครั้ง', showCancelButton: true, cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return 'cancel';
+  }
+  return { flagged: true, dataUrl };
+}
+
+/** แจ้งเซิร์ฟเวอร์ว่ายืนยันไม่ได้ (กล้อง/ไลบรารีพัง) → เผาโควตา = ผ่านแบบติดธง ไม่ปล่อยผ่านเงียบ */
+async function faceSkip(ctx, reason, photo) {
+  try { await App.api('face_verify', { context: ctx, skip: 1, reason, photo: photo || undefined }, { soft: true }); }
+  catch { /* ถ้ายิงไม่ได้ ก็ให้ h_checkin เด้ง 'กรุณายืนยันใบหน้าก่อน' เอง */ }
+}
+
+/** ใช้กล้องสดได้ไหม — ตัดสินแบบ synchronous เพื่อไม่เผาสิทธิ์ "กดสด" ของ iOS */
+function faceCanLive() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+    && window.isSecureContext && localStorage.getItem('fc_gum') !== '0';
 }
 
 /** ถ่ายเซลฟี่ผ่านกล้องหน้า (input capture) คืน dataURL หรือ null ถ้ายกเลิก */
