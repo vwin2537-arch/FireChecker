@@ -1657,7 +1657,8 @@ const Admin = {
       <div class="fe-scroll">
         <div class="card"><h3>🆕 เจ้าหน้าที่คนใหม่ — ถ่าย 3 รูป</h3>
           <div class="tiny" style="margin-bottom:10px">ใช้ตอนมีคนใหม่เข้ามาทำงาน หรือคนที่รูปเดิมไม่พอ
-            — <b>ถ่ายหน้าตรง 3-5 รูป</b> (หันซ้าย/ตรง/ขวาเล็กน้อย แสงสว่าง ไม่ใส่หมวก/แว่นกันแดด)</div>
+            — <b>ถ่ายหน้าตรง 3-5 รูป</b> (หันซ้าย/ตรง/ขวาเล็กน้อย แสงสว่าง ไม่ใส่หมวก/แว่นกันแดด)
+            <br>เป็นการ<b>เพิ่มทับของเดิม</b> (ไม่ลบรูปเก่า) — ถ้าอยากเริ่มใหม่หมด กดปุ่ม "ลบ" ในตารางเจ้าหน้าที่ก่อน</div>
           <div class="field"><label>เลือกเจ้าหน้าที่</label>
             <select class="select" id="feOneUser">${this.feUsers.filter(u => u.status === 'active')
               .map(u => `<option value="${u.id}">${esc(u.name)}${+u.face_n ? ` (มีแล้ว ${u.face_n} รูป)` : ' — ยังไม่มีใบหน้า'}</option>`).join('')}</select></div>
@@ -1950,7 +1951,9 @@ const Admin = {
       return;
     }
 
-    const d = await App.api('face_enroll_save', { user_id: uid, replace: 1,
+    // replace: 0 = เพิ่มทับของเดิม (ไม่ลบ) — ตรงกับที่การ์ดบอกว่าใช้ "ถ่ายเพิ่มให้คนที่รูปเดิมไม่พอ" ได้
+    // ถ้าอยากเริ่มใหม่หมด ใช้ปุ่ม "ลบ" ในตารางเจ้าหน้าที่ก่อน
+    const d = await App.api('face_enroll_save', { user_id: uid, replace: 0,
       items: keep.slice(0, 12).map(r => ({ descriptor: r.desc, src_name: r.file })) });
     out.innerHTML = `✅ ${esc(d.message)}${d.ready ? '' : ` <b style="color:var(--absent)">— ยังไม่พอใช้งาน ถ่ายเพิ่มอีก</b>`}
       ${drops.length ? `<br><span style="color:var(--late)">ข้ามไป ${drops.length} รูป:</span> ${drops.map(x => esc(x[0]) + ' (' + x[1] + ')').join(' · ')}` : ''}`;

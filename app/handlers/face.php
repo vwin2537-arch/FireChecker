@@ -253,6 +253,11 @@ function h_face_enroll_save(): never {
         if (param('replace')) db()->prepare('DELETE FROM face_descriptors WHERE user_id = ?')->execute([$uid]);
         $ins = db()->prepare('INSERT INTO face_descriptors (user_id, descriptor, src_name) VALUES (?, ?, ?)');
         foreach ($rows as $r) $ins->execute([$uid, $r[0], $r[1]]);
+        // โหมดเพิ่มทับ (replace=0) อาจกดซ้ำหลายรอบ — เก็บแค่ใหม่สุด FACE_MAX_ENROLL แถว ไม่ให้บวมไม่มีเพดาน
+        db()->prepare('DELETE FROM face_descriptors WHERE user_id = ? AND id NOT IN (
+                         SELECT id FROM (SELECT id FROM face_descriptors WHERE user_id = ?
+                                          ORDER BY id DESC LIMIT ' . FACE_MAX_ENROLL . ') keep)')
+            ->execute([$uid, $uid]);
         db()->commit();
     } catch (Throwable $e) {
         db()->rollBack();
