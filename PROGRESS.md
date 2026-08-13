@@ -211,7 +211,7 @@
 - **cache-bust v19→v20** (เฟส2 แก้ app.js/admin.js/app.css ซ้ำจาก v19 ที่ deploy ไปแล้ว — ต้องเด้ง v20 ไม่งั้น PWA ค้างเฟส1)
 - **v20+21 deployed 7 ก.ค. (`railway up`)** — verify live: index v21 เสิร์ฟจริง + `fitness_rounds_list`/`health_dashboard` ตอบ 401 JSON (route ลง, display_errors ปิด). **ชุดทดสอบที่พี่วินเลือก = กรมพลศึกษา 19-59 + WCT** (ไม่ใช่ดันพื้น/ซิทอัพ=วัยเรียน 7-18) → สคริปต์ตั้ง 3 ท่า `~/setup_fitness.py` (idempotent, พี่วินรันเอง) **ยังไม่รันบน prod**
 
-## การ์ดวัคซีน (โซนสุขภาพ เฟส 3) — v34 (13 ส.ค. 2026, ⏳ ยังไม่ deploy)
+## การ์ดวัคซีน (โซนสุขภาพ เฟส 3) — v34 (13 ส.ค. 2026, ✅ deployed, commit `e25aec5`)
 
 - **โจทย์พี่วิน:** จดวัคซีนที่ จนท. ไปฉีด (ไข้หวัดใหญ่อายุ ~1 ปี) — ปัญหาจริงคือ **ทั้ง 3 อย่าง**: ไม่มีภาพรวมทั้งทีม + จนท.ไม่รู้ว่าตัวเองฉีดวันไหน + ไม่รู้ว่าใครใกล้หมดอายุ. แอดมินกรอก → เจ้าหน้าที่ดูได้
 - **2 ตารางใหม่:** `vaccine_types` (แอดมินเพิ่มชนิด+ตั้งอายุความคุ้มกันเอง, soft delete) / `vaccine_records` (1 แถว/การฉีด) — probe 42S02 ใน `ensure_admin` + `seed_vaccine_presets()` 4 ชนิด
@@ -221,6 +221,7 @@
 - **เจ้าหน้าที่:** sub-tab 💉 วัคซีน — การ์ดสถานะรายชนิด + ประวัติการฉีดทุกเข็ม (อ่านอย่างเดียว)
 - **verify (local, DB `firecheck_vactest` แยกต่างหาก แล้ว drop ทิ้ง):** ครบทั้ง 4 สถานะจากวันจริง (ok 353 วัน / warn 19 วัน / bad เกิน 224 วัน / none) · validate fail ถูก (วันอนาคต, ชนิดไม่มีจริง, ชื่อว่าง, อายุ 5000 เดือน) · setting clamp 400→365 แล้วป้ายเปลี่ยนตาม · ซ่อนชนิดแล้วประวัติ จนท. ไม่หาย · **migration path: drop 2 ตาราง + ลบ setting → ยิง API → สร้างคืนครบ + seed กลับ** · playwright 2 ฝั่ง (แอดมิน 3 sub-view + บันทึกผ่าน UI จริง / staff) **0 console error**
 - cache-bust v33→v34 (index.php + sw.js CACHE + ASSETS)
+- **verify live หลัง `railway up`:** index.php เสิร์ฟ `app.css/app.js/admin.js?v=34` ครบ · `vaccine_types_admin` + `vaccine_my` ตอบ **401 JSON** (`content-type: application/json` ไม่ใช่ text/html+`<br>`) = route ลง + display_errors ปิด · **ไม่ใช่ 500 "ฐานข้อมูลขัดข้อง" = `ensure_admin` ผ่าน** → probe สร้าง 2 ตาราง + `seed_vaccine_presets()` (ที่ query `vaccine_types`) รันสำเร็จบน prod DB จริง
 
 ## แดชบอร์ดภาพรวมสุขภาพ — v21 (7 ก.ค. 2026, deployed)
 
