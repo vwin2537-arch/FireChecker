@@ -864,20 +864,55 @@ const App = {
 
   healthSegHtml() {
     const t = (v, l) => `<button class="${this.healthTab === v ? 'active' : ''}" onclick="App.healthSetTab('${v}')">${l}</button>`;
-    return `<div class="seg" id="healthSeg">${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
+    return `<div class="seg" id="healthSeg">${t('record', '🩺 ผลตรวจ')}${t('fitness', '🏃 สมรรถภาพ')}${t('vaccine', '💉 วัคซีน')}</div>`;
   },
 
   healthSetTab(t) { this.healthTab = t; this.vHealth(); },
 
   async vHealth() {
     byId('view').innerHTML = this.healthSegHtml() + '<div id="healthBox"><div class="card muted">กำลังโหลด...</div></div>';
-    if (this.healthTab === 'fitness') {
+    if (this.healthTab === 'vaccine') {
+      const d = await this.api('vaccine_my');
+      this.renderVaccine(d.types);
+    } else if (this.healthTab === 'fitness') {
       const d = await this.api('fitness_my');
       this.renderFitness(d.rounds);
     } else {
       const d = await this.api('health_my');
       this.renderHealth(d.records);
     }
+  },
+
+  // การ์ดวัคซีน — สถานะรายชนิด (จากเข็มล่าสุด) + ประวัติทุกเข็ม (อ่านอย่างเดียว หัวหน้าเป็นคนกรอก)
+  renderVaccine(types) {
+    if (this.healthChart) { this.healthChart.destroy(); this.healthChart = null; }
+    if (!types.length) {
+      byId('healthBox').innerHTML = '<div class="card empty"><span class="e-ico">💉</span>ยังไม่มีชนิดวัคซีนในระบบ<br>หัวหน้าสถานีจะเพิ่มให้ค่ะ</div>';
+      return;
+    }
+    const rows = types.map(t => {
+      const sub = t.last_date
+        ? `ฉีดล่าสุด ${thaiDate(t.last_date, false)}`
+          + (t.due ? ` · ครบรอบ ${thaiDate(t.due, false)}` : '')
+          + (t.doses.length > 1 ? ` · ${t.doses.length} เข็ม` : '')
+        : (t.valid_months ? `ยังไม่มีบันทึก — ฉีดแล้วคุ้ม ${t.valid_months} เดือน` : 'ยังไม่มีบันทึก');
+      return `<div class="vc-row">
+        <div class="vc-main"><div class="vc-name">${esc(t.name)}</div><div class="vc-sub">${esc(sub)}</div></div>
+        <div class="vc-chip">${vaccineChip(t)}</div>
+      </div>`;
+    }).join('');
+
+    // ประวัติทุกเข็มเรียงใหม่→เก่า (รวมทุกชนิด)
+    const doses = types.flatMap(t => t.doses.map(d => ({ name: t.name, ...d })))
+      .sort((a, b) => a.dose_date < b.dose_date ? 1 : -1);
+    const histCard = doses.length ? `<div class="card"><h3>ประวัติการฉีด <span class="h-right">${doses.length} ครั้ง</span></h3>
+      ${doses.map(d => `<div class="list-row"><span class="dot" style="background:#0ea5e9"></span>
+        <div class="lr-main"><div class="lr-title">${esc(d.name)}</div>
+          <div class="lr-sub">${thaiDate(d.dose_date)}${d.note ? ' · ' + esc(d.note) : ''}</div></div></div>`).join('')}</div>` : '';
+
+    byId('healthBox').innerHTML = `<div class="card"><h3>💉 การ์ดวัคซีนของฉัน</h3>${rows}
+      <div class="tiny" style="margin-top:10px">ข้อมูลนี้หัวหน้าสถานีเป็นคนบันทึกให้ — ถ้าไม่ตรงกับที่ฉีดจริง แจ้งหัวหน้าได้เลยค่ะ</div>
+      </div>` + histCard;
   },
 
   renderFitness(rounds) {
@@ -1058,6 +1093,12 @@ function fitnessChip(level, tone) {
   const c = HEALTH_LV[tone] || '#64748b';
   return `<span class="hchip" style="background:${c}1a;color:${c}">${esc(level)}</span>`;
 }
+// ป้ายสถานะวัคซีน — st = {level, label} จาก backend (level: none/ok/warn/bad) · none = ยังไม่มีข้อมูล
+const VAC_ICON = { ok: '🟢', warn: '🟡', bad: '🔴', none: '⚪️' };
+function vaccineChip(st) {
+  const c = st.level === 'none' ? '#64748b' : (HEALTH_LV[st.level] || '#64748b');
+  return `<span class="hchip" style="background:${c}1a;color:${c}">${VAC_ICON[st.level] || ''} ${esc(st.label)}</span>`;
+}
 // สรุปสั้น 1 บรรทัดของผลตรวจ (ใช้ในรายการประวัติ)
 function healthSummary(r) {
   const p = [];
@@ -1075,6 +1116,8 @@ function thaiDate(ymd, withDow = true) {
   const dow = new Date(Y, M - 1, D).getDay();
   return (withDow ? TH_D[dow] + ' ' : '') + D + ' ' + TH_M[M] + ' ' + (Y + 543);
 }
+/** วันที่แบบสั้นสำหรับช่องตาราง — '12 ส.ค. 69' */
+const vacShortDate = (ymd) => { const [Y, M, D] = ymd.split('-').map(Number); return `${D} ${TH_M[M]} ${String(Y + 543).slice(-2)}`; };
 const thaiMonth = (ym) => { const [Y, M] = ym.split('-').map(Number); return TH_M[M].replace('.', '') + ' ' + (Y + 543); };
 
 /** อายุ (ปี) จากวันเกิด 'YYYY-MM-DD' — null ถ้าไม่มี/ผิดรูปแบบ */

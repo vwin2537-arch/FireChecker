@@ -270,6 +270,31 @@ CREATE TABLE IF NOT EXISTS fitness_results (
   FOREIGN KEY (user_id)  REFERENCES users(id)          ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- การ์ดวัคซีน (โซนสุขภาพ เฟส 3) ----------
+-- แอดมินตั้งชนิดวัคซีนเอง + อายุความคุ้มกัน (เดือน) แล้วกรอกวันที่ฉีดให้เจ้าหน้าที่ — เจ้าหน้าที่ดูของตัวเอง
+-- สถานะ (ยังคุ้ม/ใกล้ครบ/เกินกำหนด) คำนวณสดตอนอ่านจากเข็มล่าสุด ไม่เก็บลง DB (เหมือน BMI)
+CREATE TABLE IF NOT EXISTS vaccine_types (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  name         VARCHAR(120) NOT NULL,
+  valid_months INT NULL,                        -- อายุความคุ้มกัน (เดือน) · NULL = ตลอดชีพ ไม่ต้องเตือน
+  sort_order   INT NOT NULL DEFAULT 0,
+  is_active    TINYINT(1) NOT NULL DEFAULT 1,   -- 0 = ซ่อน (soft delete — เก็บประวัติเดิมไว้)
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- การฉีด 1 ครั้ง = 1 แถว (หลาย entry ต่อคน/ชนิด — เข็ม 1,2,3 หรือฉีดกระตุ้นรายปี)
+CREATE TABLE IF NOT EXISTS vaccine_records (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  type_id    INT NOT NULL,
+  dose_date  DATE NOT NULL,                     -- วันที่ไปฉีด
+  note       VARCHAR(255) NOT NULL DEFAULT '',  -- เข็มที่/ฉีดที่ไหน/หมายเหตุ
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_type (user_id, type_id, dose_date),
+  FOREIGN KEY (user_id) REFERENCES users(id)         ON DELETE CASCADE,
+  FOREIGN KEY (type_id) REFERENCES vaccine_types(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- คิวส่งสำเนารูปเช็คชื่อขึ้น Google Drive ----------
 -- เช็คอินสำเร็จก่อนเสมอ แล้วค่อยอัปโหลดเบื้องหลัง — pending จะถูก retry จนสำเร็จ (เพดาน 30 ครั้ง → error)
 CREATE TABLE IF NOT EXISTS drive_queue (
@@ -355,6 +380,7 @@ INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('face_match_threshold', '0.40'),   -- เกณฑ์ระยะ ยิ่งน้อยยิ่งเข้ม — วัดจากรูปจริง 460 ใบ (FAR 0.30% / FRR 3.8%) ดู PROGRESS v33
   ('face_max_attempts',    '3'),      -- ลองกี่ครั้งก่อนปล่อยผ่านแบบติดธง
   ('face_min_desc',        '3'),      -- มี descriptor น้อยกว่านี้ = ถือว่ายังไม่ลงทะเบียน (ข้ามการยืนยัน)
+  ('vaccine_warn_days',    '60'),     -- เหลือกี่วันก่อนครบรอบวัคซีน ถึงจะขึ้นป้ายเหลือง "ใกล้ครบ"
   ('line_token',       ''),
   ('line_group_id',    ''),
   ('gdrive_client_id',     ''),

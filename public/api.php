@@ -16,6 +16,7 @@ require_once __DIR__ . '/../app/handlers/line.php';
 require_once __DIR__ . '/../app/handlers/library.php';
 require_once __DIR__ . '/../app/handlers/quiz.php';
 require_once __DIR__ . '/../app/handlers/health.php';
+require_once __DIR__ . '/../app/handlers/vaccine.php';
 require_once __DIR__ . '/../app/handlers/notify.php';
 require_once __DIR__ . '/../app/handlers/face.php';
 require_once __DIR__ . '/../app/drive.php';
@@ -96,6 +97,7 @@ const ACTIONS = [
     // สุขภาพ (staff)
     'health_my'          => 'h_health_my',
     'fitness_my'         => 'h_fitness_my',
+    'vaccine_my'         => 'h_vaccine_my',
     // สุขภาพ (admin)
     'health_dashboard'   => 'h_health_dashboard',
     'health_admin_list'  => 'h_health_admin_list',
@@ -110,6 +112,14 @@ const ACTIONS = [
     'fitness_round_del'   => 'h_fitness_round_del',
     'fitness_round_get'   => 'h_fitness_round_get',
     'fitness_result_save' => 'h_fitness_result_save',
+    // การ์ดวัคซีน (admin)
+    'vaccine_types_admin' => 'h_vaccine_types_admin',
+    'vaccine_type_save'   => 'h_vaccine_type_save',
+    'vaccine_type_delete' => 'h_vaccine_type_delete',
+    'vaccine_overview'    => 'h_vaccine_overview',
+    'vaccine_admin_list'  => 'h_vaccine_admin_list',
+    'vaccine_admin_add'   => 'h_vaccine_admin_add',
+    'vaccine_admin_del'   => 'h_vaccine_admin_del',
     // Google Drive (admin)
     'gdrive_auth_url'   => 'h_gdrive_auth_url',
     'gdrive_status'     => 'h_gdrive_status',

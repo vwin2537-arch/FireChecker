@@ -715,13 +715,14 @@ const Admin = {
 
   healthSegHtml() {
     const t = (v, l) => `<button class="${this.healthTab === v ? 'active' : ''}" onclick="Admin.healthSetTab('${v}')">${l}</button>`;
-    return `<div class="seg">${t('overview', '📊 ภาพรวม')}${t('record', '🩺 ผลตรวจสุขภาพ')}${t('fitness', '🏃 สมรรถภาพ')}</div>`;
+    return `<div class="seg">${t('overview', '📊 ภาพรวม')}${t('record', '🩺 ผลตรวจ')}${t('fitness', '🏃 สมรรถภาพ')}${t('vaccine', '💉 วัคซีน')}</div>`;
   },
   healthSetTab(t) { this.healthTab = t; this.vHealth(); },
 
   async vHealth() {
     if (this.healthTab === 'overview') return this.vHealthOverview();
     if (this.healthTab === 'fitness') return this.vFitness();
+    if (this.healthTab === 'vaccine') return this.vVaccine();
     const dl = await App.api('users_list');
     this.healthStaff = dl.users.filter(u => u.role === 'staff' && u.status !== 'pending');
     const opts = this.healthStaff.map(u => `<option value="${u.id}"${u.id == this.healthUid ? ' selected' : ''}>${esc(u.name)}${u.position ? ' — ' + esc(u.position) : ''}</option>`).join('');
@@ -825,6 +826,199 @@ const Admin = {
     await App.api('health_admin_del', { id });
     toast('ลบแล้ว');
     this.loadHealthDetail();
+  },
+
+  // =====================================================
+  // การ์ดวัคซีน (แอดมิน) — ภาพรวมทีม + กรอกการฉีดรายคน + จัดการชนิดวัคซีน
+  // =====================================================
+  vacView: 'team',     // team | person | types
+  vacUid: null,
+  vacTypes: null,      // ชนิดที่ใช้งานอยู่ (ไว้ทำ dropdown ตอนกรอก)
+  vacTypeList: null,   // ชนิดทั้งหมดในแท็บจัดการ (ไว้ให้ปุ่มแก้หยิบค่าเดิม)
+
+  vVaccine() {
+    const sub = (v, l) => `<button class="${this.vacView === v ? 'active' : ''}" onclick="Admin.vacGo('${v}')">${l}</button>`;
+    const bar = `<div class="seg" style="margin-top:-4px">${sub('team', '👥 ภาพรวมทีม')}${sub('person', '🧍 รายคน')}${sub('types', '⚙️ ชนิดวัคซีน')}</div>`;
+    byId('view').innerHTML = this.healthSegHtml() + bar + '<div id="vacBox"><div class="card muted">กำลังโหลด...</div></div>';
+    if (this.vacView === 'types') return this.vacLoadTypes();
+    if (this.vacView === 'person') return this.vacLoadPerson();
+    return this.vacLoadTeam();
+  },
+  vacGo(v) { this.vacView = v; this.vVaccine(); },
+
+  // กดชื่อคนในตารางภาพรวม → เปิดหน้ารายคนของเขา
+  vacOpen(uid) { this.vacUid = String(uid); this.vacView = 'person'; this.vVaccine(); },
+
+  // ---------- ภาพรวมทีม (ตาราง คน × ชนิดวัคซีน) ----------
+  async vacLoadTeam() {
+    const d = await App.api('vaccine_overview');
+    if (!d.types.length) {
+      byId('vacBox').innerHTML = '<div class="card empty"><span class="e-ico">💉</span>ยังไม่มีชนิดวัคซีน — เพิ่มที่แท็บ ⚙️ ชนิดวัคซีน ก่อนค่ะ</div>';
+      return;
+    }
+    const s = d.summary;
+    // ค่าท้ายบรรทัดของแต่ละชนิด: ยังคุ้ม=วันที่ฉีด · ใกล้ครบ/เกิน=จำนวนวัน · ยังไม่มี=—
+    const cellText = c => c.level === 'none' ? '—'
+      : c.level === 'bad'  ? `เกิน ${Math.abs(c.days_left)} วัน`
+      : c.level === 'warn' ? `เหลือ ${c.days_left} วัน`
+      : (c.last_date ? vacShortDate(c.last_date) : 'ฉีดแล้ว');
+    // คนที่มีปัญหาขึ้นก่อน (แดง → เหลือง → ที่เหลือ) แล้วค่อยเรียงชื่อตามที่ backend ส่งมา
+    const rank = u => Math.min(...d.types.map(t => ({ bad: 0, warn: 1 }[u.cells[t.id].level] ?? 2)));
+    const staff = d.staff.slice().sort((a, b) => rank(a) - rank(b));
+
+    const people = staff.map(u => `<button class="vac-p" onclick="Admin.vacOpen(${u.id})">
+      <div class="vac-p-name">${esc(u.name)}${u.position ? ` <span class="tiny">${esc(u.position)}</span>` : ''}</div>
+      ${d.types.map(t => {
+        const c = u.cells[t.id];
+        return `<div class="vac-p-it"><span class="vac-p-ic">${VAC_ICON[c.level]}</span>
+          <span class="vac-p-nm">${esc(t.name)}</span>
+          <span class="vac-p-val">${esc(cellText(c))}</span></div>`;
+      }).join('')}
+    </button>`).join('');
+
+    byId('vacBox').innerHTML = `<div class="card">
+      <h3>💉 ภาพรวมวัคซีนทั้งทีม <span class="h-right tiny">เตือนล่วงหน้า ${d.warn_days} วัน</span></h3>
+      <div class="ov-stats">
+        <div class="ov-stat ov-r"><b>${s.bad}</b><span>เกินกำหนด</span></div>
+        <div class="ov-stat ov-y"><b>${s.warn}</b><span>ใกล้ครบ</span></div>
+        <div class="ov-stat ov-g"><b>${s.ok}</b><span>ยังคุ้ม</span></div>
+        <div class="ov-stat"><b>${s.none}</b><span>ยังไม่มีข้อมูล</span></div>
+      </div>
+      ${staff.length ? people : '<div class="empty" style="padding:16px 12px">ยังไม่มีเจ้าหน้าที่ในระบบ</div>'}
+      <div class="tiny" style="margin-top:10px">🟢 ยังคุ้ม · 🟡 ใกล้ครบ · 🔴 เกินกำหนด · ⚪️ ยังไม่มีข้อมูล — แตะชื่อเพื่อบันทึกการฉีด</div>
+    </div>`;
+  },
+
+  // ---------- รายคน: บันทึกการฉีด + ประวัติ ----------
+  async vacLoadPerson() {
+    const dl = await App.api('users_list');
+    const staff = dl.users.filter(u => u.role === 'staff' && u.status !== 'pending');
+    const opts = staff.map(u => `<option value="${u.id}"${u.id == this.vacUid ? ' selected' : ''}>${esc(u.name)}${u.position ? ' — ' + esc(u.position) : ''}</option>`).join('');
+    byId('vacBox').innerHTML = `<div class="card"><h3>💉 การ์ดวัคซีนรายคน</h3>
+      <div class="field"><label>เลือกเจ้าหน้าที่</label>
+        <select class="select" id="vacUser" onchange="Admin.vacPick(this.value)">
+          <option value="">— เลือก —</option>${opts}</select></div>
+    </div><div id="vacDetail"></div>`;
+    if (this.vacUid) this.vacLoadDetail();
+  },
+
+  vacPick(uid) { this.vacUid = uid || null; this.vacLoadDetail(); },
+
+  async vacLoadDetail() {
+    if (!this.vacUid) { byId('vacDetail').innerHTML = ''; return; }
+    byId('vacDetail').innerHTML = '<div class="card muted">กำลังโหลด...</div>';
+    const d = await App.api('vaccine_admin_list', { user_id: +this.vacUid });
+    this.vacTypes = d.types;
+
+    const status = d.status.length
+      ? `<div class="card"><h3>สถานะปัจจุบัน — ${esc(d.user.name)}</h3>
+          ${d.status.map(t => `<div class="vc-row">
+            <div class="vc-main"><div class="vc-name">${esc(t.name)}</div>
+              <div class="vc-sub">${t.last_date ? 'ฉีดล่าสุด ' + thaiDate(t.last_date, false) + (t.due ? ' · ครบรอบ ' + thaiDate(t.due, false) : '') : 'ยังไม่มีบันทึก'}</div></div>
+            <div class="vc-chip">${vaccineChip(t)}</div></div>`).join('')}</div>`
+      : '';
+
+    const form = d.types.length ? `<div class="card"><h3>➕ บันทึกการฉีด</h3>
+      <div class="field"><label>วัคซีน</label>
+        <select class="select" id="vacType">${d.types.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
+      <div class="grid-2">
+        <div class="field"><label>วันที่ฉีด</label><input type="date" class="input" id="vacDate" value="${todayStr()}" max="${todayStr()}"></div>
+        <div class="field"><label>หมายเหตุ</label><input class="input" id="vacNote" placeholder="เช่น เข็มที่ 2 / รพ.พหลฯ"></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="Admin.vacSave()">บันทึกการฉีด</button>
+    </div>` : '<div class="card empty"><span class="e-ico">💉</span>ยังไม่มีชนิดวัคซีน — เพิ่มที่แท็บ ⚙️ ชนิดวัคซีน ก่อนค่ะ</div>';
+
+    const hist = d.doses.length
+      ? `<div class="card"><h3>ประวัติการฉีด <span class="h-right">${d.doses.length} ครั้ง</span></h3>
+          ${d.doses.map(r => `<div class="list-row"><span class="dot" style="background:#0ea5e9"></span>
+            <div class="lr-main"><div class="lr-title">${esc(r.type_name)}</div>
+              <div class="lr-sub">${thaiDate(r.dose_date)}${r.note ? ' · ' + esc(r.note) : ''}</div></div>
+            <button class="btn btn-danger-ghost btn-sm" onclick="Admin.vacDel(${r.id})">ลบ</button></div>`).join('')}</div>`
+      : '<div class="card empty"><span class="e-ico">💉</span>ยังไม่มีประวัติการฉีดของคนนี้</div>';
+
+    byId('vacDetail').innerHTML = status + form + hist;
+  },
+
+  async vacSave() {
+    await App.api('vaccine_admin_add', {
+      user_id: +this.vacUid, type_id: +byId('vacType').value,
+      dose_date: byId('vacDate').value, note: byId('vacNote').value.trim(),
+    });
+    toast('บันทึกการฉีดแล้ว');
+    this.vacLoadDetail();
+  },
+
+  async vacDel(id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบรายการฉีดนี้?', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    await App.api('vaccine_admin_del', { id });
+    toast('ลบแล้ว');
+    this.vacLoadDetail();
+  },
+
+  // ---------- ชนิดวัคซีน + วันเตือนล่วงหน้า ----------
+  async vacLoadTypes() {
+    const d = await App.api('vaccine_types_admin');
+    this.vacTypeList = d.types;      // เก็บไว้ให้ vacTypeEdit หาชื่อ/อายุ (ไม่ยัดค่าลง onclick — ชื่อมีอักขระพิเศษได้)
+    const row = t => `<div class="list-row${t.is_active ? '' : ' dimmed'}">
+      <span class="dot" style="background:${t.is_active ? '#16a34a' : '#94a3b8'}"></span>
+      <div class="lr-main"><div class="lr-title">${esc(t.name)}${t.is_active ? '' : ' <span class="tiny">(ซ่อนอยู่)</span>'}</div>
+        <div class="lr-sub">${t.valid_months ? 'คุ้ม ' + t.valid_months + ' เดือน' : 'ตลอดชีพ (ไม่เตือนครบรอบ)'} · บันทึกแล้ว ${t.doses} ครั้ง</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="Admin.vacTypeEdit(${t.id})">แก้</button>
+      <button class="btn btn-danger-ghost btn-sm" onclick="Admin.vacTypeToggle(${t.id}, ${t.is_active ? 0 : 1})">${t.is_active ? 'ซ่อน' : 'แสดง'}</button>
+    </div>`;
+
+    byId('vacBox').innerHTML = `<div class="card"><h3>➕ เพิ่มชนิดวัคซีน</h3>
+      <div class="grid-2">
+        <div class="field"><label>ชื่อวัคซีน</label><input class="input" id="vtName" placeholder="เช่น ไข้หวัดใหญ่"></div>
+        <div class="field"><label>อายุความคุ้มกัน (เดือน)</label><input type="number" class="input" id="vtMonths" inputmode="numeric" placeholder="เว้นว่าง = ตลอดชีพ"></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="Admin.vacTypeSave()">เพิ่มวัคซีน</button>
+    </div>
+    <div class="card"><h3>ชนิดวัคซีนทั้งหมด <span class="h-right">${d.types.length} ชนิด</span></h3>
+      ${d.types.length ? d.types.map(row).join('') : '<div class="empty" style="padding:16px 12px">ยังไม่มีชนิดวัคซีน</div>'}</div>
+    <div class="card"><h3>⏰ เตือนล่วงหน้าก่อนครบรอบ</h3>
+      <div class="field"><label>ขึ้นป้ายเหลือง "ใกล้ครบ" เมื่อเหลืออีกกี่วัน</label>
+        <input type="number" class="input" id="vtWarn" inputmode="numeric" min="1" max="365" value="${d.warn_days}"></div>
+      <button class="btn btn-primary btn-block" onclick="Admin.vacSaveWarn()">บันทึก</button>
+    </div>`;
+  },
+
+  async vacTypeSave() {
+    const name = byId('vtName').value.trim();
+    if (!name) return toast('กรอกชื่อวัคซีนก่อนค่ะ');
+    await App.api('vaccine_type_save', { name, valid_months: byId('vtMonths').value.trim() });
+    toast('เพิ่มวัคซีนแล้ว');
+    this.vacLoadTypes();
+  },
+
+  async vacTypeEdit(id) {
+    const t = (this.vacTypeList || []).find(x => +x.id === +id);
+    if (!t) return;
+    const r = await Swal.fire({
+      title: 'แก้ชนิดวัคซีน', html:
+        `<input id="sw1" class="swal2-input" placeholder="ชื่อวัคซีน" value="${esc(t.name)}">
+         <input id="sw2" class="swal2-input" type="number" placeholder="อายุ (เดือน) เว้นว่าง = ตลอดชีพ" value="${t.valid_months ?? ''}">`,
+      showCancelButton: true, confirmButtonText: 'บันทึก', cancelButtonText: 'ยกเลิก',
+      preConfirm: () => ({ name: document.getElementById('sw1').value.trim(), months: document.getElementById('sw2').value.trim() }),
+    });
+    if (!r.isConfirmed) return;
+    if (!r.value.name) return toast('กรอกชื่อวัคซีนก่อนค่ะ');
+    await App.api('vaccine_type_save', { id, name: r.value.name, valid_months: r.value.months });
+    toast('บันทึกแล้ว');
+    this.vacLoadTypes();
+  },
+
+  async vacTypeToggle(id, active) {
+    await App.api('vaccine_type_delete', { id, active });
+    toast(active ? 'แสดงแล้ว' : 'ซ่อนแล้ว');
+    this.vacLoadTypes();
+  },
+
+  async vacSaveWarn() {
+    await App.api('settings_save', { settings: { vaccine_warn_days: byId('vtWarn').value } });
+    toast('บันทึกแล้ว');
+    this.vacLoadTypes();
   },
 
   // =====================================================

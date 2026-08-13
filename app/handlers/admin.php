@@ -444,6 +444,7 @@ const EDITABLE_SETTINGS = [
     'selfie_required', 'checkout_enabled', 'sunday_off',
     'night_shift_enabled', 'night_checkin_open', 'sunday_work_enabled',
     'face_verify_enabled', 'face_match_threshold', 'face_max_attempts', 'face_min_desc',
+    'vaccine_warn_days',
     'line_token', 'line_group_id',
     'gdrive_client_id', 'gdrive_client_secret',
 ];
@@ -476,6 +477,8 @@ function h_settings_save(): never {
         }
         if ($k === 'face_max_attempts') $v = (string)max(1, min(5, (int)$v));
         if ($k === 'face_min_desc')     $v = (string)max(1, min(10, (int)$v));
+        // วัคซีน: เตือนล่วงหน้ากี่วันก่อนครบรอบ
+        if ($k === 'vaccine_warn_days') $v = (string)max(1, min(365, (int)$v));
         save_setting($k, $v);
     }
     ok(['message' => 'บันทึกการตั้งค่าแล้ว']);

@@ -130,8 +130,15 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM vaccine_types LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
     seed_public_holidays();   // ใส่วันหยุดนักขัตฤกษ์ที่เหลือของปีให้ครั้งแรก (ตารางว่าง)
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
+    seed_vaccine_presets();   // ใส่ชนิดวัคซีนตั้งต้นครั้งแรกที่ตารางว่าง
 
     // migrate: users.username เดิมเป็น NOT NULL — เจ้าหน้าที่ตั้ง username เองตอนลงทะเบียนแล้ว
     // แอดมินเพิ่มแค่ชื่อ-สกุล (username = NULL จนกว่าจะลงทะเบียน) → ต้อง ALTER ให้ nullable
@@ -233,6 +240,21 @@ function seed_fitness_presets(): void {
     ];
     $st = db()->prepare('INSERT INTO fitness_items (name, unit, direction, criteria_json, sort_order) VALUES (?, ?, ?, ?, ?)');
     foreach ($items as $it) $st->execute($it);
+}
+
+/** ใส่ชนิดวัคซีนตั้งต้นครั้งแรก (ตารางว่าง) — แอดมินแก้ชื่อ/อายุ/เพิ่ม/ซ่อนได้ภายหลัง
+ *  valid_months = NULL คือฉีดครบคอร์สแล้วคุ้มยาว (ไม่เตือนครบรอบ)
+ */
+function seed_vaccine_presets(): void {
+    if ((int)db()->query('SELECT COUNT(*) FROM vaccine_types')->fetchColumn() > 0) return;
+    $types = [
+        ['ไข้หวัดใหญ่',   12,   1],   // ฉีดกระตุ้นทุกปี
+        ['บาดทะยัก',      120,  2],   // กระตุ้นทุก 10 ปี
+        ['พิษสุนัขบ้า',    null, 3],   // ฉีดครบคอร์ส — ไม่กำหนดรอบ
+        ['โควิด-19',      12,   4],
+    ];
+    $st = db()->prepare('INSERT INTO vaccine_types (name, valid_months, sort_order) VALUES (?, ?, ?)');
+    foreach ($types as $t) $st->execute($t);
 }
 
 /** ใส่วันหยุดนักขัตฤกษ์ตั้งต้นครั้งแรก (ตารางว่าง) — เฉพาะวันในอนาคต แอดมินเพิ่ม/ลบได้ภายหลัง
