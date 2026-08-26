@@ -3,6 +3,8 @@
 ระบบเช็คชื่อเจ้าหน้าที่สถานีควบคุมไฟป่าสลักพระ-เอราวัณ ของพี่วิน (หัวหน้าสถานี = แอดมินคนเดียว)
 พัฒนาต่อยอดแนวคิดจากระบบเช็คชื่อนักเรียน (GAS) ที่ `../11_ระบบเช็คชื่อนักเรียน 5/` แต่เขียนใหม่หมดเป็น PHP+MySQL เพราะ GAS ช้า
 
+**Live:** https://sakpra-erawan.up.railway.app · **ไฟล์นี้เก็บแค่กฎเหล็ก + ดัชนี** — รายละเอียดรายฟีเจอร์อยู่ใน `docs/notes/` (อ่านเฉพาะไฟล์ที่ตรงเรื่องที่จะแก้)
+
 ## Stack & กฎเหล็ก
 
 - **PHP 8 (ไม่มี framework) + MySQL + Vanilla JS SPA** — อย่าเพิ่ม dependency/framework โดยไม่ถามพี่วิน
@@ -14,6 +16,25 @@
 - settings ทุกตัวอยู่ในตาราง `settings` แก้ผ่านหน้าตั้งค่า — อย่า hardcode ค่าที่ควรเป็น setting
 - ฟีเจอร์มีสวิตช์: `selfie_required`, `checkout_enabled` (ตอนนี้ปิดทั้งคู่ — โค้ดพร้อมแล้วทั้งฝั่ง API และ UI)
 - schema สร้างอัตโนมัติตอน request แรก (ensure_admin ใน db.php รัน schema.sql ถ้าไม่เจอตาราง)
+
+## 📇 ดัชนี — รายละเอียดรายฟีเจอร์ (`docs/notes/`)
+
+**อ่านไฟล์ที่ตรงเรื่องก่อนแตะโค้ดส่วนนั้นเสมอ** — ทุกไฟล์มีกับดักที่เคยทำพังจริงบันทึกไว้
+
+| ไฟล์ | เนื้อหา | แตะเมื่อจะแก้ |
+|------|---------|----------------|
+| [`deploy.md`](docs/notes/deploy.md) | ขั้นตอน deploy Railway + กับดัก (mpm, chown Volume, display_errors, MySQL UTC, cache-bust) | **ก่อน deploy ทุกครั้ง** · แก้ Dockerfile/sw.js/index.php |
+| [`leave-approval.md`](docs/notes/leave-approval.md) | ระบบอนุมัติลา + วันหยุดนักขัตฤกษ์ + โควต้าผันแปร | `dayoffs.php`, `line.php`, `is_station_holiday` |
+| [`night-sunday.md`](docs/notes/night-sunday.md) | เวรกลางคืน + เช็คชื่อวันอาทิตย์ + `users.gender` | `attendance.php` (`h_night_checkin`, `tonight_duty_date`) |
+| [`offsite.md`](docs/notes/offsite.md) | เช็คนอกสถานที่ทั้งสถานี (v25) + รายคน (v30) | `offsite_days`, `offsite_users`, `h_checkin` |
+| [`face-verify.md`](docs/notes/face-verify.md) | ยืนยันใบหน้า 1:1 — เกณฑ์ที่วัดมา, ตั๋ว, ธง, ลงทะเบียน | `face.php`, `face-api.js`, `assets/models/` |
+| [`gdrive.md`](docs/notes/gdrive.md) | สำเนารูปเช็คอินขึ้น Google Drive (คิว + worker + OAuth) | `drive.php`, `cron/drive.php`, `oauth.php` |
+| [`mailbox.md`](docs/notes/mailbox.md) | กล่องข้อความ 📬 + จุดแดง + แดชบอร์ดคืนนี้ใครเข้าเวร | `notify.php`, `notify_push/broadcast` |
+| [`health.md`](docs/notes/health.md) | โซนสุขภาพ: สมุดสุขภาพ / ทดสอบสมรรถภาพ / การ์ดวัคซีน | `health.php`, `vaccine.php` |
+| [`training.md`](docs/notes/training.md) | ประวัติการฝึกอบรม (v35) | `training.php` |
+| [`dashboard-report.md`](docs/notes/dashboard-report.md) | แต่งหน้าแดชบอร์ด/ปฏิทิน + รายงานอันดับความขยัน (ปริ้น/PNG) | `admin.js` `analyticsHtml`, `openReport`, `.rp-*` |
+
+**timeline + สถานะโปรเจค + Lesson learned** → `PROGRESS.md` (log เก่า → `PROGRESS_ARCHIVE.md`)
 
 ## รัน dev
 
@@ -27,7 +48,7 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 
 ## Logic สำคัญที่พลาดง่าย
 
-- **เช็คอิน iOS (`doCheckin` app.js):** ต้อง `captureSelfie()` (เปิดกล้อง) **ก่อน** `await getPosition()` เสมอ — iOS/WebKit บังคับ file-input `.click()` อยู่ในจังหวะกดสด (transient user-activation) ถ้ามี `await` คั่นก่อน กล้องจะไม่เปิด ค้างเงียบ ไม่มี timeout ปุ่มค้าง disabled (Chrome iOS เจอด้วย = WebKit เดียวกัน) — flow ถูก: เซลฟี่ → GPS → ยืนยัน, ห่อ try/finally ปลดล็อกปุ่มเสมอ → ดู PROGRESS lesson 10
+- **เช็คอิน iOS (`doCheckin` app.js):** ต้อง `captureSelfie()` (เปิดกล้อง) **ก่อน** `await getPosition()` เสมอ — iOS/WebKit บังคับ file-input `.click()` อยู่ในจังหวะกดสด (transient user-activation) ถ้ามี `await` คั่นก่อน กล้องจะไม่เปิด ค้างเงียบ ไม่มี timeout ปุ่มค้าง disabled (Chrome iOS เจอด้วย = WebKit เดียวกัน) — flow ถูก: เซลฟี่ → GPS → ยืนยัน, ห่อ try/finally ปลดล็อกปุ่มเสมอ → ดู PROGRESS.md → Lesson learned ข้อ 10
 - **สถานะรายวัน** คำนวณสดใน `roster_for()` (admin.php): มี attendance → ontime/late, มี day_off → leave, ไม่มีทั้งคู่ → absent
 - **วันอาทิตย์** = วันหยุดสถานี (`is_station_holiday`) — ไม่นับ absent, จอง day_off ไม่ได้, cron ไม่ส่งรายงาน
 - **โควต้า** นับเฉพาะ `type='dayoff'` — ลาป่วย/ลากิจไม่นับ; **โควต้ารายเดือน = จำนวนวันหยุดสถานีของเดือนนั้น (อาทิตย์ + นักขัตฯวันธรรมดา) คำนวณสดด้วย `station_holidays_in_month()` — ไม่ใช่เลขคงที่แล้ว** (setting `off_quota_month` เลิกใช้). เกินโควต้า = `over_quota=1` + **status pending รอหัวหน้าอนุมัติเสมอ** (ไม่ auto-approve) → เด้ง alert + คิวอนุมัติหน้าแอดมิน
@@ -36,184 +57,16 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - รูปเก็บที่ `UPLOAD_DIR` (Railway = Volume `/data/uploads`) เสิร์ฟผ่าน `photo.php` เท่านั้น (ต้อง login, กัน path traversal ด้วย regex)
 - LINE report กันส่งซ้ำด้วยตาราง `line_logs` unique (type, date) — ปุ่มทดสอบในหน้าตั้งค่าใช้ `force=1`
 
-## ระบบอนุมัติลา (เฟส 2 — dayoffs.php + line.php)
+## Deploy (ย่อ — รายละเอียด/กับดักครบใน [`docs/notes/deploy.md`](docs/notes/deploy.md))
 
-- **วันหยุดนักขัตฤกษ์ (`public_holidays` — v32):** แอดมินกรอกเองในหน้าตั้งค่า (การ์ด 🎌 handler `holiday_list/add/del` แยกจาก settings_save). `is_station_holiday()` (helpers.php) เช็ค **อาทิตย์ OR อยู่ใน `holiday_set()`** (cache ต่อ request) → วันนักขัตฯ = หยุดสถานีทุกที่อัตโนมัติ (ไม่นับขาด/ไม่ส่งรายงาน/เช็คชื่อไม่ได้/ตัดจากตัวหารคะแนน). โควต้าเดือน = `station_holidays_in_month($ym)` (loop นับ is_station_holiday, memoized). seed `seed_public_holidays()` guarded (count==0, future-only). **แก้ที่ `is_station_holiday` ที่เดียว propagate ทุกที่** — อย่าใส่ DB query ในลูปรายวัน (ใช้ holiday_set cache)
-- **`day_offs.status`** ENUM('pending','approved') default approved — เพิ่มภายหลังผ่าน guarded ALTER ใน `ensure_admin` (probe information_schema; prod DB เก่า backfill row เดิม = approved). `line_queue` ก็ ensure แบบเดียวกัน
-- **เส้นแบ่งอนุมัติ นิยามครั้งเดียวใน dayoffs.php (ห้าม hardcode ที่อื่น):** `leave_still_pending($off)` = `$off >= วันนี้+2` → pending (ปฏิเสธได้) / ต่ำกว่า = อนุมัติอัตโนมัติ ("00:00 ของวันก่อนวันลา") ปฏิเสธไม่ได้ — ใช้ทั้ง insert-status, `leave_auto_approve()`, reject-guard
-- **กฎยื่น (staff, h_dayoff_add):** ลากิจต้องล่วงหน้า ≥2 วัน / ลาป่วยวันนี้+ย้อนหลัง = approved ทันที, ล่วงหน้า ≥2 วัน = pending / **dayoff ในโควต้า = approved ทันที, เกินโควต้า = pending รออนุมัติเสมอ** (ตั้ง `$status='pending'` ตอน `$isOver`; `leave_auto_approve` มี `AND over_quota=0` กันไม่ให้ flip; reject guard ยกเว้น over_quota = ปฏิเสธได้ทุกวันไม่ติด deadline) / **ลาป่วย+ลากิจ บังคับใส่ note** (dayoff ไม่บังคับ). **แอดมินบันทึกลาแทน (dayoff_admin_add) = approved เสมอ แม้เกินโควต้า**
-- **reject = ลบ row ทิ้ง** (ขอใหม่วันเดิมได้ เลี่ยง UNIQUE) ไม่มีสถานะ rejected — **roster ไม่ต้องเช็ค status** (pending+approved นับ leave เหมือนกัน)
-- **`leave_auto_approve()`** flip pending→approved เมื่อเลย deadline — เรียกใน `run_line_report` (ก่อน Sunday-skip), `h_admin_data`, ต้นทาง approve/reject handlers
-- **แจ้ง LINE แบบ async ผ่าน `line_queue` + `cron/line_worker.php`** (pattern เดียวกับ drive — `line_enqueue()` insert แล้วแตก worker, ห้าม push คาใน request): จนท.ยื่น sick/personal / จนท.ยกเลิก sick/personal / แอดมิน approve — **dayoff เงียบ เว้นเกินโควต้า** (over_quota dayoff แจ้ง LINE "ขอใช้วันหยุดเกินโควต้า" เพราะต้องรออนุมัติ; dayoff ในโควต้ายังเงียบ). รายงานเช้า/เย็นแนบ pending อัตโนมัติ (`report_pending_leaves`)
-- badge/หน้าอนุมัติ: `admin_data.pending_leaves` (แดชบอร์ด alert) + การ์ดในแท็บวันหยุดแอดมิน (`leave_pending` → `Admin.leaveAct`)
+```bash
+railway up --service firecheck-app      # tarball upload
+curl -s https://sakpra-erawan.up.railway.app/index.php | grep 'v='   # verify ทุกครั้ง
+```
 
-## ระบบเวรกลางคืน + เวรวันอาทิตย์ (เฟส 6 — attendance.php)
-
-- **เวรกลางคืน = ตาราง `night_shifts` แยกต่างหาก** (ไม่ยัดใน `attendance` เพราะ attendance UNIQUE วันละครั้ง + semantic เข้าแถวเช้า) — `h_night_checkin` เฉพาะ `gender='male'` + สวิตช์ `night_shift_enabled` + เวลา ≥ `night_checkin_open`(18:00) + กันซ้ำ (UNIQUE user+duty_date) + reuse GPS/เซลฟี่/`gdrive_enqueue` จาก h_checkin
-- **`tonight_duty_date()` (นิยามครั้งเดียวใน attendance.php):** duty_date = วันนี้ ปกติ / **ถ้าเวลา < 06:00 = เมื่อวาน** (คนกดหลังเที่ยงคืนถือเป็นเวรคืนที่แล้ว) — ใช้ทั้งตอนลงเวรและ `h_app_data.today.night`
-- **ยกเว้นสายเช้าถัดมา:** `h_checkin` ถ้า late แล้วมี `night_shifts` `duty_date = เมื่อวาน (today-1)` → late=0 + `exempted=true` (ครอบคลุมคืนวันอาทิตย์ด้วย เพราะ key ที่ duty_date). **ไม่ persist flag exempted** — attendance เก็บแค่ late=0, ข้อความแจ้งตอน response เท่านั้น
-- **วันที่อยู่เวร กลางวันทำงานปกติ** (เช็คชื่อ 8 โมง) — ระบบไม่แตะสถานะกลางวัน (เวร = ของแถมตอนเย็น)
-- **วันอาทิตย์ reuse `attendance`** (ไม่ใช่ตารางใหม่): `h_checkin` ถ้า `is_station_holiday` + `sunday_work_enabled` → เช็คได้ (ข้ามเวลาเปิด, บังคับ late=0, รับ `note`). ทั้งชาย/หญิง หลายคน — `sunday_off` ยังคุมว่าวันอาทิตย์เป็นวันหยุด (ไม่นับขาด/จองลาไม่ได้) เหมือนเดิม
-- **แดชบอร์ดวันอาทิตย์:** `h_admin_data` เดิม roster ว่าง (`$isHoliday ? []`) → เพิ่ม `today.holiday_workers` (คนเช็คชื่อวันหยุด) + `night_stats` (COUNT ต่อคนเดือนนี้ — ดูความเป็นธรรมหมุนเวร) แสดงทั้งวันปกติ/วันหยุด
-- **เพศ `users.gender ENUM('male','female') NULL`** — NULL = ยังไม่ระบุ (row เก่าหลัง migrate). ปุ่มลงเวรกลางคืนโชว์เฉพาะ `user.gender==='male'` ฝั่ง client + backend กันซ้ำ (หญิง/NULL = fail คนละข้อความ). **Rollout: แอดมินต้องตั้งเพศ จนท.เดิมก่อน** ไม่งั้นไม่มีใครลงเวรได้
-- **Migration guarded (ensure_admin):** probe `night_shifts` (42S02→schema.sql, พ่วง re-add 3 settings ใหม่) + ALTER `users.gender`/`attendance.note` (probe information_schema) — pattern เดียวกับ `day_offs.status`
-- **3 settings:** `night_shift_enabled`/`sunday_work_enabled` (bool) + `night_checkin_open` (time) — อยู่ใน EDITABLE_SETTINGS + validation h_settings_save + client_settings
-
-## โซนสุขภาพ (เฟส 1 สมุดสุขภาพ + เฟส 2 ทดสอบสมรรถภาพ — `app/handlers/health.php`)
-
-- **เมนู 🩺 สุขภาพ แยกต่างหาก** (ไม่อยู่ใต้ "พัฒนาตัวเอง") — staff bottom-nav 6 แท็บ / admin 7 แท็บ. แต่ละฝั่งมี segmented sub-tab `record`(สุขภาพ)/`fitness`(สมรรถภาพ). **แอดมินกรอกทุกอย่าง เจ้าหน้าที่อ่านอย่างเดียว**
-- **`users.birthdate DATE NULL`** — guarded ALTER ใน `ensure_admin` (probe information_schema เหมือน gender) + อยู่ใน `public_user()`. แอดมินตั้งผ่านแท็บเจ้าหน้าที่ (`user_set_birthdate` + `valid_birthdate` 15-80 ปี). อายุคำนวณสด (`age_at`/`ageFrom`) ห้ามเก็บ
-- **สุขภาพ (`health_records`, หลาย entry/คน ไม่มี UNIQUE):** จัดระดับ BMI/ความดัน/รอบเอว/ชีพจร เป็น**ค่าคงที่มาตรฐานการแพทย์ไทยในโค้ด** (`grade_bmi/grade_bp/grade_waist/grade_pulse` คืน `{label,level}` level=ok/warn/bad/info หรือ null). **BMI คำนวณสดตอนอ่าน (`calc_bmi`) ไม่เก็บ**. รอบเอวต้องรู้เพศ ไม่งั้น null
-- **สมรรถภาพ = configurable (แอดมินตั้งเกณฑ์เอง):** 3 ตาราง `fitness_items`(ท่า+`criteria_json`) / `fitness_rounds`(รอบ) / `fitness_results`(ผลรายคน/รอบ/ท่า หลาย entry). preset ใส่ครั้งแรกด้วย `seed_fitness_presets()` (guard count==0) — WCT + ดันพื้น
-- **grading engine `grade_fitness($item,$raw,$age,$gender)` — 3 direction (หัวใจ, กันพลาดทิศ):**
-  - `higher` มากยิ่งดี / `lower` น้อย-เร็วยิ่งดี → ต้องมี**อายุ+เพศ**; `criteria_json`={levels:[best→worst], bands:[{min_age,max_age,male:[thr...],female:[thr...]}]}; thr เรียงตรงกับ levels; tone(ok/warn/bad) จากลำดับ (`fitness_tone`)
-  - `cap` ผ่าน≤เพดาน → `criteria_json`={cap:N}; **ไม่ใช้อายุ/เพศ จัดระดับได้ทุกคน** (WCT)
-  - **NULL degrade:** ไม่มีค่า/อายุ/เพศ/เกณฑ์ → คืน null = "ยังไม่จัดระดับ" ห้าม error/เกรดผิด. คำนวณ+เก็บ level+tone ตอนกรอก (ตอน `fitness_result_save`)
-- **กรอกผลแบบ roster batch** (`fitness_round_get` → ตารางทั้งทีม×ท่า, `fitness_result_save` รับ array — ค่าว่าง=ลบผลเดิม, แก้ซ้ำได้ด้วย DELETE+INSERT). แจ้ง LINE async ตอนเปิดรอบ (`line_enqueue` ห้าม push คา request)
-- **criteria editor ฝั่ง admin (admin.js `fitRenderCrit`/`fitSyncCrit`):** re-render บ่อย → **ต้อง `fitSyncCrit()` อ่านค่าจาก DOM กลับเข้า working copy ก่อน mutate/re-render ทุกครั้ง** ไม่งั้นค่าที่พิมพ์หาย
-- helper `healthChip`/`fitnessChip` (app.js global, admin.js เรียกได้เพราะโหลดทีหลัง) — สี tone จาก `HEALTH_LV`
-- **แดชบอร์ดภาพรวม `h_health_dashboard` (v21, admin, แท็บ 📊 ภาพรวม = แท็บแรก+default):** สรุปคนต้องดูแล🔴/เฝ้าระวัง🟡/ปกติ🟢 **แยก 2 การ์ด สุขภาพ & สมรรถภาพ** — ผลล่าสุดต่อคน (health = MAX(record_date) / fitness = round test_date ล่าสุด), เฉพาะ staff active, **ซ่อนคนไม่มีข้อมูล**. เกณฑ์: สุขภาพ level bad→🔴 / warn→🟡. สมรรถภาพใช้**ตำแหน่งระดับใน `criteria_json.levels`** (ล่างสุด→🔴, รองล่างสุด→🟡) **ไม่ใช้ `tone` ดิบ** (เพราะ fitness_tone ให้ "ดี"=warn จะ false-alarm) · cap/ไม่มี levels → พึ่ง tone bad→🔴. ลิสต์เฉพาะ 🔴🟡 พร้อม issues, กดชื่อ→`Admin.healthOpen(uid)` ไปแท็บ record รายคน. render `Admin.vHealthOverview`/`ovCard` (admin.js), style `.ov-*` (app.css)
-- migration: probe `health_records` + `fitness_items` (42S02→schema.sql) — pattern เดียวกับ night_shifts
-
-## การ์ดวัคซีน (โซนสุขภาพ เฟส 3 — v34, `app/handlers/vaccine.php`)
-
-แอดมินกรอกวันที่ฉีดให้ จนท. → ระบบคิดว่าครบรอบเมื่อไหร่ ขึ้นป้ายสีเตือน · **เจ้าหน้าที่อ่านอย่างเดียว** (pattern เดียวกับ health_records)
-
-- **2 ตาราง:** `vaccine_types` (ชนิด + `valid_months` + soft delete `is_active` — เหมือน `fitness_items`) / `vaccine_records` (1 แถว/การฉีด 1 ครั้ง หลาย entry ต่อคน×ชนิด ไม่มี UNIQUE). `seed_vaccine_presets()` guard count==0 ใส่ 4 ชนิดตั้งต้น (ไข้หวัดใหญ่ 12 / บาดทะยัก 120 / พิษสุนัขบ้า NULL / โควิด 12)
-- **`valid_months = NULL` = ตลอดชีพ ไม่เตือนครบรอบ** (พิษสุนัขบ้าฉีดครบคอร์ส) — `vaccine_status()` คืน level `ok` label "ฉีดแล้ว" ไม่คิด due
-- **สถานะคำนวณสดตอนอ่าน ไม่เก็บลง DB** (เหมือน BMI) — `vaccine_status($lastDate,$validMonths,$warnDays)` นิยามครั้งเดียวใน vaccine.php ใช้ทั้ง 3 handler: `none`(ยังไม่มีข้อมูล ⚪️) · `ok`(🟢) · `warn`(🟡 เหลือ ≤ `vaccine_warn_days`) · `bad`(🔴 เกินกำหนด)
-- **ยึด "เข็มล่าสุด" ของแต่ละคน×ชนิดเท่านั้น** (`vaccine_latest_map()` = `MAX(dose_date) GROUP BY user_id,type_id`) — เข็ม 1-5 จดได้หมดแต่สถานะดูเข็มสุดท้าย
-- **`h_vaccine_my` ต้องแสดงชนิดที่ถูกซ่อนด้วยถ้าคนนั้นเคยฉีด** (merge active types + types ที่โผล่ในประวัติ) ไม่งั้นซ่อนชนิดแล้วประวัติของ จนท. หายเงียบ
-- **`h_vaccine_overview` โชว์ทุกคน×ทุกชนิด รวมช่องที่ยังไม่มีข้อมูล** — ตั้งใจต่างจากการ์ด 📊 ภาพรวม (ที่ซ่อนคนไม่มีข้อมูล) เพราะหัวหน้าต้องเห็นว่าใครตกหล่น
-- **setting `vaccine_warn_days`** (1-365, default 60) อยู่ใน EDITABLE_SETTINGS + clamp ใน `h_settings_save` — **แก้จากแท็บ ⚙️ ชนิดวัคซีน ไม่ได้อยู่ในหน้าตั้งค่า** (เลยไม่ต้องเพิ่มใน array `keys` ของ `saveSettings()`)
-- **client:** staff = sub-tab `💉 วัคซีน` (`renderVaccine` ใน app.js) · admin = แท็บที่ 4 โซนสุขภาพ แตกเป็น 3 sub-view `team|person|types` (`Admin.vVaccine`). helper global `vaccineChip`/`VAC_ICON`/`vacShortDate` ใน app.js (admin.js เรียกได้เพราะโหลดทีหลัง) · style `.vc-*`/`.vac-p-*` (app.css)
-- **ภาพรวมทีม = บล็อกรายคน (`.vac-p`) ห้ามเปลี่ยนกลับเป็น `<table class="tbl">`** — ลองแล้วบนจอ 430px เห็นแค่ 2 จาก 4 คอลัมน์ ต้องลากขวา (บทเรียนเดียวกับการ์ดเวรกลางคืน v28) และคอลัมน์จะงอกทุกครั้งที่แอดมินเพิ่มชนิดวัคซีน · เรียง **คนที่มีปัญหาขึ้นก่อน** (bad→warn→ที่เหลือ) ด้วย `rank()` ฝั่ง client ไม่งั้นต้องไถหา 🔴 เอง
-- **ปุ่ม "แก้" ในแท็บชนิดวัคซีนหยิบค่าจาก `this.vacTypeList`** ไม่ยัดชื่อลง onclick — `esc()` แปลง `'` เป็น `&#39;` แล้ว HTML parser คืนกลับ จะทำ JS string พัง
-- ข้อจำกัดที่ยอมรับ: `strtotime('+N months')` ล้นเดือน (31 ม.ค. +1 เดือน = 3 มี.ค.) คลาดได้ 1-3 วัน — ไม่สำคัญกับวันครบรอบวัคซีน
-- migration: probe `vaccine_types` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
-
-## ประวัติการฝึกอบรม (v35 — `app/handlers/training.php`)
-
-แอดมินสร้าง "การอบรม 1 ครั้ง" แล้วติ๊กชื่อ จนท. ใส่ลงไป · **เจ้าหน้าที่อ่านอย่างเดียว** (pattern เดียวกับการ์ดวัคซีน) · **ไม่มีระบบเตือนวันหมดอายุ/ทบทวน** — เก็บเป็นประวัติล้วน
-
-- **2 ตาราง:** `trainings` (ชื่อ + `start_date`/`end_date` + `place`/`organizer`/`doc_no`(เลขที่หนังสือสั่งการ)/`note`) / `training_attendees` (`UNIQUE (training_id,user_id)` + FK CASCADE ทั้งคู่). **ไม่มี soft delete** (ลบการอบรม = เหตุการณ์นั้นไม่เคยเกิด — ต่างจาก `vaccine_types` ที่ต้องซ่อนแต่เก็บประวัติ) · **ไม่มี seed · ไม่มี setting ใหม่** (ไม่ต้องแตะ `EDITABLE_SETTINGS`/`saveSettings()` — ตัดจุดพลาดคลาสสิกทิ้ง)
-- **⚠️ ต้องกรอกวันย้อนหลังได้ — งานหลักคือบันทึกอดีต** `h_training_save` validate แค่ `end >= start` + ช่วง ≤366 วัน **ห้ามลอก `if ($start < date('Y-m-d')) fail('เลือกวันย้อนหลังไม่ได้')` กับ cap 62 วัน จาก `h_offsite_user_add`** มาด้วย (ลอกได้แค่ UI chips `.osu-*`) · อนุญาตวันอนาคตด้วย (บันทึกล่วงหน้าตามหนังสือสั่งการ)
-- **⚠️ `h_training_attendees_save` ต้องบันทึกแบบ diff** — อ่านของเดิม → `array_diff` → INSERT เฉพาะ `added` / DELETE เฉพาะ `removed` → **`notify_push` เฉพาะ `added`** (type `announcement` ที่มีใน ENUM อยู่แล้ว ไม่เพิ่มค่าใหม่). **ห้ามลบทั้งชุดแล้ว insert ใหม่** ไม่งั้นแอดมินกดบันทึกซ้ำทีไร จนท.โดนแจ้งซ้ำทุกคน (แก้ข้อมูลการอบรมผ่าน `h_training_save` = ไม่แตะรายชื่อ = ไม่แจ้ง)
-- **จนท.ที่ลาออก (`status='inactive'`) — 2 กฎต่างกัน:** chips ติ๊กคนเข้าอบรม = `active` เท่านั้น · dropdown/ประวัติรายคน (`h_training_person`) = **ไม่กรอง status** (ประวัติอดีตต้องเปิดดู/ปริ้นได้) · `h_training_overview` = `active` เท่านั้น ไม่งั้นคนที่ออกไปแล้วค้างในลิสต์ "ยังไม่เคยอบรม" ตลอดกาล
-- **`train_date_label()` คิดที่ server ที่เดียว** — "11-15 มี.ค. 2567" / วันเดียว / ข้ามเดือน / ข้ามปี → ทั้งหน้า จนท. หน้าแอดมิน และกระดาษปริ้นใช้ข้อความเดียวกัน (client ไม่คิดเอง)
-- **ปริ้น A4 ต้อง reuse `id="reportOverlay"` ตัวเดิมของ v29** — `app.css` มี `body.rpt-printing > *:not(#reportOverlay) { display:none }` **id ถูก hardcode** ถ้าตั้ง id ใหม่จะปริ้นออกมาหน้าขาว. `Admin.trPrintOpen()` สร้าง overlay id เดิม + `#rptPaper` แล้ว **reuse `reportPrint()`/`reportClose()` ตรงๆ → CSS ปริ้นเพิ่ม 0 บรรทัด** (สอง overlay ไม่มีทางเปิดพร้อมกัน) · กระดาษใช้คลาส `.rp-*` เดิม (ในกระดาษ 800px ใช้ `<table>` ได้ ไม่ขัดกฎจอ 430px)
-- **client:** staff = sub-tab `🎓 อบรม` ใต้ 📚 พัฒนา (`vTraining`/`renderTraining` ใน app.js) · admin = sub-tab เดียวกัน แตกเป็น 3 sub-view `list|person|overview` (`Admin.vTraining`) — **`devSegHtml` มี 2 ที่ (app.js ~:682 และ admin.js ~:1262) ต้องแก้ทั้งคู่** ไม่งั้นฝั่งหนึ่งไม่มีแท็บ
-- **ภาพรวมเรียงคนที่ยังไม่เคยอบรมขึ้นก่อน** (`sort(a.n - b.n)`) และเป็นบล็อก `.list-row`/`.tr-row` **ห้ามเปลี่ยนเป็น `<table class="tbl">`** (บทเรียนเดียวกับ v28/v34 จอ 430px)
-- **ปุ่ม "แก้" หยิบค่าจาก `this.trList`** ไม่ยัดชื่อลง onclick (`esc()` แปลง `'` เป็น `&#39;` แล้ว parser คืนกลับ ทำ JS string พัง — ชื่อหลักสูตรราชการมีวงเล็บ/อัญประกาศบ่อย)
-- migration: probe `trainings` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
-
-## Google Drive selfie sync (สำเนารูปเช็คอินขึ้น Drive)
-
-- **ไฟล์:** `app/drive.php` (ท่อ Drive + คิว + OAuth handlers `h_gdrive_*`), `public/oauth.php` (OAuth callback — ไม่มี auth header พึ่ง `gdrive_oauth_state` ที่หมดอายุ 10 นาที กัน CSRF)
-- **flow:** `h_checkin` เซฟรูปลง Volume แล้วเรียก `gdrive_enqueue()` (insert `drive_queue` + แตกโปรเซส worker `cron/drive.php` ผ่าน `gdrive_spawn_worker()` ไม่แตะ network) → เช็คอินตอบทันที → worker อัปโหลดเบื้องหลัง
-- **retry:** `gdrive_process_queue()` อัปโหลดทีละ ≤3 รายการ, fail → `tries+1` (เพดาน 30 → status `error`); worker `cron/drive.php` มี `flock` กันรันซ้อน; `gdrive_kick_if_stale()` ใน `h_app_data`+`h_admin_data` แตก worker ไล่คิวค้างถ้าห่างรอบก่อน >60 วิ (throttle ด้วย `gdrive_last_run`)
-- **⚠️ อย่ารัน curl คาใน request** — เดิมใช้ `after_response()` (helpers.php) ปิด connection ด้วย `Content-Length`+`Connection: close`+`fastcgi_finish_request()` แต่ **`fastcgi_finish_request()` ไม่มีบน Apache mod_php** (prod เป็น `php:8.3-apache` prefork) จึง**เลิกใช้ เปลี่ยนเป็นแตกโปรเซส CLI แยก** (`nohup php cron/drive.php &`) — ถ้า server ปิด `exec` → `gdrive_enqueue` fallback อัป inline สั้นๆ (`after_response` ยังอยู่ใน helpers แต่ไม่มีใครเรียกแล้ว)
-- **scope `drive.file`** = แอปเห็นเฉพาะไฟล์/โฟลเดอร์ที่ตัวเองสร้าง → สร้างโฟลเดอร์ราก "รูปเช็คชื่อสถานีไฟป่า" เอง (id เก็บใน `gdrive_root_id`) แล้วให้พี่วินลากไปวางเอง — **เข้าถึงโฟลเดอร์ที่ผู้ใช้มีอยู่ก่อนไม่ได้** (ตั้งใจ แลกกับความปลอดภัย + ไม่ติด verification)
-- **โฟลเดอร์รายวัน** ชื่อปี พ.ศ. `2569-mm-dd` (cache id วันละครั้งใน `gdrive_day_cache`); ชื่อไฟล์ `Hi_ชื่อจริง.jpg`
-- **settings ที่เกี่ยว (ห้าม hardcode):** `gdrive_client_id`/`gdrive_client_secret` (แอดมินกรอก, อยู่ใน EDITABLE_SETTINGS), `gdrive_refresh_token`/`gdrive_access_token`/`gdrive_access_exp`/`gdrive_root_id`/`gdrive_day_cache`/`gdrive_oauth_state`/`gdrive_last_run` (ระบบเซ็ตเอง) — เหมือน LINE token ไม่อยู่ในโค้ด
-- **OAuth setup:** แอดมินทำครั้งเดียวตามคู่มือ `SETUP_GDRIVE.md` — ต้อง Publish App + Enable Drive API มิฉะนั้นพัง (ดู PROGRESS lesson 7)
-
-## โหมดเช็คชื่อนอกสถานที่ (offsite — `offsite_days` + attendance.php/admin.php, v25)
-
-แอดมินตั้งวันล่วงหน้าที่สั่ง จนท.ไปกิจกรรมนอกสถานี → วันนั้นทุกคนเช็คจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย
-
-- **ตาราง `offsite_days`** (global รายวัน ไม่ผูก user): `off_date UNIQUE`, `start_time`/`end_time` เก็บ **VARCHAR(5) "HH:MM"** (ให้ตรง pattern เวลาอื่นทั้งระบบ ไหลผ่าน `hm_to_min()` + regex เดียวกัน — ไม่ใช้ TIME เพราะจะได้ ":ss" กลับมา), `reason`. helper `offsite_for($date)` คืน row/null (คล้าย `is_station_holiday`)
-- **`h_checkin` แทรก 4 จุดผ่านตัวแปร `$offsite = offsite_for($today)`:** (1) block วันหยุด `&& !$offsite` (offsite ทะลุได้ แม้ตรงวันอาทิตย์) (2) เวลาเปิด → `$offsite['start_time']` แทน `checkin_open` (3) **GPS `if (!$offsite && gps_enforce)`** ข้ามบังคับรัศมี แต่ยังคำนวณ/เก็บ `distance_m` ไว้ดูว่าเช็คจากที่ไหน (4) คิดสาย → `end_time` แทน `late_cutoff` (offsite ไม่ยกเว้นเวรกลางคืน — คนละบริบท)
-- **แอดมินจัดการในหน้าตั้งค่า** — การ์ด "📍 วันเช็คชื่อนอกสถานที่", handler แยก `offsite_list/add/del` (**ไม่ผ่าน `settings_save`** เพราะเป็น record รายวันไม่ใช่ key-value). `h_offsite_add` validate วันที่ + start<end (regex `HH:MM`) + กันวันย้อนหลัง, `ON DUPLICATE KEY` แก้วันเดิมทับได้. list โหลด async ท้าย `vSettings` ผ่าน `Admin.offsiteRefresh()` (pattern เดียวกับ `gdriveRefreshStatus`)
-- **client:** `h_app_data` ส่ง `today.offsite` (row/null) → `app.js` (1) `doCheckin` ข้าม block ตอน GPS fail ด้วย `&& !this.data.today.offsite` (2) `startClock` คุมปุ่มด้วย `start/end` ของวันนั้น (ไม่งั้นปุ่ม disabled จนถึง `checkin_open`) (3) banner เขียวหน้า Home + clock-note บอกช่วงเวลา
-- migration: probe `offsite_days` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
-
-## กล่องข้อความ / Mailbox (v26 — `app/handlers/notify.php`)
-
-กล่องข้อความฝั่งเจ้าหน้าที่ — จุดแดงเตือนข้อความใหม่ เปิดอ่านแล้วจุดหาย + แดชบอร์ดแอดมิน "คืนนี้ใครเข้าเวร"
-
-- **ตาราง `notifications` = 1 แถว/คน/ข้อความ** (`user_id`, `type` ENUM announcement/leave_approved/leave_rejected, `title`, `body`, `read_at` NULL=ยังไม่อ่าน). broadcast = fan-out insert หลายแถว (ไม่ใช้ join-table แบบ library เพราะต้องรองรับข้อความเจาะจงคน). `notify_push()` คนเดียว / `notify_broadcast()` staff active ทุกคน / `notify_unread_count()` นับจุดแดง
-- **จุดแดง = `notif_unread` ใน `h_app_data`** (COUNT read_at IS NULL). **เปิดกล่อง `h_notify_list` อ่าน is_new (read_at===null) ก่อน แล้วค่อย UPDATE read_at=NOW() ทั้งหมด** (ลำดับสำคัญ ไม่งั้น is_new เพี้ยน) → จุดหายจนกว่ามีข้อความใหม่. client เซ็ต `notif_unread=0` + `paintMailDot()` ทันทีหลังเปิด
-- **3 อย่างที่เด้งเข้ากล่อง:** (ก) **ประกาศ** หัวหน้าโพสต์ผ่านการ์ด "📢 ประกาศถึงเจ้าหน้าที่" **บนสุดของเมนูตั้งค่า** (`h_announce_send` → broadcast) — annTitle/annBody ไม่ใช่ `st_` prefix เลยไม่โดน settings_save กวาด (ข) **อนุมัติลา** `notify_push` ใน `h_leave_approve` **เท่านั้น** (ค) **ไม่อนุมัติลา** `notify_push` ใน `h_leave_reject` **ก่อน DELETE row** (snapshot วันที่+ประเภทลง body เพราะ ref จะ dangle)
-- **⚠️ ห้าม hook `notify_push` เข้า `leave_auto_approve()`** — ฟังก์ชันนั้นถูกเรียกจาก h_admin_data/cron/report/insert = จะ spam ทุกที่. แจ้งเฉพาะตอนหัวหน้ากดเอง (ลาที่อนุมัติอัตโนมัติตอนเลย deadline **ไม่เด้ง** ตั้งใจ)
-- **ลำดับการ์ดแดชบอร์ด (v27):** การ์ดเวรกลางคืน (คืนนี้ + เดือนนี้) อยู่**เหนือ**ตารางคะแนน (อันดับความขยัน) ใน `analyticsHtml`. การ์ดประกาศย้ายออกไปเมนูตั้งค่าแล้ว (ไม่อยู่แดชบอร์ด)
-- **แดชบอร์ด "🌙 เข้าเวรกลางคืน (คืนนี้)":** `h_admin_data` ส่ง `night_tonight` (รายชื่อ+เวลา ของ `tonight_duty_date()`) + `night_tonight_date`. มี date picker เลือกย้อนวันได้ → `h_night_roster` (param `date`, default คืนนี้) — คู่กับการ์ด night_stats (จำนวนคืน/คน) เดิม
-- **client:** ไอคอน 📬 ใน `.t-right` topbar staff (`App.openMailbox()` + `.mail-dot`), popup ผ่าน Swal. admin.js `announceHtml`/`nightTonightHtml`/`nightRosterLoad` อยู่ใน `analyticsHtml` (โชว์ทั้งวันปกติ/วันหยุด). style `.mbox*`/`.mail-*`/`.nr-date` (app.css)
-- migration: probe `notifications` (42S02→schema.sql) — ตารางใหม่ล้วน ไม่ต้อง ALTER
-
-## แต่งหน้าแดชบอร์ด/ปฏิทิน (v28 — admin.js/admin.php/app.css)
-
-- **การ์ด "🌙 เวรกลางคืนเดือนนี้":** `night_stats` query เพิ่ม `GROUP_CONCAT(DAY(duty_date) ORDER BY duty_date) days` → client เปลี่ยนจาก `<table>` เป็น `.list-row` (ตัด position ออก, ชื่อ + `(days)` ซ้าย, `.night-count` `N คืน` ขวา flex-shrink) — **เลิกใช้ tbl-wrap** เพราะเลื่อนขวาหาคอลัมน์
-- **ตารางอันดับความขยัน:** `engagement_ranking` SELECT+ส่ง `birthdate` ต่อคน → client `ageFrom(r.birthdate)` ต่อท้ายชื่อ `(อายุ)` (null=ไม่โชว์). `ageFrom` เป็น global app.js เรียกจาก admin.js ได้
-- **ป๊อบอัพวันหยุด (`dayDetail`):** `dayoff_month` ส่ง `note` อยู่แล้ว → แสดง `📝 เหตุผล` ใต้ชื่อ (align-items:flex-start)
-- **เค้กวันเกิดในปฏิทินวันหยุด:** `vDayoff` สร้าง `this.aBday` map `MM-DD→[ชื่อ]` จาก `users_list` (scope ตาม "ดูของ" — รายคน/ทุกคน). `heatCells` วาง `.cd-cake` 🎂 มุมซ้ายบน (absolute) + cell คลิกได้ถ้า `n||hasBday`. `dayDetail` prepend รายชื่อวันเกิด (รองรับวันที่มีแต่เกิดไม่มีลา). style `.cd-cake`/`.night-count` (app.css)
-
-## รายงานอันดับความขยันรายเดือน (v29 — admin.php/admin.js/app.css, สำหรับปริ้น/ส่ง LINE)
-
-หัวหน้ากดออกรายงานรายเดือนเป็น**โปสเตอร์** → บันทึกเป็นรูป PNG (ส่ง LINE) หรือปริ้น/บันทึก PDF (แปะบอร์ด)
-
-- **Backend `h_report_month` (admin.php):** reuse `engagement_ranking($ym)` ตรงๆ **ไม่แตะสูตรคะแนน** — เดือนที่ผ่านมาได้ข้อมูลครบทั้งเดือน (`$end = min(today, สิ้นเดือน)` อยู่ในฟังก์ชันเดิม). param `month` "YYYY-MM" default = **เดือนที่แล้ว** (`strtotime('first day of last month')`), กันเดือนอนาคต. คืน `month_label` (ชื่อเดือนไทย+พ.ศ. จาก `thai_month_label()`), `workdays` (นับ `is_station_holiday`), `summary` (รวมทีม: present/ontime/late/absent/leave + `ontime_pct` + `avg_score`). action `report_month` ใน api.php
-- **Frontend = overlay ในแอป (ไม่ใช่หน้าแยก)** — เลือกทำแบบ overlay เพราะพี่วินใช้**ทั้งมือถือ+คอม**: หน้าแยก/แท็บใหม่บน iOS PWA อ่าน `fc_token` จาก localStorage ไม่เจอ (คนละ storage jar) → รายงานโหลดไม่ขึ้น. overlay อยู่ใน SPA เดิม token พร้อมเสมอ. `Admin.openReport/reportLoad/reportPaperHtml/reportSave/reportPrint/reportClose` + helper module-level `rpMonthLabel(ym)` (`TH_MONTHS`)
-- **บันทึกรูป = html2canvas** (CDN ใน index.php เหมือน chart.js/sweetalert2) — **เลือกแทน html-to-image** เพราะ html-to-image พ่น console `SecurityError` อ่าน CSS ฟอนต์ข้าม origin (Google Fonts) แม้ผลออกมาได้; html2canvas เรนเดอร์สะอาดไม่มี error. **พิสูจน์แล้วเรนเดอร์ไทย(สระ/วรรณยุกต์ ษ์ ั่)+เหรียญ emoji สีถูกทั้ง Chromium และ WebKit(=iPhone)** — `scale:2.5`, `await document.fonts.ready` ก่อน capture, `canvas.toBlob → a[download]`
-- **ปริ้น = `@media print` + คลาส `body.rpt-printing`** (toggle ตอน `reportPrint()`): ซ่อน `#app` (`body.rpt-printing > *:not(#reportOverlay)`) + ซ่อนทูลบาร์ → เหลือแต่ `.rpt-paper` เต็มหน้า A4. paper กว้างคงที่ 800px (`-webkit-print-color-adjust:exact` กันพื้นเขียวหาย). style `.rpt-*`/`.rp-*` (app.css)
-- **โทนบวก** — ไม่มีแถบแดงประจานคนสาย/ขาด (ตามที่พี่วินเลือก). คนที่ไม่เคยเช็คชื่อ (score=null/0) จมท้ายตาราง อันดับโชว์ `—` ถ้า score null
-- migration: ไม่มี (ใช้ตาราง/คอลัมน์เดิมล้วน)
-
-## อนุญาตเช็คนอกสถานที่รายคน (v30 — `offsite_users` + attendance.php/admin.php)
-
-เจาะรายบุคคล เช่น ได้รับคำสั่งไปประชุม/ราชการ — คนนั้นเช็คจากที่ไหนก็ได้เฉพาะวันที่ตั้ง. **แยกจาก `offsite_days` เดิม (ทั้งสถานี) เก็บคู่กัน**
-
-- **ตาราง `offsite_users`** (`user_id`+`off_date` UNIQUE, `reason`, `no_late`) — แตกช่วงวันเป็น **row ต่อคน/วัน** ตอน insert (ลบ/query ราย row ง่าย). helper `offsite_user_for($uid,$date)` คืน row/null
-- **ต่างจาก offsite_days (ทั้งสถานี) ตรง scope เวลา:** per-user = **ข้าม GPS อย่างเดียว** เวลาเปิด+คิดสาย = กฎสถานีปกติ (offsite_days override ทั้ง start/end+late). ใน `h_checkin`: `$offsiteUser` เพิ่มเงื่อนไขข้าม GPS `if (!$offsite && !$offsiteUser && gps_enforce)` เท่านั้น — เวลา/สาย ไหลผ่าน branch ปกติเอง (`!$isHoliday`). **ยังคำนวณ+เก็บ `distance_m`/lat/lng ไว้ดูว่าเช็คจากที่ไหน** (โปร่งใส แม้ข้าม radius)
-- **`no_late` (default on ฝั่ง UI):** วันไปราชการไม่นับสาย — `h_checkin` หลังคิดสายปกติแล้ว `if ($offsiteUser && no_late) $late = 0`. กันคนไปประชุมเช้า (เช็คจากที่ประชุม 9-10 โมง) โดนนับสาย + ไม่ให้ไปโผล่สายในรายงานความขยัน v29. **ปุ่ม/clock-note ฝั่ง จนท. (`startClock`) ต้องเช็ค `no_late` ด้วย** ไม่งั้น sub ปุ่มเตือน "จะนับสาย" ทั้งที่ไม่นับ
-- **ไม่ยุ่งกฎวันอาทิตย์** (ต่างจาก offsite_days ที่ทะลุวันหยุด) — per-user ใช้วันทำงานปกติ; ถ้าประชุมตรงอาทิตย์ใช้ `sunday_work` แยก (row offsite_user วันอาทิตย์ = inert)
-- **แอดมิน:** การ์ด "🧍 อนุญาตเช็คนอกสถานที่ (รายคน)" ในหน้าตั้งค่า — เลือกคนหลายคน (checkbox chips จาก `users_list`) + ช่วงวัน + เหตุผล + checkbox `no_late`. handler `offsite_user_list/add/del` (**ไม่ผ่าน settings_save**). `add` รับ `user_ids[]`+`start_date`+`end_date`+`no_late`, validate staff active + วันไม่ย้อนหลัง + ช่วง ≤62 วัน, **แจ้งเข้ากล่องข้อความ (`notify_push` type announcement) 1 ครั้ง/คน/ช่วง**
-- **client:** `h_app_data` ส่ง `today.offsite_user` (row/null) → app.js banner หน้า Home + `doCheckin` ข้าม GPS-fail block ด้วย `&& !offsite_user` + `startClock`/clock-note เช็ค `no_late`. การ์ดแอดมิน `offsiteUserRefresh/Add/Del` (admin.js), style `.osu-*` (app.css)
-- migration: probe `offsite_users` (42S02→schema) + guarded ALTER `no_late` (probe information_schema — DB ที่สร้างตารางก่อนมี no_late) — pattern เดียวกับ gender/birthdate
-
-## ยืนยันใบหน้าตอนเช็คชื่อ (v33 — `app/handlers/face.php` + `public/assets/face-api.js` + `assets/models/`)
-
-สแกนหน้าสด **1:1** (ยืนยันว่าเป็นเจ้าของ account จริง ไม่ใช่ 1:N ทายว่าใคร) แทนการเก็บรูปเซลฟี่ — เบราว์เซอร์คำนวณ descriptor 128 มิติ ส่งขึ้น server แค่ตัวเลข **ไม่ส่งรูป**
-
-- **ไลบรารี `@vladmandic/face-api` 1.7.15 vendored ในเครื่องเรา** (`public/assets/face-api.js` 1,333,943 B + `assets/models/` 8 ไฟล์ ~12.6MB) — **ห้ามเปลี่ยนไปใช้ CDN** เช็คชื่อ 8 โมงต้องไม่พึ่งเน็ตนอก. lazy-load ผ่าน `loadFaceLib()` (ไม่อยู่ใน index.php) + `sw.js` cache แยกถัง `FACE_CACHE='firecheck-face-v1'` **ที่ไม่ถูกล้างตอนเด้ง version** (ไม่งั้นทุกรีลีสโหลดใหม่ 14MB/คน) และ**ไม่อยู่ใน ASSETS precache** (install จะพัง)
-- **⚠️ detector ต้องเป็น `ssd_mobilenetv1` ทั้งตอนลงทะเบียนและตอนยืนยัน** — วัดจริงกับรูปสถานี 460 ใบ: tiny_face_detector ตรวจไม่เจอหน้า **18.5%** (รูปเซลฟี่หน้าใหญ่เต็มเฟรม เกิน anchor ของ tiny) vs ssd **5.0%**. ถ้าเปลี่ยนข้างเดียว กรอบ/แลนด์มาร์กเลื่อน = เกณฑ์ที่วัดมาใช้ไม่ได้ทั้งระบบ
-- **⚠️ descriptor ไม่ได้ L2-normalize** (วัดได้ norm 1.23-1.51) → **ห้าม normalize ซ้ำฝั่ง PHP** และ**ห้ามใช้ค่าเฉลี่ย (centroid) เป็นตัวเทียบ** — เก็บหลายแถวต่อคนแล้วเทียบ **min-distance** (centroid ใช้แค่ตอนคัดกรอง). ขอบ validate (`FACE_NORM_MIN/MAX`, `FACE_ELEM_MIN/MAX` ใน face.php) มาจากการวัดจริง เผื่อขอบไว้แล้ว
-- **เกณฑ์ `face_match_threshold = 0.40` มาจากการวัด ไม่ใช่ค่าเดา** — FAR 24/8018 = 0.30% · FRR 16/422 = 3.8% · ไม่มีใคร FRR เกิน 20% (แย่สุด 13%). **ที่ FAR=0 ต้องใช้ 0.34 แต่ FRR พุ่ง 14.9%** → เลือก 0.40 เพราะเป็น 1:1 (คนร้ายต้องมีมือถือ+รหัสของเป้าหมาย + อยู่ในรัศมี GPS) และโทษของ false-reject (จนท.ติดธงทั้งที่ไม่ผิด) หนักกว่า false-accept. **ปรับได้จากหน้าตั้งค่า** ทีละ 0.02
-- **⚠️ จุดอ่อนที่รู้อยู่ — กลุ่มชายหน้าคล้ายกัน 4 คน:** สุชาติ ⇄ นนทวัฒน์ (ใกล้สุด 0.342) · ทศพร → สุชาติ · สุชาติ ⇄ เขมรินทร์. FAR ทั้งหมดที่ 0.40 กระจุกในกลุ่มนี้ **คู่ที่เดาว่าจะชนกลับปลอดภัย** (สิทธิชัย × พลวัฒน์ ศรแก้วดารา = 0.469 / แก้วใจ × จิรัตติกาล เอี่ยมทอง = 0.452)
-- **ไม่มี liveness (v33)** — เอารูปคนอื่นจ่อกล้องผ่านได้ ตัวคุมคือ GPS รัศมี + หัวหน้าเห็นธง ไม่ใช่ระบบกันปลอมแปลง **อย่าโฆษณาเกินจริง**
-- **เซิร์ฟเวอร์ตัดสินเสมอ:** client ส่ง descriptor → `h_face_verify` คิดระยะเอง เขียน "ตั๋ว" ลง `face_attempts` (1 แถว/คน/วัน/บริบท) → `h_checkin` เรียก **`face_gate_for()`** อ่านตั๋ว. `match:true` จาก client ไม่ถูกอ่านเลย. ทางผ่าน `face_gate_for` มี 3 ทางเท่านั้น: verified_at ภายใน 5 นาที (`FACE_TICKET_SEC`) / `tries >= face_max_attempts` (ติดธง) / ยังไม่ลงทะเบียน — **นอกนั้น `fail('กรุณายืนยันใบหน้าก่อน')`** → client ที่ "เลิกถาม" เช็คชื่อแบบไม่ติดธงไม่ได้
-- **ไม่มีใครถูกบล็อกเช็คชื่อ (กฎเหล็ก):** ไม่ผ่าน 3 ครั้ง → `face_flag=1` เช็คได้ + เก็บรูปครั้งสุดท้ายให้หัวหน้าดู · ยังไม่ลงทะเบียน → `face_flag=2` ข้ามการยืนยัน · กล้อง/lib พัง → client ยิง `skip:1` เผาโควตา = ติดธง. **`skip` เป็นช่องหนีที่ตั้งใจให้มี** (ยอมให้โกงแบบติดธง ดีกว่าล็อกคนไว้หน้าประตู 8 โมง)
-- **นับ tries ต้อง atomic** — `face_touch()` ใช้ `INSERT ... ON DUPLICATE KEY UPDATE probes=probes+1`, `face_add_try()` ใช้ `UPDATE ... tries=tries+1` **แล้วอ่านกลับ** ห้าม SELECT-แล้ว-UPDATE (กดสองแท็บพร้อมกันจะได้สิทธิ์ครั้งที่ 4). `probes` เพดาน 20/วัน กันใช้ endpoint ไล่เดาเวกเตอร์ · **ไม่ส่ง threshold ให้ client** (client_settings มีแค่ `face_verify_enabled`)
-- **ตั๋วเวรกลางคืนคีย์ที่ `tonight_duty_date()`** ไม่ใช่วันนี้ (คนกดหลังเที่ยงคืน) — `context='night'`
-- **client (app.js):** `faceLiveCapture()` overlay กล้องสด (getUserMedia + กรอบเขียว/เหลือง) **เก็บ 3 เฟรมนิ่ง** ส่งทีละเฟรมหยุดทันทีที่ผ่าน (เฟรมเดียวอาจเบลอ/กระพริบตา) · timeout 30 วิ + ปิด stream ใน `finally` + ปิดตอน `visibilitychange` (ไฟกล้องค้าง = น่ากลัว) · `<video playsinline>` **บังคับ** ไม่งั้น iOS เด้ง fullscreen
-- **⚠️ ลำดับ iOS transient-activation (ต่อจาก lesson 10):** `doCheckin` ตัดสินทางด้วย **`faceCanLive()` แบบ synchronous** ก่อน await ใดๆ. **ถ้า getUserMedia ถูกปฏิเสธ ห้ามเรียก `captureSelfie()` ใน catch** — สิทธิ์กดสดหมดไปแล้ว ต้องเด้ง Swal ให้ผู้ใช้แตะปุ่มใหม่ (= activation ใหม่) แล้วจำไว้ใน `localStorage.fc_gum='0'` ให้ครั้งหน้าไปทางถ่ายรูปนิ่งตั้งแต่ในจังหวะกดเลย
-- **เปิด `selfie_required` พร้อม `face_verify_enabled` = เปิดกล้องรอบเดียว** — เฟรมที่ใช้ยืนยันส่งเป็น `selfie` ต่อ (Drive sync ยังทำงาน)
-- **2 ทางลงทะเบียน:** (ก) **การ์ดบนสุด "🆕 เจ้าหน้าที่คนใหม่ — ถ่าย 3 รูป"** (`feOneSave`) เลือกคน + เลือกรูป 3-5 รูป → **`replace:0` เพิ่มทับของเดิม ไม่ลบ** (ตรงกับที่ copy บอก — เคยเขียนเป็น replace:1 แล้วจะลบ 12 รูปเดิมทิ้งเงียบๆ) เกณฑ์ต่อรูปเหมือน hygiene แต่ไม่ตัด outlier (รูปน้อย) · เพดานรวม `FACE_MAX_ENROLL`=25 บังคับใน `h_face_enroll_save` แบบ **เก็บใหม่สุด 25 แถว** (ยิงซ้ำรัวๆ ของเดิมถูกดันออก — ใช้งานจริง 12+4 ไม่ถึงเพดาน) (ข) ทางโฟลเดอร์ยกทีม (ด้านล่าง)
-- **ลงทะเบียนยกทีม = overlay ฝั่งแอดมิน** (`Admin.faceEnrollOpen`, แท็บเจ้าหน้าที่) **ไม่ใช่การ์ด** เพราะ `vUsers()` re-render ทุก action จะล้าง state 460 ไฟล์ทิ้ง — เลือกโฟลเดอร์ (`webkitdirectory`, **ทำบนคอมเท่านั้น** iOS ไม่มี directory picker) → `feParseName()` อ่านชื่อคนจากชื่อไฟล์ (ต้องตรงกับที่ `gdrive_enqueue` ตั้ง: `HHMM_ชื่อ[_(เวรกลางคืน)].jpg`) → จับคู่ users (`feGuess` ตัดคำนำหน้าเทียบ **น.ส. vs นางสาว**) → **ต้องติ๊กยืนยันการจับคู่ก่อนปุ่มคำนวณจะ enable** → คำนวณทีละรูป yield event loop ทุก 3 รูป (~1 วิ/รูป, 460 รูป = 5-10 นาที, มีปุ่มหยุด) → `feHygiene()` → รายงานสิ่งที่ตัดออก → save
-- **`feSaveAll()` ต้องรวมกลุ่มที่จับคู่ไป user เดียวกันก่อนบันทึก** — ไม่งั้นยิง `replace:1` ทับกันเองเหลือเวกเตอร์เดียว (เกิดตอนเลือกรูปเดี่ยวหลายไฟล์ชื่อไม่ซ้ำให้คนเดียว)
-- **`feHygiene()` ต้องเหมือนกับที่ใช้วัดเกณฑ์เป๊ะ** (ไม่งั้นเกณฑ์ 0.40 ไม่ตรงกับที่ใช้จริง): ตัด nFace≠1/score<0.5/หน้า<80px → ตัด outlier 2 รอบ (`d > median+2·MAD` จาก centroid) → **cap 12 ด้วย farthest-point sampling** (เก็บความหลากหลายของท่า ไม่ใช่เอารูปที่คล้ายกัน) → เตือน cross-person (รูปที่ใกล้คนอื่นมากกว่ากลุ่มตัวเอง = อาจจับคู่สลับ)
-- **ธงโชว์ 4 ที่:** roster แดชบอร์ด (`faceFlagChip` — เป็น**หมายเหตุ ไม่ใช่สถานะ** คนยังอยู่กลุ่ม ontime/late เดิม) · แถบ alert `face_flags` (กดดูรูปได้) · ตารางรายงานช่วงวัน + คอลัมน์ CSV · คอลัมน์ "ใบหน้า" แท็บเจ้าหน้าที่ (นับ `face_n` — เห็นว่าใครยังไม่ลงทะเบียน)
-- **4 settings:** `face_verify_enabled`(bool) · `face_match_threshold`(0.20-0.90) · `face_max_attempts`(1-5) · `face_min_desc`(1-10) — อยู่ใน EDITABLE_SETTINGS + validate ใน `h_settings_save` + **array `keys` ใน `saveSettings()`** (ลืมที่ไหนที่หนึ่งสวิตช์จะเด้งกลับเงียบๆ)
-- migration: probe `face_descriptors` (42S02→schema.sql) + guarded ALTER **ชุดเดียว** เพิ่ม `attendance.face_flag/face_dist/face_photo` + `night_shifts.face_flag` (probe คอลัมน์แรกคุมทั้งชุด ลด query — `ensure_admin` รันทุก request)
-- **ไฟล์วัดผล `public/facelab.html` + `facelab_files.json` + symlink `public/_lab` = ของชั่วคราว ห้าม deploy** (symlink เปิดรูป จนท. 460 ใบให้คนทั่วไปดูโดยไม่ต้อง login)
-
-## Deploy
-
-Railway + Dockerfile (ดูขั้นตอนละเอียดใน README.md) — env ที่ต้องมี: ตัวแปร MySQL (reference), `CRON_SECRET`, `UPLOAD_DIR=/data/uploads` + Volume ที่ `/data`
-
-**⚠️ push GitHub ไม่ auto-deploy** — repo เป็น source control อย่างเดียว ไม่ได้ผูก webhook ต้อง deploy tarball เอง: `railway up` หรือ MCP `deploy` (`path=firecheck/`, service `8a5f15ef-d377-4437-80aa-b0fc0775d087`) ทุก deployment คอลัมน์ commit เป็น `-` เพราะเป็น tarball upload ไม่ใช่ GitHub-triggered — verify live ด้วย `curl https://sakpra-erawan.up.railway.app/index.php` ทุกครั้ง — ถ้า MCP `deploy`/`whoami` ค้าง `Unauthorized` (auth คนละชุดกับ CLI) ให้ใช้ `railway up` ตรงๆ ในเทอร์มินัลแทนได้เลย ไม่ต้อง re-login
-
-**⚠️ Cache-bust ตอนแก้ frontend** — `sw.js` เก็บ `assets/*` แบบ cache-first PWA ที่ติดตั้งแล้วจะเห็นของเก่าถ้าไม่เด้ง version ต้องแก้ **พร้อมกัน 2 ที่**: `?v=N` ใน `index.php` (css+js+admin.js) **และ** `const CACHE = 'firecheck-vN'` + ASSETS `?v=N` ใน `sw.js` (activate จะล้าง cache เก่าให้). **`index.php` มี PHP `header('Cache-Control: no-cache')` ต้นไฟล์** (เพิ่ม v23) กัน iOS PWA standalone ค้าง HTML shell เก่าที่ยังชี้ไป asset เก่า → วนงูกินหาง (เจอจริง: บั๊ก UI ที่ hard-refresh แล้วไม่หาย มักเป็น**โค้ดค้าง/โค้ดซ้ำ 2 ที่** ไม่ใช่ cache — เช่น `devSegHtml` มีทั้งใน app.js (staff) และ admin.js (admin) แก้ที่เดียวไม่พอ)
-
-**Live:** https://sakpra-erawan.up.railway.app — Railway project "firecheck" (`0490e262-abfe-49c6-bd47-81cdd12ed7d1`), service `firecheck-app` + `MySQL` + Volume `/data` (domain renamed from the default `firecheck-app-production.up.railway.app` for staff usability; `firecheck.up.railway.app` was already taken by someone else)
-
-**⚠️ Dockerfile CMD ห้ามย้าย `rm -f mpm_event.*` กลับไปเป็น build-time RUN** — เจอบั๊กจริงบน Railway: ไฟล์ที่ลบใน Docker build layer (RUN) ไม่ persist มาถึง container ตอนรันจริง (`mpm_event.load` กลับมาเป็นของ base image เดิมทุกครั้ง แม้ build log ยืนยันว่าลบสำเร็จ) ทำให้ Apache crash loop ด้วย `AH00534: More than one MPM loaded` ทางแก้ที่ใช้ได้จริงคือลบใน `CMD` (runtime, writable fs) เท่านั้น — ดู Dockerfile ปัจจุบัน
-
-**⚠️ Volume ต้อง chown ให้ www-data ใน CMD (runtime)** — `/data/uploads` ตอน Volume mount เป็นของ root แต่ Apache รันเป็น www-data → `save_photo()` mkdir ไม่ได้ = Permission denied → selfie เซฟไม่ได้เลย ต้อง `mkdir -p "$UPLOAD_DIR" && chown -R www-data:www-data "$UPLOAD_DIR"` ใน `CMD` (runtime เพราะ Volume mount ตอน runtime เหมือนบั๊ก mpm) — ดู PROGRESS lesson 8
-
-**⚠️ display_errors ต้อง Off บน prod** — base image เปิด display_errors → PHP warning ใดๆ ถูกพ่นหน้า JSON body → `res.json()` พังฝั่ง client = **"การเชื่อมต่อขัดข้อง"** (สัญญาณ: HTTP ยัง 200 แต่ content-type กลายเป็น `text/html` + body ขึ้นต้น `<br>`) ตั้ง `display_errors=Off`+`log_errors=On` ใน `firecheck.ini` (warning ไปลง Railway deploy log แทน) — ดู PROGRESS lesson 8
-
-**⚠️ MySQL บน Railway เป็น UTC** — SQL `NOW()`/`CURRENT_TIMESTAMP` เก็บเวลา UTC → เวลาเช็คอินเพี้ยน -7 ชม. `db.php` ตั้ง `PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone='+07:00'"` ทุกการเชื่อมต่อ (คอลัมน์เวลาเป็น DATETIME ล้วน ไม่มี TIMESTAMP → ตั้ง tz ไม่กระทบค่าที่เก็บไว้แล้ว มีผลเฉพาะ write ใหม่) — ดู PROGRESS lesson 9
+- **⚠️ push GitHub ไม่ auto-deploy** — repo เป็น source control อย่างเดียว ต้อง `railway up` เอง
+- **⚠️ แก้ `public/assets/*` ต้องเด้ง version 2 ที่พร้อมกัน:** `?v=N` ใน `index.php` (3 บรรทัด) **และ** `CACHE = 'firecheck-vN'` + ASSETS ใน `sw.js` — ไม่งั้น PWA ที่ติดตั้งแล้วเห็นของเก่า · **ห้ามแตะ `FACE_CACHE`** (เด้งแล้ว จนท.โหลดใหม่ 14MB ทุกคน)
+- บั๊ก UI ที่ hard-refresh แล้วไม่หาย มักเป็น **โค้ดซ้ำ 2 ที่** (เช่น `devSegHtml` มีทั้ง app.js + admin.js) ไม่ใช่ cache
 
 ## ห้าม commit
 
