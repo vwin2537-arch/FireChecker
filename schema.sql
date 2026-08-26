@@ -295,6 +295,35 @@ CREATE TABLE IF NOT EXISTS vaccine_records (
   FOREIGN KEY (type_id) REFERENCES vaccine_types(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- ประวัติการฝึกอบรม (v35) ----------
+-- แอดมินสร้าง "การอบรม 1 ครั้ง" แล้วติ๊กชื่อเจ้าหน้าที่ใส่ลงไป — เจ้าหน้าที่อ่านอย่างเดียว
+-- เก็บเป็นประวัติล้วน ไม่มีวันหมดอายุ/ทบทวน (ต่างจากการ์ดวัคซีน)
+CREATE TABLE IF NOT EXISTS trainings (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(200) NOT NULL,                 -- ชื่อหลักสูตร
+  start_date DATE NOT NULL,                         -- วันเริ่ม
+  end_date   DATE NOT NULL,                         -- วันสิ้นสุด (วันเดียว = เท่ากับ start_date)
+  place      VARCHAR(200) NOT NULL DEFAULT '',      -- สถานที่จัด
+  organizer  VARCHAR(200) NOT NULL DEFAULT '',      -- หน่วยงานที่จัด
+  doc_no     VARCHAR(120) NOT NULL DEFAULT '',      -- เลขที่หนังสือสั่งการ (ไว้อ้างอิงในเอกสารราชการ)
+  note       VARCHAR(500) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_start (start_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ผู้เข้าอบรม = แค่ผูกชื่อ (ไม่เก็บบทบาท/หมายเหตุรายคน)
+-- UNIQUE กันติ๊กซ้ำ + เป็นเกราะให้ logic "แจ้งเตือนเฉพาะคนที่เพิ่งถูกเพิ่ม" ปลอดภัยตอนกดรัว
+CREATE TABLE IF NOT EXISTS training_attendees (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  training_id INT NOT NULL,
+  user_id     INT NOT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_training_user (training_id, user_id),
+  KEY idx_user (user_id),
+  FOREIGN KEY (training_id) REFERENCES trainings(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)     REFERENCES users(id)     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- คิวส่งสำเนารูปเช็คชื่อขึ้น Google Drive ----------
 -- เช็คอินสำเร็จก่อนเสมอ แล้วค่อยอัปโหลดเบื้องหลัง — pending จะถูก retry จนสำเร็จ (เพดาน 30 ครั้ง → error)
 CREATE TABLE IF NOT EXISTS drive_queue (

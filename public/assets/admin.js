@@ -1262,14 +1262,16 @@ const Admin = {
   devSegHtml() {
     const t = (v, l) => `<button class="${this.devTab === v ? 'active' : ''}" onclick="Admin.devSetTab('${v}')">${l}</button>`;
     return `<div class="seg">
-      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}
+      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}${t('training', '🎓 อบรม')}
     </div>`;
   },
 
   devSetTab(t) { this.devTab = t; this.vDevelop(); },
 
   async vDevelop() {
-    this.devTab === 'quiz' ? await this.vDevelopQuiz() : await this.vDevelopLib();
+    if (this.devTab === 'quiz')     return this.vDevelopQuiz();
+    if (this.devTab === 'training') return this.vTraining();
+    return this.vDevelopLib();
   },
 
   async vDevelopLib() {
@@ -1542,6 +1544,263 @@ const Admin = {
       width: 420,
       confirmButtonText: 'ปิด',
     });
+  },
+
+  // =====================================================
+  // ประวัติการฝึกอบรม (v35) — 3 sub-view: รายการอบรม | รายคน | ภาพรวม
+  // =====================================================
+  trView: 'list',     // list | person | overview
+  trUid: null,        // เจ้าหน้าที่ที่เลือกในหน้ารายคน
+  trList: null,       // รายการอบรมทั้งหมด (ปุ่ม "แก้" หยิบค่าจากตรงนี้ ไม่ยัดลง onclick)
+  trPickId: null,     // การอบรมที่กำลังเปิดแผงจัดคน
+  trPerson: null,     // ผลของ training_person ที่โหลดล่าสุด (หน้าปริ้นใช้ต่อ ไม่ยิงซ้ำ)
+
+  vTraining() {
+    const sub = (v, l) => `<button class="${this.trView === v ? 'active' : ''}" onclick="Admin.trGo('${v}')">${l}</button>`;
+    const bar = `<div class="seg" style="margin-top:-4px">${sub('list', '📅 รายการอบรม')}${sub('person', '🧍 รายคน')}${sub('overview', '👥 ภาพรวม')}</div>`;
+    byId('view').innerHTML = this.devSegHtml() + bar + '<div id="trBox"><div class="card muted">กำลังโหลด...</div></div>';
+    if (this.trView === 'person')   return this.trLoadPerson();
+    if (this.trView === 'overview') return this.trLoadOverview();
+    return this.trLoadList();
+  },
+
+  trGo(v) { this.trView = v; this.vTraining(); },
+  trOpen(uid) { this.trUid = String(uid); this.trView = 'person'; this.vTraining(); },
+
+  // ---------- รายการอบรม ----------
+  async trLoadList() {
+    const d = await App.api('training_list');
+    this.trList = d.items;
+    const rows = d.items.length ? d.items.map(it => `<div class="list-row">
+        <div class="lr-main">
+          <div class="lr-title">${esc(it.name)}</div>
+          <div class="lr-sub">📅 ${esc(it.date_label)} · 👥 ${it.n_people} คน</div>
+          ${it.place || it.organizer ? `<div class="tr-meta">${[it.place ? '📍 ' + esc(it.place) : '', it.organizer ? '🏛️ ' + esc(it.organizer) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+        </div>
+        <div class="tr-btns">
+          <button class="btn btn-ghost btn-sm" onclick="Admin.trPick(${it.id})">👥 จัดคน</button>
+          <button class="btn btn-ghost btn-sm" onclick="Admin.trEdit(${it.id})">แก้</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.trDel(${it.id})">ลบ</button>
+        </div>
+      </div>${this.trPickId === it.id ? '<div id="trPeopleBox" class="tr-people"><div class="muted">กำลังโหลด...</div></div>' : ''}`).join('')
+      : '<div style="color:var(--muted);padding:6px 0">ยังไม่มีการอบรมที่บันทึกไว้</div>';
+
+    byId('trBox').innerHTML = `
+      <div class="card"><h3 id="trFormHead">➕ เพิ่มการอบรม</h3>
+        <input type="hidden" id="trId" value="">
+        <div class="field"><label>ชื่อการฝึกอบรม</label><input class="input" id="trName" maxlength="200" placeholder="เช่น อบรมทบทวนการดับไฟป่า ประจำปี"></div>
+        <div class="grid-2">
+          <div class="field"><label>วันเริ่ม</label><input type="date" class="input" id="trStart" value="${todayStr()}"></div>
+          <div class="field"><label>วันสิ้นสุด</label><input type="date" class="input" id="trEnd" value="${todayStr()}"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>สถานที่</label><input class="input" id="trPlace" maxlength="200"></div>
+          <div class="field"><label>หน่วยงานที่จัด</label><input class="input" id="trOrg" maxlength="200"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>เลขที่หนังสือสั่งการ</label><input class="input" id="trDoc" maxlength="120" placeholder="เช่น ทส 0910.404/ว123"></div>
+          <div class="field"><label>หมายเหตุ</label><input class="input" id="trNote" maxlength="500"></div>
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn btn-primary" onclick="Admin.trSave()">บันทึก</button>
+          <button class="btn btn-ghost btn-sm" id="trCancel" style="display:none" onclick="Admin.trResetForm()">ยกเลิกแก้ไข</button>
+        </div>
+        <div class="tiny" style="margin-top:8px">💡 กรอกวันย้อนหลังได้ — ใช้บันทึกการอบรมที่ผ่านมาแล้ว</div>
+      </div>
+      <div class="card"><h3>📅 การอบรมทั้งหมด <span class="h-right">${d.items.length} รายการ</span></h3>${rows}</div>`;
+    if (this.trPickId) this.trLoadPeople();
+  },
+
+  trResetForm() {
+    ['trName', 'trPlace', 'trOrg', 'trDoc', 'trNote'].forEach(k => { const el = byId(k); if (el) el.value = ''; });
+    byId('trId').value = '';
+    byId('trStart').value = todayStr();
+    byId('trEnd').value = todayStr();
+    byId('trFormHead').textContent = '➕ เพิ่มการอบรม';
+    byId('trCancel').style.display = 'none';
+  },
+
+  trEdit(id) {
+    const it = (this.trList || []).find(x => x.id == id);   // หยิบจาก state — ห้ามยัดค่าลง onclick
+    if (!it) return;
+    byId('trId').value = it.id;
+    byId('trName').value = it.name;
+    byId('trStart').value = it.start_date;
+    byId('trEnd').value = it.end_date;
+    byId('trPlace').value = it.place;
+    byId('trOrg').value = it.organizer;
+    byId('trDoc').value = it.doc_no;
+    byId('trNote').value = it.note;
+    byId('trFormHead').textContent = '✏️ แก้ไขการอบรม';
+    byId('trCancel').style.display = '';
+    byId('trName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+
+  async trSave() {
+    const d = await App.api('training_save', {
+      id: +byId('trId').value || 0,
+      name: byId('trName').value.trim(),
+      start_date: byId('trStart').value,
+      end_date: byId('trEnd').value,
+      place: byId('trPlace').value.trim(),
+      organizer: byId('trOrg').value.trim(),
+      doc_no: byId('trDoc').value.trim(),
+      note: byId('trNote').value.trim(),
+    });
+    toast(d.message);
+    this.trResetForm();
+    this.trLoadList();
+  },
+
+  async trDel(id) {
+    const it = (this.trList || []).find(x => x.id == id);
+    const n = it ? +it.n_people : 0;
+    const c = await Swal.fire({
+      icon: 'warning', title: 'ลบการอบรมนี้?',
+      text: n ? `มีเจ้าหน้าที่ผูกอยู่ ${n} คน ประวัติของทุกคนจะหายไปด้วย (กู้คืนไม่ได้)` : 'ลบแล้วกู้คืนไม่ได้',
+      showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่',
+    });
+    if (!c.isConfirmed) return;
+    const d = await App.api('training_del', { id });
+    toast(d.message);
+    if (this.trPickId === id) this.trPickId = null;
+    this.trLoadList();
+  },
+
+  // ---------- จัดคนเข้าอบรม ----------
+  trPick(id) {
+    this.trPickId = this.trPickId === id ? null : id;
+    this.trLoadList();
+  },
+
+  async trLoadPeople() {
+    const box = byId('trPeopleBox');
+    if (!box || !this.trPickId) return;
+    const [t, u] = await Promise.all([App.api('training_get', { id: this.trPickId }), App.api('users_list')]);
+    const staff = u.users.filter(x => x.role === 'staff' && x.status === 'active');
+    const chips = staff.length
+      ? staff.map(x => `<label class="osu-chk"><input type="checkbox" value="${x.id}" ${t.user_ids.includes(+x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join('')
+      : '<span style="color:var(--muted)">ยังไม่มีเจ้าหน้าที่</span>';
+    box.innerHTML = `<div class="tr-people-head">👥 ผู้เข้าอบรม — ${esc(t.training.name)}</div>
+      <div class="osu-people">${chips}</div>
+      <button class="btn btn-primary btn-block" style="margin-top:10px" onclick="Admin.trPeopleSave()">💾 บันทึกผู้เข้าอบรม</button>
+      <div class="tiny" style="margin-top:6px">💡 ระบบแจ้งเข้ากล่องข้อความ 📬 เฉพาะคนที่เพิ่มใหม่ — คนเดิมกดบันทึกซ้ำไม่โดนแจ้งซ้ำ</div>`;
+  },
+
+  async trPeopleSave() {
+    const ids = [...document.querySelectorAll('#trPeopleBox input:checked')].map(c => +c.value);
+    const d = await App.api('training_attendees_save', { training_id: this.trPickId, user_ids: ids });
+    toast(d.message);
+    this.trLoadList();
+  },
+
+  // ---------- รายคน ----------
+  async trLoadPerson() {
+    const dl = await App.api('users_list');
+    const staff = dl.users.filter(u => u.role === 'staff' && u.status !== 'pending');
+    const opts = staff.map(u => `<option value="${u.id}"${u.id == this.trUid ? ' selected' : ''}>${esc(u.name)}${u.position ? ' — ' + esc(u.position) : ''}</option>`).join('');
+    byId('trBox').innerHTML = `<div class="card"><h3>🧍 ประวัติการอบรมรายคน</h3>
+      <div class="field"><label>เลือกเจ้าหน้าที่</label>
+        <select class="select" id="trUser" onchange="Admin.trPickUser(this.value)">
+          <option value="">— เลือก —</option>${opts}</select></div>
+    </div><div id="trDetail"></div>`;
+    if (this.trUid) this.trLoadDetail();
+  },
+
+  trPickUser(uid) { this.trUid = uid || null; this.trLoadDetail(); },
+
+  async trLoadDetail() {
+    if (!this.trUid) { byId('trDetail').innerHTML = ''; return; }
+    byId('trDetail').innerHTML = '<div class="card muted">กำลังโหลด...</div>';
+    const d = await App.api('training_person', { user_id: +this.trUid });
+    this.trPerson = d;
+
+    if (!d.items.length) {
+      byId('trDetail').innerHTML = `<div class="card empty"><span class="e-ico">🎓</span>${esc(d.user.name)} ยังไม่มีประวัติการฝึกอบรม</div>`;
+      return;
+    }
+    const rows = d.items.map(it => {
+      const meta = [it.place ? '📍 ' + esc(it.place) : '', it.organizer ? '🏛️ ' + esc(it.organizer) : '',
+                    it.doc_no ? 'หนังสือที่ ' + esc(it.doc_no) : '', it.note ? '📝 ' + esc(it.note) : ''].filter(Boolean).join(' · ');
+      return `<div class="list-row"><div class="lr-main">
+        <div class="lr-title">${esc(it.name)}</div>
+        <div class="lr-sub">📅 ${esc(it.date_label)}</div>
+        ${meta ? `<div class="tr-meta">${meta}</div>` : ''}</div></div>`;
+    }).join('');
+    byId('trDetail').innerHTML = `<div class="card">
+      <h3>${esc(d.user.name)} <span class="h-right">${d.count} หลักสูตร</span></h3>
+      ${d.user.position ? `<div class="tr-meta" style="margin-bottom:6px">${esc(d.user.position)}</div>` : ''}
+      ${rows}
+      <button class="btn btn-block" style="margin-top:12px" onclick="Admin.trPrintOpen()">🖨️ ปริ้นประวัติ (A4)</button>
+    </div>`;
+  },
+
+  // ---------- ภาพรวม ----------
+  async trLoadOverview() {
+    const d = await App.api('training_overview');
+    // คนที่ยังไม่เคยอบรมขึ้นก่อน แล้วเรียงจำนวนน้อย→มาก (หัวหน้าไม่ต้องไถหาคนตกหล่น)
+    const people = d.people.slice().sort((a, b) => a.n - b.n || a.name.localeCompare(b.name, 'th'));
+    const rows = people.map(p => `<button class="list-row tr-row" onclick="Admin.trOpen(${p.id})">
+        <div class="lr-main">
+          <div class="lr-title">${esc(p.name)}</div>
+          <div class="lr-sub">${p.n ? 'ล่าสุด ' + esc(p.last_label) : '— ยังไม่เคยเข้าอบรม'}</div>
+        </div>
+        <span class="night-count">${p.n} หลักสูตร</span>
+      </button>`).join('');
+    byId('trBox').innerHTML = `
+      <div class="card"><h3>👥 ภาพรวมการฝึกอบรม</h3>
+        <div class="ov-stats">
+          <div class="ov-stat ov-g"><b>${d.summary.trained}</b><span>เคยอบรม</span></div>
+          <div class="ov-stat ov-r"><b>${d.summary.never}</b><span>ยังไม่เคยเลย</span></div>
+          <div class="ov-stat"><b>${d.summary.trainings}</b><span>การอบรมทั้งหมด</span></div>
+        </div>
+      </div>
+      <div class="card"><h3>รายคน <span class="h-right">${people.length} คน</span></h3>${rows || '<div style="color:var(--muted)">ยังไม่มีเจ้าหน้าที่</div>'}</div>`;
+  },
+
+  // ---------- ปริ้นประวัติรายคน (A4) ----------
+  // ⚠️ ต้องใช้ id "reportOverlay" ตัวเดิม — @media print ใน app.css ผูกกับ id นี้ (ซ่อนทุกอย่างที่ไม่ใช่)
+  //    reuse reportPrint()/reportClose() ของรายงานรายเดือน (v29) ได้เลย ไม่ต้องแก้ CSS
+  trPrintOpen() {
+    const d = this.trPerson;
+    if (!d) return;
+    const ov = document.createElement('div');
+    ov.id = 'reportOverlay';
+    ov.className = 'rpt-overlay';
+    ov.innerHTML = `
+      <div class="rpt-bar">
+        <button class="btn btn-primary" onclick="Admin.reportPrint()">🖨️ ปริ้น</button>
+        <button class="btn rpt-close" onclick="Admin.reportClose()">✕ ปิด</button>
+      </div>
+      <div class="rpt-scroll"><div id="rptPaper" class="rpt-paper">${this.trPaperHtml(d)}</div></div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('rpt-open');
+  },
+
+  trPaperHtml(d) {
+    const rows = d.items.map((it, i) => `<tr>
+      <td class="rp-rank">${i + 1}</td>
+      <td class="l">${esc(it.name)}${it.note ? `<div class="rp-pos">${esc(it.note)}</div>` : ''}</td>
+      <td>${esc(it.date_label)}</td>
+      <td class="l">${esc(it.organizer || '-')}</td>
+      <td class="l">${esc(it.place || '-')}</td>
+      <td>${esc(it.doc_no || '-')}</td></tr>`).join('');
+    return `<div class="rp-head">
+        <span class="rp-fire">🎓</span>
+        <div>
+          <div class="rp-station">${esc(d.station_name)}</div>
+          <div class="rp-title">ประวัติการฝึกอบรม</div>
+          <div class="rp-month">${esc(d.user.name)}${d.user.position ? ' · ' + esc(d.user.position) : ''}</div>
+        </div>
+      </div>
+      <div style="padding:16px 22px 4px">
+        <table class="rp-tbl">
+          <thead><tr><th>ลำดับ</th><th class="l">หลักสูตร</th><th>วันที่</th><th class="l">หน่วยงานที่จัด</th><th class="l">สถานที่</th><th>เลขที่หนังสือ</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="margin-top:12px;font-size:14px">รวมทั้งสิ้น <b>${d.count}</b> หลักสูตร</div>
+      </div>
+      <div class="rp-foot">ออกรายงานเมื่อ ${esc(d.generated_at)} น. · ระบบเช็คชื่อ FireCheck</div>`;
   },
 
   // =====================================================

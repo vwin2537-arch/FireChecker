@@ -681,14 +681,16 @@ const App = {
   devSegHtml() {
     const t = (v, l) => `<button class="${this.devTab === v ? 'active' : ''}" onclick="App.devSetTab('${v}')">${l}</button>`;
     return `<div class="seg" id="devSeg">
-      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}
+      ${t('lib', '📚 คลังความรู้')}${t('quiz', '📝 แบบทดสอบ')}${t('training', '🎓 อบรม')}
     </div>`;
   },
 
   devSetTab(t) { this.devTab = t; this.vDevelop(); },
 
   async vDevelop() {
-    this.devTab === 'quiz' ? await this.vQuizList() : await this.vLibrary();
+    if (this.devTab === 'quiz')     return this.vQuizList();
+    if (this.devTab === 'training') return this.vTraining();
+    return this.vLibrary();
   },
 
   async vLibrary() {
@@ -734,6 +736,33 @@ const App = {
   },
 
   libSetFilter(v) { this.libFilter = v; this.renderLib(); },
+
+  // ---------- ประวัติการฝึกอบรม (อ่านอย่างเดียว — หัวหน้าเป็นคนบันทึกให้) ----------
+  async vTraining() {
+    byId('view').innerHTML = this.devSegHtml() + '<div id="trBox"><div class="card muted">กำลังโหลด...</div></div>';
+    const d = await this.api('training_my');
+    this.renderTraining(d.items);
+  },
+
+  renderTraining(items) {
+    if (!items.length) {
+      byId('trBox').innerHTML = '<div class="card empty"><span class="e-ico">🎓</span>ยังไม่มีประวัติการฝึกอบรม<br>หัวหน้าสถานีจะบันทึกให้ค่ะ</div>';
+      return;
+    }
+    const rows = items.map(it => {
+      const meta = [it.place ? '📍 ' + esc(it.place) : '', it.organizer ? '🏛️ ' + esc(it.organizer) : ''].filter(Boolean).join(' · ');
+      const foot = [it.doc_no ? 'หนังสือที่ ' + esc(it.doc_no) : '', it.note ? '📝 ' + esc(it.note) : ''].filter(Boolean).join(' · ');
+      return `<div class="list-row">
+        <div class="lr-main">
+          <div class="lr-title">${esc(it.name)}</div>
+          <div class="lr-sub">📅 ${esc(it.date_label)}</div>
+          ${meta ? `<div class="tr-meta">${meta}</div>` : ''}
+          ${foot ? `<div class="tr-meta">${foot}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    byId('trBox').innerHTML = `<div class="card"><h3>🎓 ผ่านการฝึกอบรม ${items.length} หลักสูตร</h3>${rows}</div>`;
+  },
 
   async libOpen(id) {
     const it = this.libItems.find(i => i.id == id);

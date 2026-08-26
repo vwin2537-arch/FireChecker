@@ -543,6 +543,13 @@ body.rpt-open { overflow: hidden; }
   @page { size: A4 portrait; margin: 10mm; }
 }
 
+/* ===== ประวัติการฝึกอบรม (v35) ===== */
+.tr-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
+.tr-btns { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.tr-people { padding: 10px 0 14px; border-bottom: 1px solid var(--line); }
+.tr-people-head { font-size: 13px; font-weight: 500; color: var(--ink-2); margin-bottom: 6px; }
+.tr-row { width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--line); cursor: pointer; font: inherit; }
+
 /* ===== เลือกเจ้าหน้าที่ (อนุญาตเช็คนอกสถานที่รายคน) ===== */
 .osu-people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .osu-chk { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px;
