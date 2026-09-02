@@ -52,8 +52,7 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **สถานะรายวัน** คำนวณสดใน `roster_for()` (admin.php): มี attendance → ontime/late, มี day_off → leave, ไม่มีทั้งคู่ → absent
 - **วันอาทิตย์** = วันหยุดสถานี (`is_station_holiday`) — ไม่นับ absent, จอง day_off ไม่ได้, cron ไม่ส่งรายงาน
 - **โควต้า** นับเฉพาะ `type='dayoff'` — ลาป่วย/ลากิจไม่นับ; **โควต้ารายเดือน = จำนวนวันหยุดสถานีของเดือนนั้น (อาทิตย์ + นักขัตฯวันธรรมดา) คำนวณสดด้วย `station_holidays_in_month()` — ไม่ใช่เลขคงที่แล้ว** (setting `off_quota_month` เลิกใช้). เกินโควต้า = `over_quota=1` + **status pending รอหัวหน้าอนุมัติเสมอ** (ไม่ auto-approve) → เด้ง alert + คิวอนุมัติหน้าแอดมิน
-- **Engagement Score (v36)** = คะแนนรายวัน 80 + **โบนัสสม่ำเสมอ 20** — รายวันตาม `checkout_enabled`: ปิด = มา50+ตรง30, เปิด = 25/25/15/15 · วันลายังถูกตัดออกจากตัวหารรายวัน (ไม่หักคะแนนส่วนนั้น) แต่ไปลดโบนัสสม่ำเสมอ = `มา / (planned+leave)` — ลาเยอะคะแนนตก ป้องกันคน "ลาเยอะแต่ไม่สาย" ได้ 100 เท่าคนมาครบ
-- **คะแนนเท่ากันมี tiebreak** (`usort` ใน `engagement_ranking`): มามากกว่า → สายน้อยกว่า → ขาดน้อยกว่า → เข้างานเช้ากว่า (`avg_in`) — ก่อน v36 ไม่มี ทำให้อันดับคนคะแนนเท่ากันเรียงตามชื่อ (ดูมั่วมาก ห้ามเอากลับ)
+- **Engagement Score (v36)** = รายวัน 80 (`checkout_enabled` ปิด = มา50+ตรง30 / เปิด = 25/25/15/15) + **โบนัสสม่ำเสมอ 20** = `มา/(planned+leave)` — **วันลาหักคะแนนแล้ว** (ก่อน v36 ไม่หัก → ตัน 100 กันเพียบ) · `usort` มี **tiebreak**: มามากกว่า → สายน้อยกว่า → ขาดน้อยกว่า → `avg_in` เช้ากว่า **ห้ามเอาของเดิมที่เทียบแค่ score กลับ** (อันดับจะเรียงตามชื่อ) → `docs/notes/dashboard-report.md`
 - attendance/day_offs มี **UNIQUE (user_id, วันที่)** — insert ซ้ำจะ throw, เช็คก่อน insert แล้ว
 - รูปเก็บที่ `UPLOAD_DIR` (Railway = Volume `/data/uploads`) เสิร์ฟผ่าน `photo.php` เท่านั้น (ต้อง login, กัน path traversal ด้วย regex)
 - LINE report กันส่งซ้ำด้วยตาราง `line_logs` unique (type, date) — ปุ่มทดสอบในหน้าตั้งค่าใช้ `force=1`
