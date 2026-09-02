@@ -1,6 +1,6 @@
 // FireCheck service worker — cache แค่ asset คงที่ / API วิ่งตรงเสมอ
-const CACHE = 'firecheck-v35';
-const ASSETS = ['assets/app.css?v=35', 'assets/app.js?v=35', 'assets/admin.js?v=35', 'icon-192.png'];
+const CACHE = 'firecheck-v36';
+const ASSETS = ['assets/app.css?v=36', 'assets/app.js?v=36', 'assets/admin.js?v=36', 'icon-192.png'];
 // ไฟล์ยืนยันใบหน้า (~14MB) แยก cache ต่างหาก — ไม่ precache (install จะช้า/พัง)
 // และไม่ล้างตอนเด้ง version ไม่งั้นทุกรีลีสเจ้าหน้าที่ต้องโหลดใหม่ 14MB
 const FACE_CACHE = 'firecheck-face-v1';

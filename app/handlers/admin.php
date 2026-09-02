@@ -165,9 +165,12 @@ function h_admin_data(): never {
 }
 
 /**
- * Engagement Score รายคนของเดือน $ym (นับถึงวันนี้)
- * โหมดเช็คอินอย่างเดียว: มา 60 + เช้าตรงเวลา 40
- * โหมดเต็ม (เปิดเช็คเอาท์): มา 30 + ตรงเวลา 30 + ส่งรายงาน 20 + รายงานตรงเวลา 20
+ * Engagement Score รายคนของเดือน $ym (นับถึงวันนี้) — เต็ม 100 = คะแนนรายวัน 80 + โบนัสสม่ำเสมอ 20
+ * คะแนนรายวัน (คิดจากวันที่ต้องมา = ไม่รวมวันลา):
+ *   โหมดเช็คอินอย่างเดียว: มา 50 + เช้าตรงเวลา 30
+ *   โหมดเต็ม (เปิดเช็คเอาท์): มา 25 + ตรงเวลา 25 + ส่งรายงาน 15 + รายงานตรงเวลา 15
+ * โบนัสสม่ำเสมอ 20: มา / วันทำการทั้งหมดของคนนั้น (รวมวันลา) — ลาเยอะคะแนนส่วนนี้ลด
+ *   ตัวหารเป็น planned+leave ไม่ใช่วันทำการทั้งเดือน คนเข้าระบบกลางเดือนจึงไม่โดนหักฟรี
  */
 function engagement_ranking(string $ym): array {
     $today    = date('Y-m-d');
@@ -215,14 +218,16 @@ function engagement_ranking(string $ym): array {
             $isOntime ? $ontime++ : $late++;
             $sumMinIn += (int)substr($att['time_in'], 11, 2) * 60 + (int)substr($att['time_in'], 14, 2);
             if ($fullMode) {
-                $points += 30 + ($isOntime ? 30 : 0);
-                if ($att['time_out']) { $reported++; $points += 20 + ((int)$att['report_late'] ? 0 : 20); if (!(int)$att['report_late']) $reportOntime++; }
+                $points += 25 + ($isOntime ? 25 : 0);
+                if ($att['time_out']) { $reported++; $points += 15 + ((int)$att['report_late'] ? 0 : 15); if (!(int)$att['report_late']) $reportOntime++; }
             } else {
-                $points += 60 + ($isOntime ? 40 : 0);
+                $points += 50 + ($isOntime ? 30 : 0);
             }
         }
 
-        $score = $planned > 0 ? round($points / ($planned * 100) * 100, 1) : null;
+        // คะแนนรายวันเต็ม 80/วัน + โบนัสสม่ำเสมอ 20 (สัดส่วนวันที่มาจริงจากวันทำการทั้งหมดของคนนั้น)
+        $steady = ($planned + $leave) > 0 ? $present / ($planned + $leave) : 0;
+        $score  = $planned > 0 ? round($points / $planned + 20 * $steady, 1) : null;
         $avgIn = $present > 0 ? sprintf('%02d:%02d', intdiv(intdiv($sumMinIn, $present), 60), intdiv($sumMinIn, $present) % 60) : null;
 
         $out[] = [
@@ -232,7 +237,10 @@ function engagement_ranking(string $ym): array {
             'avg_in' => $avgIn, 'score' => $score,
         ];
     }
-    usort($out, fn($a, $b) => ($b['score'] ?? -1) <=> ($a['score'] ?? -1));
+    // คะแนนเท่ากันตัดสินด้วย: มามากกว่า → สายน้อยกว่า → ขาดน้อยกว่า → เข้างานเช้ากว่า
+    usort($out, fn($a, $b) =>
+        [$b['score'] ?? -1, $b['present'], $a['late'], $a['absent'], $a['avg_in'] ?? '99:99']
+        <=> [$a['score'] ?? -1, $a['present'], $b['late'], $b['absent'], $b['avg_in'] ?? '99:99']);
     return $out;
 }
 

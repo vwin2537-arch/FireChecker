@@ -159,7 +159,7 @@ const Admin = {
       ${this.nightTonightHtml(d)}
       ${this.nightMonthHtml(d)}
       <div class="card">
-        <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา30+ตรง30+รายงาน20+ตรง20' : 'มา 60 + ตรงเวลา 40 คะแนน/วัน'}</span></h3>
+        <h3>🏆 อันดับความขยันเดือนนี้ <span class="h-right">${d.score_mode === 'full' ? 'มา25+ตรง25+รายงาน15+ตรง15 +สม่ำเสมอ20' : 'มา 50 + ตรงเวลา 30 /วัน + สม่ำเสมอ 20'}</span></h3>
         <button class="btn btn-primary btn-block" style="margin-bottom:12px" onclick="Admin.openReport()">📄 ออกรายงานรายเดือน (ปริ้น / บันทึกรูปส่ง LINE)</button>
         ${this.rankingHtml(d.ranking)}
       </div>
@@ -340,7 +340,7 @@ const Admin = {
           <td>${r.present}</td><td>${r.ontime}</td><td>${r.late}</td><td>${r.leave}</td><td>${r.absent}</td>
         </tr>`).join('')}</tbody>
       </table>
-      <div class="rp-foot">ออกรายงานเมื่อ ${d.generated_at} น. · จัดอันดับจากคะแนนการมาทำงานและการตรงต่อเวลา · ระบบเช็คชื่อ FireCheck</div>`;
+      <div class="rp-foot">ออกรายงานเมื่อ ${d.generated_at} น. · จัดอันดับจากการมาทำงาน การตรงต่อเวลา และความสม่ำเสมอตลอดเดือน · ระบบเช็คชื่อ FireCheck</div>`;
   },
 
   async reportSave() {
