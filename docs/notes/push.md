@@ -4,6 +4,8 @@
 
 ทำให้ FireCheck เด้งแจ้งเตือนขึ้นหน้าจอเหมือนแอปเนทีฟ **โดยไม่พึ่ง Firebase และไม่ลง composer** — ใช้ VAPID (RFC 8292) + payload เข้ารหัส aes128gcm (RFC 8291/8188) เขียนด้วย `openssl` + `hash_hkdf` ที่มากับ PHP
 
+> 🧰 **จะทำแบบนี้ในโปรเจคอื่น → ใช้ skill `web-push-pwa`** (`~/.claude/skills/web-push-pwa/`) — มีโค้ดแกน + ตัวตรวจ crypto + กับดักทั้งหมดพร้อมใช้
+
 > เกร็ด: บน Android/Chrome ตัว Web Push มาตรฐาน**วิ่งผ่านเซิร์ฟเวอร์ของ Google อยู่แล้ว** (endpoint เป็น `fcm.googleapis.com`) เลยได้ผลเหมือนใช้ FCM โดยไม่ต้องตั้ง Firebase project
 
 ## ⚠️ กับดักใหญ่สุด — iPhone
