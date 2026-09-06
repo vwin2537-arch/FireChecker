@@ -1077,6 +1077,7 @@ const App = {
         ${Push.rowHtml()}
       </div>
       <button class="btn btn-danger-ghost btn-block" onclick="App.logout()">ออกจากระบบ</button>`;
+    Push.paintRow();
   },
 
   async changePass() {
@@ -1102,6 +1103,20 @@ const Push = {
   vapid: null,      // กุญแจสาธารณะจาก server (ว่าง = หัวหน้ายังไม่ได้สร้าง)
   enabled: false,   // สวิตช์รวมฝั่ง server
   dev: null,        // ข้อมูลเครื่องที่ตรวจได้ (cache ต่อ session)
+  subscribed: null, // เครื่องนี้ subscribe อยู่จริงไหม (null = ยังไม่ได้เช็ค)
+
+  /**
+   * เช็คว่าเครื่องนี้ยัง subscribe อยู่ไหม
+   * ⚠️ ห้ามใช้ Notification.permission ตัดสินว่า "เปิดอยู่" — กดปิดแล้วสิทธิ์ยังเป็น granted เหมือนเดิม
+   *    (เคยพลาดมาแล้ว: ปุ่มค้างเป็น "ปิด" ตลอด กดปิดเท่าไหร่ก็ไม่เปลี่ยน)
+   */
+  async checkSub() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      this.subscribed = !!(await reg.pushManager.getSubscription());
+    } catch (_) { this.subscribed = false; }
+    return this.subscribed;
+  },
 
   /** รหัสประจำเครื่อง สุ่มครั้งเดียวเก็บใน localStorage (ล้าง = นับเป็นเครื่องใหม่ ไม่เป็นไร) */
   deviceKey() {
@@ -1148,8 +1163,14 @@ const Push = {
       this.vapid = d.vapid_public || '';
       this.enabled = !!d.push_enabled;
       // เคยกดอนุญาตไว้แล้ว → ต่ออายุ subscription เงียบๆ (endpoint หมดอายุเองได้)
-      if (this.enabled && this.vapid && this.dev.push_perm === 'granted') this.sync().catch(() => {});
+      // ต่ออายุ subscription เงียบๆ — แต่ถ้าผู้ใช้กด "ปิด" ไว้เอง ห้าม subscribe กลับให้เด็ดขาด
+      // (ไม่งั้นปิดแล้วเปิดแอปใหม่มันกลับมาเปิดเอง = ปิดไม่ได้จริง)
+      if (this.enabled && this.vapid && this.dev.push_perm === 'granted' && !localStorage.getItem('fc_push_off')) {
+        await this.sync().catch(() => {});
+      }
     } catch (_) {}
+    await this.checkSub();
+    this.paintRow();      // หน้าโปรไฟล์อาจวาดไปแล้วก่อน checkSub เสร็จ
   },
 
   b64ToU8(b64) {
@@ -1206,25 +1227,31 @@ const Push = {
       return toast(perm === 'denied' ? 'ถูกปฏิเสธ — ต้องไปเปิดในตั้งค่าเบราว์เซอร์' : 'ยังไม่ได้อนุญาต', 'error');
     }
     try { await this.sync(true); } catch (e) { return toast('เปิดแจ้งเตือนไม่สำเร็จ: ' + e.message, 'error'); }
+    localStorage.removeItem('fc_push_off');
+    this.subscribed = true;
     App.api('device_report', this.info(), { soft: true }).catch(() => {});
     this.refreshUI();
     toast('เปิดแจ้งเตือนแล้ว 🔔 — น่าจะมีข้อความเด้งขึ้นมาทันที');
   },
 
   async disable() {
+    localStorage.setItem('fc_push_off', '1');   // จำไว้ว่าผู้ใช้สั่งปิดเอง (กัน report() เปิดกลับ)
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
       await App.api('push_unsubscribe', { endpoint: sub.endpoint }, { soft: true });
       await sub.unsubscribe();
     }
+    this.subscribed = false;
     this.refreshUI();
     toast('ปิดแจ้งเตือนแล้ว');
   },
 
   /** วาดหน้าใหม่หลังเปิด/ปิด — แอดมินอยู่หน้าตั้งค่า (ห้ามเรียก vProfile ของเจ้าหน้าที่ทับ) */
   refreshUI() {
-    App.user?.role === 'admin' ? Admin.pushRefresh() : App.vProfile();
+    if (App.user?.role === 'admin') return Admin.pushRefresh();
+    App.vProfile();
+    this.paintRow();
   },
 
   iosGuide() {
@@ -1241,8 +1268,12 @@ const Push = {
     });
   },
 
-  /** แถวตั้งค่าแจ้งเตือนในหน้าโปรไฟล์ */
+  /** แถวตั้งค่าแจ้งเตือนในหน้าโปรไฟล์ — ห่อ id ไว้ให้ paintRow() วาดซ้ำได้หลังเช็คสถานะจริงเสร็จ */
   rowHtml() {
+    return `<div id="pushRow">${this.rowInner()}</div>`;
+  },
+
+  rowInner() {
     const d = this.dev || (this.dev = this.info());
     const row = (sub, btn) => `<div class="setting-row"><div class="sr-main"><div class="sr-title">🔔 แจ้งเตือนเข้ามือถือ</div>
       <div class="sr-sub">${sub}</div></div>${btn}</div>`;
@@ -1250,9 +1281,18 @@ const Push = {
     if (d.platform === 'ios' && !d.standalone) {
       return row('iPhone ต้องเพิ่มลงหน้าจอโฮมก่อน', '<button class="btn btn-ghost btn-sm" onclick="Push.iosGuide()">วิธีทำ</button>');
     }
-    if (d.push_perm === 'granted') return row('เปิดอยู่ — ประกาศและผลอนุมัติลาจะเด้งขึ้นหน้าจอ', '<button class="btn btn-ghost btn-sm" onclick="Push.disable()">ปิด</button>');
-    if (d.push_perm === 'denied')  return row('ถูกบล็อกไว้ — เปิดใหม่ได้ที่ตั้งค่าเบราว์เซอร์', '');
+    // ตัดสินจาก "มี subscription อยู่จริงไหม" ไม่ใช่จากสิทธิ์เบราว์เซอร์
+    if (this.subscribed) return row('เปิดอยู่ — ประกาศและผลอนุมัติลาจะเด้งขึ้นหน้าจอ', '<button class="btn btn-ghost btn-sm" onclick="Push.disable()">ปิด</button>');
+    if (d.push_perm === 'denied') return row('ถูกบล็อกไว้ — เปิดใหม่ได้ที่ตั้งค่าเบราว์เซอร์ของเครื่อง', '');
     return row('เปิดไว้จะได้รู้ทันทีเมื่อมีประกาศหรือผลอนุมัติลา', '<button class="btn btn-primary btn-sm" onclick="Push.enable()">เปิด</button>');
+  },
+
+  /** เช็คสถานะจริงแล้ววาดแถวใหม่ (แถวถูกวาดครั้งแรกแบบ sync ก่อนรู้ผล) */
+  async paintRow() {
+    const el = byId('pushRow');
+    if (!el) return;
+    if (this.subscribed === null) await this.checkSub();
+    el.innerHTML = this.rowInner();
   },
 };
 
