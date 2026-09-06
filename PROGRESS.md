@@ -2,11 +2,11 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 6 ก.ย. 2026 — **แจ้งเตือนเข้ามือถือ Web Push (v37) เขียนเสร็จ + เทสต์ผ่าน · ยังไม่ deploy**
+อัปเดตล่าสุด: 6 ก.ย. 2026 — **แจ้งเตือนเข้ามือถือ Web Push (v37) deploy แล้ว** (commit `774f463`, `railway up` — live ยืนยัน `?v=37` ทั้ง 3 asset + sw.js `firecheck-v37`, `FACE_CACHE` ไม่ถูกแตะ · deploy log สะอาด PHP 8.3.33 · endpoint ใหม่ตอบ 401/403 ถูกต้อง · content-type เป็น json ไม่มี warning รั่ว) — **สวิตช์ยังปิด รอพี่วินกดสร้างกุญแจ**
 อัปเดตก่อนหน้า: 2 ก.ย. 2026 — **แก้สูตร Engagement Score (v36) deploy แล้ว** (commit `367b093`, `railway up` — live ยืนยัน `?v=36` ทั้ง 3 asset + sw.js `firecheck-v36`, `FACE_CACHE` ไม่ถูกแตะ)
 อัปเดตก่อนหน้า: 26 ส.ค. 2026 — **ประวัติการฝึกอบรม (v35) deploy แล้ว** (commit `eb570cc`) → รายละเอียด `PROGRESS_ARCHIVE.md` + `docs/notes/training.md`
 
-### v37 แจ้งเตือนเข้ามือถือ Web Push + เก็บข้อมูลอุปกรณ์ (6 ก.ย. 2026) — ⏳ รอ deploy
+### v37 แจ้งเตือนเข้ามือถือ Web Push + เก็บข้อมูลอุปกรณ์ (6 ก.ย. 2026) — ✅ deploy แล้ว
 พี่วินถามว่าเพิ่ม push แบบแอปเนทีฟได้ไหม → ได้ และ**ไม่ต้องพึ่ง Firebase/composer เลย** เขียน VAPID + aes128gcm เองด้วย openssl+hash_hkdf ที่มากับ PHP (บน Android push มาตรฐานวิ่งผ่านเซิร์ฟเวอร์ Google อยู่แล้ว = ได้ผลเท่า FCM)
 
 **สิ่งที่เด้ง** (พี่วินเลือก): 📢 ประกาศ · ✅❌ ผลอนุมัติลา · ⏰ เตือนคนยังไม่เช็คชื่อ (cron 08:00) · 🔔 หัวหน้าได้ push เมื่อมีคนขอลารออนุมัติ — เสียบที่ `notify_push`/`notify_broadcast` จุดเดียว
@@ -18,7 +18,8 @@
 **เทสต์จริงบน Chrome (6 ก.ย. 2026):** เครื่องพี่วินเคยอนุญาตแจ้งเตือนให้ 127.0.0.1 ไว้แล้ว เลยได้ subscription จริงกับ `fcm.googleapis.com` → กด "ส่งทดสอบ" แล้ว **Google รับ (2xx) → Chrome ถอดรหัสได้ → Service Worker เด้ง notification ออกมาจริง** ตรวจด้วย `reg.getNotifications()` ได้ title/body/icon/tag/url ครบถูกต้อง (นี่คือการยืนยันว่า VAPID + การเข้ารหัสผ่านการตรวจของ Google เอง) · ยืนยัน `?v=37` ทั้ง 3 asset · cache เป็น `firecheck-v37` และ **`firecheck-face-v1` ไม่ถูกล้าง** · ล้าง subscription/กุญแจทดสอบออกจาก DB dev แล้ว
 **บั๊กที่เจอตอน review ก่อนเทสต์:** `Push.enable/disable` เรียก `App.vProfile()` ตรงๆ → ถ้าแอดมินกดปุ่มในหน้าตั้งค่า **หน้าตั้งค่าจะถูกการ์ดโปรไฟล์เจ้าหน้าที่ทับทั้งหน้า** แก้เป็น `refreshUI()` แยกตาม role แล้ว (ยืนยันในเบราว์เซอร์ว่าหน้าไม่โดนทับ)
 
-**เหลือทำ:** deploy (`railway up`) → กดสร้างกุญแจ → เปิดสวิตช์ → **ทดสอบบน iPhone จริง** (localhost ไม่ใช่ secure context ทดสอบ iOS ไม่ได้ — Android/เดสก์ท็อปพิสูจน์แล้ว) → ตั้ง cron `cron_push_remind` 08:00 → ดูตารางอุปกรณ์ว่าใครต้องไปกด "เพิ่มลงหน้าจอโฮม"
+**เหลือทำ (พี่วินกดเอง):** เข้าหน้าตั้งค่า → กดสร้างกุญแจ → เปิดสวิตช์ → **ทดสอบบน iPhone จริง** (localhost ไม่ใช่ secure context ทดสอบ iOS ไม่ได้ — Android/เดสก์ท็อปพิสูจน์แล้ว) → ตั้ง cron `cron_push_remind` 08:00 → ดูตารางอุปกรณ์ว่าใครต้องไปกด "เพิ่มลงหน้าจอโฮม"
+**⚠️ ยังไม่ได้พิสูจน์:** เครื่องนี้ไม่มี docker เลยเช็คไม่ได้ว่า image `php:8.3-apache` มี openssl EC ครบไหม — **ปุ่ม "สร้างกุญแจแจ้งเตือน" ครั้งแรกบน prod คือตัวพิสูจน์** (ถ้าไม่มีจะขึ้น error ไทยชัดทันที ไม่พังเงียบ)
 **Technical → `docs/notes/push.md`**
 
 ### v36 แก้สูตรคะแนนความขยัน + tiebreak (2 ก.ย. 2026)
