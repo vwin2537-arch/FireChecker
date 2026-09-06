@@ -197,11 +197,14 @@ function h_cron_push_remind(): never {
 
     if (!$ids) ok(['sent' => 0, 'message' => 'ทุกคนเช็คชื่อแล้ว / ไม่มีคนต้องเตือน']);
 
-    $cut = setting('late_cutoff', '08:15');
-    $r = push_to_users(array_map('intval', $ids),
-        '⏰ ยังไม่ได้เช็คชื่อ',
-        "อีกไม่นานจะถึง {$cut} น. แล้ว — เปิดแอปเช็คชื่อเลยนะครับ",
-        './', 'remind');
+    // นาทีที่เหลือคำนวณสดจากเวลาที่ยิงจริง (cron อาจไม่ตรงกับ push_remind_time เป๊ะ)
+    // ยิงหลังเลยเวลาสายไปแล้ว (เช่นกดทดสอบตอนบ่าย) = เปลี่ยนเป็นข้อความเร่ง ไม่ให้โผล่นาทีติดลบ
+    $cut  = setting('late_cutoff', '08:15');
+    $left = (int)ceil((strtotime(date('Y-m-d') . ' ' . $cut) - time()) / 60);
+    $body = $left > 0
+        ? "เหลืออีก {$left} นาที จะถึง {$cut} น. แล้ว — เปิดแอปเช็คชื่อเลยนะครับ"
+        : "เลยเวลา {$cut} น. แล้ว — เปิดแอปเช็คชื่อด่วนนะครับ";
+    $r = push_to_users(array_map('intval', $ids), '⏰ ยังไม่ได้เช็คชื่อ', $body, './', 'remind');
 
     if (!$force) {
         db()->prepare('UPDATE push_logs SET sent_count = ? WHERE log_type = ? AND log_date = ?')

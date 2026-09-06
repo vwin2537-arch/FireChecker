@@ -30,7 +30,7 @@
 |------|--------|-----------|
 | 📢 ประกาศจากหัวหน้า | เจ้าหน้าที่ active ทุกคน | `notify_broadcast()` (เสียบใน notify.php) |
 | ✅❌ อนุมัติ/ไม่อนุมัติลา | เจ้าตัว | `notify_push()` (เสียบใน notify.php) |
-| ⏰ ยังไม่เช็คชื่อ | คนที่ยังไม่เช็ค | `h_cron_push_remind` |
+| ⏰ ยังไม่เช็คชื่อ (บอกนาทีที่เหลือถึง `late_cutoff` สดๆ · เลยเวลาแล้วเปลี่ยนเป็นข้อความเร่ง) | คนที่ยังไม่เช็ค | `h_cron_push_remind` |
 | 🔔 มีคนขอลารออนุมัติ | แอดมินทุกคน | `h_dayoff_add` (push อย่างเดียว ไม่เขียนกล่องข้อความ) |
 
 **เสียบที่ `notify_push`/`notify_broadcast` จุดเดียว** — ได้กฎ "ห้าม hook เข้า `leave_auto_approve()`" ติดมาฟรี และข้อความในกล่องกับที่เด้งตรงกันเสมอ ถ้าจะเพิ่มเหตุใหม่ ให้เรียก `notify_push` ไม่ใช่เรียก `push_to_user` ตรงๆ (ยกเว้นกรณีที่ตั้งใจไม่เก็บเข้ากล่อง เช่น push หาหัวหน้า)
@@ -75,6 +75,28 @@ GET /api.php?action=cron_push_remind&key=<CRON_SECRET>     ตั้งเวล
 ```
 ข้ามให้อัตโนมัติ: วันหยุดสถานี · วันที่ทั้งสถานีออกนอกพื้นที่ · คนที่เช็คแล้ว · คนที่ลา · คนที่เมื่อคืนลงเวรกลางคืน · คนไปราชการแบบไม่นับสาย
 `force=1` ข้ามการกันส่งซ้ำ (ใช้ตอนทดสอบ)
+
+**⚠️ `push_remind_time` เป็นแค่ป้ายบอกเวลา ไม่ได้สั่งให้ยิง** — โค้ดไม่ได้เอาค่านี้ไปเทียบเวลาเลย ตัวกำหนดเวลาจริงคือ cron ภายนอก (GAS) ถ้าเปลี่ยนเวลาต้องแก้ทั้งสองที่
+
+**⚠️ GAS daily trigger ไม่แม่นนาที (±15 นาที)** — `atHour(8).nearMinute(10)` อาจไปยิงจริง 08:20 = เลยเวลาสาย เตือนไม่ทัน ต้องใช้ **trigger ครั้งเดียวแบบ `.at()`** (แม่น ~1 นาที) สร้างสดทุกเช้า:
+
+```js
+// GAS — ตั้ง trigger รายวันให้ scheduleRemind() ตอน ~07:00 (คลาดได้ไม่เป็นไร) มันจะไปตั้งตัวจริงที่ 08:10 ให้เอง
+const REMIND_HOUR = 8, REMIND_MIN = 10;
+const URL = 'https://sakpra-erawan.up.railway.app/api.php?action=cron_push_remind&key=' + CRON_SECRET;
+
+function scheduleRemind() {                       // trigger รายวัน ~07:00
+  const t = new Date(); t.setHours(REMIND_HOUR, REMIND_MIN, 0, 0);
+  if (t > new Date()) ScriptApp.newTrigger('remindCheckin').timeBased().at(t).create();
+}
+function remindCheckin() {                        // ยิงจริง 08:10 แล้วเก็บ trigger ตัวเองทิ้ง
+  UrlFetchApp.fetch(URL, { muteHttpExceptions: true });
+  ScriptApp.getProjectTriggers()
+    .filter(tr => tr.getHandlerFunction() === 'remindCheckin')
+    .forEach(tr => ScriptApp.deleteTrigger(tr));
+}
+```
+ยิงซ้ำไม่เป็นไร — `push_logs` unique (log_type, log_date) กันไว้แล้ว (ยกเว้นใส่ `force=1`)
 
 ## วิธีตรวจว่า crypto ยังถูก (ถ้าไปแก้ app/push.php)
 
