@@ -8,6 +8,7 @@
 function notify_push(int $userId, string $type, string $title, string $body = '', ?int $refId = null): void {
     db()->prepare('INSERT INTO notifications (user_id, type, title, body, ref_id) VALUES (?, ?, ?, ?, ?)')
         ->execute([$userId, $type, mb_substr($title, 0, 150), $body, $refId]);
+    push_to_user($userId, $title, $body);   // เด้งขึ้นหน้าจอด้วย (เงียบเองถ้าปิดสวิตช์/ยังไม่ subscribe)
 }
 
 /** ประกาศถึงเจ้าหน้าที่ active ทุกคน (broadcast = fan-out หลายแถว) → คืนจำนวนคนที่ส่งถึง */
@@ -16,6 +17,7 @@ function notify_broadcast(string $type, string $title, string $body = ''): int {
     $ins = db()->prepare('INSERT INTO notifications (user_id, type, title, body) VALUES (?, ?, ?, ?)');
     $title = mb_substr($title, 0, 150);
     foreach ($ids as $id) $ins->execute([(int)$id, $type, $title, $body]);
+    push_to_users(array_map('intval', $ids), $title, $body);   // ยิง push ทีเดียวทุกคน (ไม่วนเรียกทีละคน)
     return count($ids);
 }
 

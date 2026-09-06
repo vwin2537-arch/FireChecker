@@ -1823,6 +1823,8 @@ const Admin = {
         ${T('sunday_off', '🌴 วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด')}
         ${T('sunday_work_enabled', '📅 เปิดเช็คชื่อวันอาทิตย์', 'ให้คนมาทำงาน/เข้าเวรวันหยุด กดเช็คชื่อได้ (ไม่นับสาย)')}
         ${T('night_shift_enabled', '🌙 เวรกลางคืน (เฝ้าสำนักงาน)', 'เฉพาะ จนท.ชาย — ยกเว้นสายเช้าถัดมาให้อัตโนมัติ')}
+        ${T('push_enabled', '🔔 แจ้งเตือนเข้ามือถือ (Push)', 'ประกาศ/ผลอนุมัติลา เด้งขึ้นหน้าจอเหมือนแอปจริง — ต้องสร้างกุญแจในการ์ด \'🔔 แจ้งเตือนเข้ามือถือ\' ด้านล่างก่อน')}
+        ${T('push_remind_enabled', '⏰ เตือนคนที่ยังไม่เช็คชื่อ', 'ยิงเตือนก่อนถึงเวลาสาย เฉพาะคนที่ยังไม่เช็คและไม่ได้ลา (ทำงานเมื่อเปิดสวิตช์ Push ด้านบนแล้ว)')}
         ${T('face_verify_enabled', '🙂 ยืนยันใบหน้าตอนเช็คชื่อ', 'สแกนหน้าสดแทนการเก็บรูป — ไม่ผ่าน 3 ครั้งยังเช็คชื่อได้ แต่ติดหมายเหตุให้หัวหน้าเห็น (ต้องลงทะเบียนใบหน้าที่แท็บเจ้าหน้าที่ก่อน)')}
       </div>
       <div class="card"><h3>🙂 เกณฑ์ยืนยันใบหน้า</h3>
@@ -1839,6 +1841,7 @@ const Admin = {
           ${I('checkin_open', 'เปิดเช็คอิน (น.)', 'time')}${I('late_cutoff', 'หลังเวลานี้ = สาย', 'time')}
           ${I('checkout_open', 'เปิดส่งรายงาน', 'time')}${I('report_cutoff', 'หลังเวลานี้ = รายงานช้า', 'time')}
           ${I('night_checkin_open', 'เปิดลงเวรกลางคืน', 'time')}
+          ${I('push_remind_time', 'ยิงเตือนยังไม่เช็คชื่อ', 'time')}
         </div>
       </div>
       <div class="card"><h3>📍 พิกัดสถานี</h3>
@@ -1887,6 +1890,16 @@ const Admin = {
           <div class="sr-sub">ควรเปลี่ยนทันทีหลัง deploy ครั้งแรก</div></div>
           <button class="btn btn-ghost btn-sm" onclick="App.changePass()">เปลี่ยน</button></div>
       </div>
+      <div class="card"><h3>🔔 แจ้งเตือนเข้ามือถือ (Push)</h3>
+        <div id="pushStatus" class="tiny">กำลังตรวจสถานะ...</div>
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="Admin.pushKeyGen()">🔑 สร้างกุญแจแจ้งเตือน</button>
+          <button class="btn btn-ghost btn-sm" onclick="Push.enable()">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>
+          <button class="btn btn-ghost btn-sm" onclick="Admin.pushTest()">📨 ส่งทดสอบหาเครื่องนี้</button>
+        </div>
+        <div id="deviceList" style="margin-top:14px">กำลังโหลดอุปกรณ์...</div>
+        <div class="tiny" style="margin-top:8px">เตือนอัตโนมัติ: ตั้ง cron เรียก <code>/api.php?action=cron_push_remind&amp;key=CRON_SECRET</code> ตามเวลาที่ตั้งไว้</div>
+      </div>
       <div class="card"><h3>💬 LINE Bot</h3>
         ${I('line_token', 'Channel Access Token')}${I('line_group_id', 'Group ID')}
         <div class="row" style="gap:8px">
@@ -1907,9 +1920,72 @@ const Admin = {
       </div>
       <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
     this.gdriveRefreshStatus();
+    this.pushRefresh();
     this.holidayRefresh();
     this.offsiteRefresh();
     this.offsiteUserRefresh();
+  },
+
+  // ---------- แจ้งเตือน Push (v37) ----------
+  /** สถานะกุญแจ + ตารางอุปกรณ์ของเจ้าหน้าที่ (ใครพร้อมรับแจ้งเตือน ใครต้องไปติดตั้งก่อน) */
+  async pushRefresh() {
+    const st = byId('pushStatus');
+    if (!st) return;
+    if (Push.vapid === null) await Push.report();   // ยังโหลดไม่เสร็จ (เปิดหน้าเร็วกว่า boot)
+    const hasKey = !!Push.vapid;
+    st.innerHTML = hasKey
+      ? '<span style="color:var(--ok)">✅ สร้างกุญแจแล้ว</span> — เจ้าหน้าที่กดเปิดแจ้งเตือนได้จากหน้าโปรไฟล์ในแอป'
+      : '<span style="color:var(--absent)">⚠️ ยังไม่ได้สร้างกุญแจ</span> — กดปุ่ม "สร้างกุญแจแจ้งเตือน" ก่อน แล้วค่อยเปิดสวิตช์ด้านบน';
+
+    const el = byId('deviceList');
+    if (!el) return;
+    const d = await App.api('device_summary', {}, { soft: true });
+    if (!d.ok) { el.innerHTML = '<div class="tiny">โหลดข้อมูลอุปกรณ์ไม่สำเร็จ</div>'; return; }
+    const s = d.summary;
+    const chip = (n, label, cls) => `<span class="chip ${cls}" style="margin:0 6px 6px 0">${label} ${n}</span>`;
+    const ico = { ios: '', android: '🤖', desktop: '💻', other: '📱' };
+    // สถานะรายเครื่อง: subscribe แล้ว = พร้อม / iOS ที่ยังไม่ติดตั้ง = ต้องติดตั้งก่อนถึงจะได้ push
+    const stat = r => +r.sub_count ? ['chip-ok', 'พร้อม']
+                    : (r.platform === 'ios' && !+r.standalone) ? ['chip-late', 'ต้องติดตั้ง']
+                    : ['chip-plain', 'ยังไม่เปิด'];
+    el.innerHTML = `
+      <div style="margin-bottom:8px">
+        ${chip(s.ready, 'พร้อมรับแจ้งเตือน', 'chip-ok')}
+        ${chip(s.ios_not_installed, 'iPhone ยังไม่ติดตั้ง', 'chip-late')}
+        ${chip(s.no_permission, 'ยังไม่กดอนุญาต', 'chip-plain')}
+        ${chip(s.unsupported, 'ไม่รองรับ', 'chip-absent')}
+      </div>
+      <div class="tiny" style="margin-bottom:8px">เจ้าหน้าที่เปิดแอปแล้ว <b>${s.staff_seen}</b> จาก <b>${s.staff_total}</b> คน (คนที่ยังไม่เปิดแอปเลยจะยังไม่ขึ้นในตารางนี้)</div>
+      ${d.items.length ? d.items.map(r => `
+        <div class="list-row">
+          <div class="lr-main"><div class="lr-title">${ico[r.platform] || '📱'} ${esc(r.name)}</div>
+            <div class="lr-sub">${esc(r.browser)}${r.os_version ? ' ' + esc(r.os_version) : ''}
+              ${+r.standalone ? ' · ติดตั้งเป็นแอปแล้ว' : ' · เปิดในเบราว์เซอร์'}
+              · ล่าสุด ${String(r.last_seen).substr(5, 11)}</div></div>
+          <span class="chip ${stat(r)[0]}">${stat(r)[1]}</span>
+        </div>`).join('') : '<div class="tiny" style="color:var(--muted)">ยังไม่มีเจ้าหน้าที่เปิดแอปหลังอัปเดตเวอร์ชันนี้</div>'}`;
+  },
+
+  async pushKeyGen() {
+    const had = !!Push.vapid;
+    if (had) {
+      const c = await Swal.fire({
+        title: 'สร้างกุญแจใหม่?', icon: 'warning',
+        html: 'เจ้าหน้าที่ที่เปิดแจ้งเตือนไว้แล้ว<b>ทุกคนจะต้องกดเปิดใหม่</b> — ทำเฉพาะตอนกุญแจมีปัญหาจริงๆ นะครับ',
+        showCancelButton: true, confirmButtonText: 'สร้างใหม่', cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#dc2626',
+      });
+      if (!c.isConfirmed) return;
+    }
+    const d = await App.api('push_vapid_gen', had ? { force: 1 } : {});
+    Push.vapid = d.vapid_public;
+    toast(d.message);
+    this.pushRefresh();
+  },
+
+  async pushTest() {
+    const d = await App.api('push_test', {}, { soft: true });
+    d.ok ? toast(d.message) : toast(d.error, 'error');
   },
 
   // วันหยุดนักขัตฤกษ์ — โหลด/แสดง list (handler แยกจาก settings_save)

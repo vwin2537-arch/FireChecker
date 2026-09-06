@@ -453,6 +453,7 @@ const EDITABLE_SETTINGS = [
     'night_shift_enabled', 'night_checkin_open', 'sunday_work_enabled',
     'face_verify_enabled', 'face_match_threshold', 'face_max_attempts', 'face_min_desc',
     'vaccine_warn_days',
+    'push_enabled', 'push_remind_enabled', 'push_remind_time',
     'line_token', 'line_group_id',
     'gdrive_client_id', 'gdrive_client_secret',
 ];
@@ -466,10 +467,10 @@ function h_settings_get(): never {
 function h_settings_save(): never {
     require_admin();
     $in = (array)param('settings', []);
-    $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff', 'night_checkin_open'];
+    $timeKeys = ['checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff', 'night_checkin_open', 'push_remind_time'];
     $numKeys  = ['gps_radius_m'];
     $boolKeys = ['gps_enforce', 'selfie_required', 'checkout_enabled', 'sunday_off', 'night_shift_enabled',
-                 'sunday_work_enabled', 'face_verify_enabled'];
+                 'sunday_work_enabled', 'face_verify_enabled', 'push_enabled', 'push_remind_enabled'];
 
     foreach ($in as $k => $v) {
         if (!in_array($k, EDITABLE_SETTINGS, true)) continue;

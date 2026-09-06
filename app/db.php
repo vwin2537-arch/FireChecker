@@ -142,6 +142,12 @@ function ensure_admin(): void {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
+    try {
+        db()->query('SELECT 1 FROM user_devices LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
     seed_public_holidays();   // ใส่วันหยุดนักขัตฤกษ์ที่เหลือของปีให้ครั้งแรก (ตารางว่าง)
     seed_fitness_presets();   // ใส่ท่าทดสอบตั้งต้น (WCT + ดันพื้น) ครั้งแรกที่ตารางว่าง
     seed_vaccine_presets();   // ใส่ชนิดวัคซีนตั้งต้นครั้งแรกที่ตารางว่าง

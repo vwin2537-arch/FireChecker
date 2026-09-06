@@ -46,6 +46,7 @@ Web App (PWA) เช็คชื่อเข้างานด้วย GPS + �
 ตั้ง 2 งานยิง URL:
 - `https://<โดเมนแอป>/api.php?action=cron_report&type=morning&key=<CRON_SECRET>` เวลา 08:30
 - `https://<โดเมนแอป>/api.php?action=cron_report&type=evening&key=<CRON_SECRET>` เวลา 17:30
+- `https://<โดเมนแอป>/api.php?action=cron_push_remind&key=<CRON_SECRET>` เวลา 08:00 (เตือนคนที่ยังไม่เช็คชื่อ — ตั้งเวลาให้ตรงกับ `push_remind_time` ในหน้าตั้งค่า)
 
 ### ตั้งค่า LINE Bot
 

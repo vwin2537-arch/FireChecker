@@ -35,6 +35,7 @@ const App = {
       const d = await this.api('me', {}, { soft: true, noKick: true });
       if (!d.ok) { this.setToken(null); return this.renderAuth(); }
       this.user = d.user;
+      Push.report();   // รายงานว่าเปิดจากเครื่องอะไร + ต่ออายุ subscription เงียบๆ (ไม่ await ไม่หน่วงหน้าแอป)
       this.user.role === 'admin' ? Admin.enter() : this.enterStaff();
     } catch { this.renderAuth(); }
   },
@@ -82,6 +83,7 @@ const App = {
       try {
         const d = await this.api('login', { username: byId('fUser').value.trim(), password: byId('fPass').value });
         this.setToken(d.token); this.user = d.user;
+        Push.report();
         d.user.role === 'admin' ? Admin.enter() : this.enterStaff();
       } catch { btn.disabled = false; }
     };
@@ -1072,6 +1074,7 @@ const App = {
           <button class="btn btn-ghost btn-sm" onclick="App.changePass()">เปลี่ยน</button></div>
         <div class="setting-row"><div class="sr-main"><div class="sr-title">📲 ติดตั้งเป็นแอป</div>
           <div class="sr-sub">เปิดเมนูเบราว์เซอร์ → "เพิ่มไปยังหน้าจอโฮม"</div></div></div>
+        ${Push.rowHtml()}
       </div>
       <button class="btn btn-danger-ghost btn-block" onclick="App.logout()">ออกจากระบบ</button>`;
   },
@@ -1087,6 +1090,164 @@ const App = {
     if (!f) return;
     const d = await this.api('change_password', f);
     toast(d.message);
+  },
+};
+
+// =====================================================
+// แจ้งเตือน Web Push (v37)
+// ⚠️ iPhone ได้แจ้งเตือนเฉพาะตอนที่ "เพิ่มลงหน้าจอโฮม" แล้วเท่านั้น (iOS 16.4+) — เปิดใน Safari ธรรมดาไม่มีทางได้
+// ⚠️ Notification.requestPermission() ต้องเรียกในจังหวะกดสด ห้ามมี await คั่นก่อน (WebKit เหมือนกรณีเปิดกล้อง → PROGRESS lesson 10)
+// =====================================================
+const Push = {
+  vapid: null,      // กุญแจสาธารณะจาก server (ว่าง = หัวหน้ายังไม่ได้สร้าง)
+  enabled: false,   // สวิตช์รวมฝั่ง server
+  dev: null,        // ข้อมูลเครื่องที่ตรวจได้ (cache ต่อ session)
+
+  /** รหัสประจำเครื่อง สุ่มครั้งเดียวเก็บใน localStorage (ล้าง = นับเป็นเครื่องใหม่ ไม่เป็นไร) */
+  deviceKey() {
+    let k = localStorage.getItem('fc_device');
+    if (!k || !/^[a-f0-9]{32}$/.test(k)) {
+      k = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem('fc_device', k);
+    }
+    return k;
+  },
+
+  /** ตรวจว่าเครื่องนี้คืออะไร รองรับ push ไหม ติดตั้งเป็นแอปแล้วหรือยัง */
+  info() {
+    const ua = navigator.userAgent;
+    // iPadOS ใหม่รายงานตัวเป็น Mac — แยกด้วย maxTouchPoints
+    const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    let browser = 'other';
+    if (/Line\//i.test(ua)) browser = 'line';
+    else if (/EdgA?\//.test(ua)) browser = 'edge';
+    else if (/SamsungBrowser/.test(ua)) browser = 'samsung';
+    else if (/FxiOS|Firefox/.test(ua)) browser = 'firefox';
+    else if (/CriOS|Chrome/.test(ua)) browser = 'chrome';
+    else if (/Safari/.test(ua)) browser = 'safari';
+    let os = '', m;
+    if (iOS && (m = ua.match(/OS (\d+[_.]\d+)/))) os = m[1].replace('_', '.');
+    else if ((m = ua.match(/Android (\d+(?:\.\d+)?)/))) os = m[1];
+    return {
+      device_key: this.deviceKey(),
+      platform: iOS ? 'ios' : android ? 'android' : /Win|Mac|Linux|CrOS/.test(ua) ? 'desktop' : 'other',
+      browser, os_version: os, standalone, push_supported: supported,
+      push_perm: supported ? Notification.permission : 'unsupported',
+      ua: ua.slice(0, 255),
+    };
+  },
+
+  /** รายงานเครื่องขึ้น server (ทุกครั้งที่เปิดแอป) — เงียบเสมอ ห้ามรบกวนหน้าแอปถ้าพลาด */
+  async report() {
+    this.dev = this.info();
+    try {
+      const d = await App.api('device_report', this.dev, { soft: true, noKick: true });
+      this.vapid = d.vapid_public || '';
+      this.enabled = !!d.push_enabled;
+      // เคยกดอนุญาตไว้แล้ว → ต่ออายุ subscription เงียบๆ (endpoint หมดอายุเองได้)
+      if (this.enabled && this.vapid && this.dev.push_perm === 'granted') this.sync().catch(() => {});
+    } catch (_) {}
+  },
+
+  b64ToU8(b64) {
+    const raw = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b64.length % 4) % 4));
+    const a = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i);
+    return a;
+  },
+
+  u8ToB64(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+
+  /** ขอ subscription จากเบราว์เซอร์แล้วส่งขึ้น server (เรียกได้เฉพาะตอน permission = granted แล้ว) */
+  async sync() {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // กุญแจ VAPID ฝั่ง server เปลี่ยน = ของเดิมใช้ไม่ได้ ต้องถอนแล้วขอใหม่
+    if (sub && sub.options && sub.options.applicationServerKey
+        && this.u8ToB64(sub.options.applicationServerKey) !== this.vapid) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.b64ToU8(this.vapid) });
+    }
+    const j = sub.toJSON();
+    await App.api('push_subscribe', {
+      endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device_key: this.deviceKey(),
+    }, { soft: true });
+    return true;
+  },
+
+  /** ปุ่ม "เปิดแจ้งเตือน" — ต้องเรียก requestPermission ก่อน await ตัวอื่นเสมอ */
+  async enable() {
+    const d = this.dev || (this.dev = this.info());
+    if (!d.push_supported) return toast('เบราว์เซอร์นี้ยังไม่รองรับการแจ้งเตือน', 'error');
+    if (d.platform === 'ios' && !d.standalone) return this.iosGuide();
+
+    // ⚠️ ห้ามมี await คั่นก่อนบรรทัดนี้ — WebKit กินสิทธิ์กดสดไปแล้วจะไม่เด้งขอสิทธิ์
+    let perm;
+    try { perm = await Notification.requestPermission(); }
+    catch (_) { return toast('ขออนุญาตแจ้งเตือนไม่สำเร็จ', 'error'); }
+    if (this.vapid === null) await this.report();          // เผื่อกดเร็วกว่าที่ report() จะกลับมา
+    if (!this.vapid) return toast('หัวหน้ายังไม่ได้สร้างกุญแจแจ้งเตือน', 'error');
+    this.dev.push_perm = perm;
+    if (perm !== 'granted') {
+      this.refreshUI();
+      return toast(perm === 'denied' ? 'ถูกปฏิเสธ — ต้องไปเปิดในตั้งค่าเบราว์เซอร์' : 'ยังไม่ได้อนุญาต', 'error');
+    }
+    try { await this.sync(); } catch (e) { return toast('เปิดแจ้งเตือนไม่สำเร็จ: ' + e.message, 'error'); }
+    App.api('device_report', this.info(), { soft: true }).catch(() => {});
+    this.refreshUI();
+    toast('เปิดแจ้งเตือนแล้ว 🔔');
+  },
+
+  async disable() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await App.api('push_unsubscribe', { endpoint: sub.endpoint }, { soft: true });
+      await sub.unsubscribe();
+    }
+    this.refreshUI();
+    toast('ปิดแจ้งเตือนแล้ว');
+  },
+
+  /** วาดหน้าใหม่หลังเปิด/ปิด — แอดมินอยู่หน้าตั้งค่า (ห้ามเรียก vProfile ของเจ้าหน้าที่ทับ) */
+  refreshUI() {
+    App.user?.role === 'admin' ? Admin.pushRefresh() : App.vProfile();
+  },
+
+  iosGuide() {
+    Swal.fire({
+      title: '📲 iPhone ต้องติดตั้งก่อน',
+      html: `<div style="text-align:left;font-size:14px;line-height:1.9">
+        iPhone จะส่งแจ้งเตือนให้เฉพาะแอปที่เพิ่มลงหน้าจอโฮมแล้วเท่านั้นนะครับ<br><br>
+        <b>1.</b> เปิดเว็บนี้ด้วย <b>Safari</b> (Chrome ไม่ได้)<br>
+        <b>2.</b> แตะปุ่มแชร์ <b>􀈂</b> ด้านล่างจอ<br>
+        <b>3.</b> เลื่อนหาแล้วแตะ <b>"เพิ่มไปยังหน้าจอโฮม"</b><br>
+        <b>4.</b> เปิดแอปจาก<b>ไอคอนบนหน้าจอโฮม</b> แล้วมากดเปิดแจ้งเตือนอีกครั้ง
+      </div>`,
+      confirmButtonText: 'เข้าใจแล้ว',
+    });
+  },
+
+  /** แถวตั้งค่าแจ้งเตือนในหน้าโปรไฟล์ */
+  rowHtml() {
+    const d = this.dev || (this.dev = this.info());
+    const row = (sub, btn) => `<div class="setting-row"><div class="sr-main"><div class="sr-title">🔔 แจ้งเตือนเข้ามือถือ</div>
+      <div class="sr-sub">${sub}</div></div>${btn}</div>`;
+    if (!d.push_supported) return row('เบราว์เซอร์นี้ยังไม่รองรับ', '');
+    if (d.platform === 'ios' && !d.standalone) {
+      return row('iPhone ต้องเพิ่มลงหน้าจอโฮมก่อน', '<button class="btn btn-ghost btn-sm" onclick="Push.iosGuide()">วิธีทำ</button>');
+    }
+    if (d.push_perm === 'granted') return row('เปิดอยู่ — ประกาศและผลอนุมัติลาจะเด้งขึ้นหน้าจอ', '<button class="btn btn-ghost btn-sm" onclick="Push.disable()">ปิด</button>');
+    if (d.push_perm === 'denied')  return row('ถูกบล็อกไว้ — เปิดใหม่ได้ที่ตั้งค่าเบราว์เซอร์', '');
+    return row('เปิดไว้จะได้รู้ทันทีเมื่อมีประกาศหรือผลอนุมัติลา', '<button class="btn btn-primary btn-sm" onclick="Push.enable()">เปิด</button>');
   },
 };
 

@@ -387,6 +387,55 @@ CREATE TABLE IF NOT EXISTS face_attempts (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------- อุปกรณ์ที่เจ้าหน้าที่ใช้ + Web Push (v37) ----------
+-- 1 แถว/เบราว์เซอร์ — client สร้าง device_key สุ่มเก็บใน localStorage แล้วส่งมาทุกครั้งที่เปิดแอป
+-- ที่ต้องเก็บ standalone เพราะ iOS ส่ง push ให้เฉพาะ PWA ที่ "เพิ่มลงหน้าจอโฮม" แล้วเท่านั้น (เปิดใน Safari = ไม่มีทางได้ push)
+CREATE TABLE IF NOT EXISTS user_devices (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT NOT NULL,
+  device_key     CHAR(32) NOT NULL,                    -- สุ่มฝั่ง client เก็บ localStorage (ล้าง = นับเป็นเครื่องใหม่)
+  platform       ENUM('ios','android','desktop','other') NOT NULL DEFAULT 'other',
+  browser        VARCHAR(30) NOT NULL DEFAULT '',      -- safari / chrome / edge / firefox / samsung / line / other
+  os_version     VARCHAR(20) NOT NULL DEFAULT '',      -- เช่น 17.2 — iOS ต่ำกว่า 16.4 รับ push ไม่ได้
+  standalone     TINYINT NOT NULL DEFAULT 0,           -- 1 = เปิดจากไอคอนหน้าจอโฮม (ติดตั้ง PWA แล้ว)
+  push_supported TINYINT NOT NULL DEFAULT 0,           -- เบราว์เซอร์มี ServiceWorker + PushManager ไหม
+  push_perm      ENUM('unsupported','default','granted','denied') NOT NULL DEFAULT 'unsupported',
+  ua             VARCHAR(255) NOT NULL DEFAULT '',
+  first_seen     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_device (device_key),
+  KEY idx_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- subscription ที่เบราว์เซอร์ออกให้ (endpoint + กุญแจ 2 ตัวสำหรับเข้ารหัส payload ตาม RFC 8291)
+-- endpoint ยาวเกิน index ปกติ → unique ที่ endpoint_hash (sha256 hex) แทน
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT NOT NULL,
+  device_key    CHAR(32) NOT NULL DEFAULT '',          -- โยงกลับ user_devices (ดูได้ว่าเครื่องไหน subscribe)
+  endpoint      TEXT NOT NULL,
+  endpoint_hash CHAR(64) NOT NULL,
+  p256dh        VARCHAR(120) NOT NULL,                 -- base64url public key ของเบราว์เซอร์
+  auth_secret   VARCHAR(40) NOT NULL,                  -- base64url auth secret 16 ไบต์
+  fail_count    INT NOT NULL DEFAULT 0,
+  last_ok_at    DATETIME NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_endpoint (endpoint_hash),
+  KEY idx_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- กันยิงเตือนซ้ำในวันเดียวกัน (cron ถูกเรียกซ้ำได้) — แนวเดียวกับ line_logs
+CREATE TABLE IF NOT EXISTS push_logs (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  log_type   VARCHAR(30) NOT NULL,                     -- remind_checkin
+  log_date   DATE NOT NULL,
+  sent_count INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_type_date (log_type, log_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------- ค่าตั้งต้น (แก้ได้จากหน้าตั้งค่าแอดมิน) ----------
 INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('station_name',     'สถานีควบคุมไฟป่าสลักพระ-เอราวัณ'),
@@ -412,5 +461,11 @@ INSERT IGNORE INTO settings (skey, svalue) VALUES
   ('vaccine_warn_days',    '60'),     -- เหลือกี่วันก่อนครบรอบวัคซีน ถึงจะขึ้นป้ายเหลือง "ใกล้ครบ"
   ('line_token',       ''),
   ('line_group_id',    ''),
+  ('push_enabled',         '0'),      -- Web Push (v37) — เปิดเมื่อเจ้าหน้าที่ติดตั้ง PWA + กดอนุญาตแจ้งเตือนแล้ว
+  ('push_remind_enabled',  '1'),      -- เตือน "ยังไม่เช็คชื่อ" ก่อนถึงเวลาสาย (ทำงานเมื่อ push_enabled=1 เท่านั้น)
+  ('push_remind_time',     '08:00'),  -- เวลายิงเตือน (ตั้งก่อน late_cutoff)
+  ('vapid_public',         ''),       -- กุญแจ VAPID สร้างครั้งเดียวจากหน้าตั้งค่า — เปลี่ยนแล้ว subscription เดิมใช้ไม่ได้
+  ('vapid_private',        ''),
+  ('vapid_subject',        'mailto:vwin2537@gmail.com'),
   ('gdrive_client_id',     ''),
   ('gdrive_client_secret', '');

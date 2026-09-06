@@ -113,6 +113,11 @@ function h_dayoff_add(): never {
         line_enqueue("{$head}\n• {$u['name']} — " . OFF_TYPES[$type] . " {$dates}"
                    . ($note !== '' ? "\n📝 {$note}" : '')
                    . ($r['pending'] ? "\n⏳ รออนุมัติจากหัวหน้าสถานี" : ''));
+
+        // เด้งหาหัวหน้าด้วย (push อย่างเดียว ไม่เขียนกล่องข้อความ — หัวหน้ามีคิวอนุมัติในแอปอยู่แล้ว)
+        $admins = db()->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+        push_to_users(array_map('intval', $admins), $head,
+            "{$u['name']} — " . OFF_TYPES[$type] . " {$dates}" . ($r['pending'] ? ' (รออนุมัติ)' : ''), './');
     }
 
     $msg = 'บันทึกแล้ว ' . count($r['added']) . ' วัน';

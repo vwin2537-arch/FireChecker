@@ -20,6 +20,8 @@ require_once __DIR__ . '/../app/handlers/vaccine.php';
 require_once __DIR__ . '/../app/handlers/training.php';
 require_once __DIR__ . '/../app/handlers/notify.php';
 require_once __DIR__ . '/../app/handlers/face.php';
+require_once __DIR__ . '/../app/push.php';
+require_once __DIR__ . '/../app/handlers/push.php';
 require_once __DIR__ . '/../app/drive.php';
 
 const ACTIONS = [
@@ -77,6 +79,13 @@ const ACTIONS = [
 
     'notify_list'     => 'h_notify_list',
     'announce_send'   => 'h_announce_send',
+    // แจ้งเตือน Web Push (v37)
+    'device_report'   => 'h_device_report',
+    'push_subscribe'  => 'h_push_subscribe',
+    'push_unsubscribe'=> 'h_push_unsubscribe',
+    'push_vapid_gen'  => 'h_push_vapid_gen',
+    'push_test'       => 'h_push_test',
+    'device_summary'  => 'h_device_summary',
     // คลังความรู้ (staff)
     'library_list'    => 'h_library_list',
     'library_view'    => 'h_library_view',
@@ -138,6 +147,7 @@ const ACTIONS = [
     'gdrive_disconnect' => 'h_gdrive_disconnect',
     // cron (LINE Bot)
     'cron_report'     => 'h_cron_report',
+    'cron_push_remind'=> 'h_cron_push_remind',
 ];
 
 try {

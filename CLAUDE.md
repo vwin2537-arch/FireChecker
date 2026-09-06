@@ -14,7 +14,7 @@
 - Auth: token 64 hex ใน header `X-Auth-Token` เก็บ DB (`auth_tokens`) + localStorage ฝั่ง client
 - เวลา: `Asia/Bangkok` ทุกที่ (ตั้งใน config.php) — **ห้ามใช้ toISOString()/UTC เทียบวันที่**
 - settings ทุกตัวอยู่ในตาราง `settings` แก้ผ่านหน้าตั้งค่า — อย่า hardcode ค่าที่ควรเป็น setting
-- ฟีเจอร์มีสวิตช์: `selfie_required`, `checkout_enabled` (ตอนนี้ปิดทั้งคู่ — โค้ดพร้อมแล้วทั้งฝั่ง API และ UI)
+- ฟีเจอร์มีสวิตช์: `selfie_required`, `checkout_enabled`, `push_enabled` (ตอนนี้ปิดทั้งหมด — โค้ดพร้อมแล้วทั้งฝั่ง API และ UI)
 - schema สร้างอัตโนมัติตอน request แรก (ensure_admin ใน db.php รัน schema.sql ถ้าไม่เจอตาราง)
 
 ## 📇 ดัชนี — รายละเอียดรายฟีเจอร์ (`docs/notes/`)
@@ -32,6 +32,7 @@
 | [`mailbox.md`](docs/notes/mailbox.md) | กล่องข้อความ 📬 + จุดแดง + แดชบอร์ดคืนนี้ใครเข้าเวร | `notify.php`, `notify_push/broadcast` |
 | [`health.md`](docs/notes/health.md) | โซนสุขภาพ: สมุดสุขภาพ / ทดสอบสมรรถภาพ / การ์ดวัคซีน | `health.php`, `vaccine.php` |
 | [`training.md`](docs/notes/training.md) | ประวัติการฝึกอบรม (v35) | `training.php` |
+| [`push.md`](docs/notes/push.md) | แจ้งเตือนเข้ามือถือ Web Push (v37) + เก็บข้อมูลอุปกรณ์ | `push.php`, `sw.js`, `Push` ใน app.js |
 | [`dashboard-report.md`](docs/notes/dashboard-report.md) | แต่งหน้าแดชบอร์ด/ปฏิทิน + รายงานอันดับความขยัน (ปริ้น/PNG) | `admin.js` `analyticsHtml`, `openReport`, `.rp-*` |
 
 **timeline + สถานะโปรเจค + Lesson learned** → `PROGRESS.md` (log เก่า → `PROGRESS_ARCHIVE.md`)
@@ -53,6 +54,7 @@ php cron/report.php morning          # ทดสอบ LINE report (ไม่ม
 - **วันอาทิตย์** = วันหยุดสถานี (`is_station_holiday`) — ไม่นับ absent, จอง day_off ไม่ได้, cron ไม่ส่งรายงาน
 - **โควต้า** นับเฉพาะ `type='dayoff'` — ลาป่วย/ลากิจไม่นับ; **โควต้ารายเดือน = จำนวนวันหยุดสถานีของเดือนนั้น (อาทิตย์ + นักขัตฯวันธรรมดา) คำนวณสดด้วย `station_holidays_in_month()` — ไม่ใช่เลขคงที่แล้ว** (setting `off_quota_month` เลิกใช้). เกินโควต้า = `over_quota=1` + **status pending รอหัวหน้าอนุมัติเสมอ** (ไม่ auto-approve) → เด้ง alert + คิวอนุมัติหน้าแอดมิน
 - **Engagement Score (v36)** = รายวัน 80 (`checkout_enabled` ปิด = มา50+ตรง30 / เปิด = 25/25/15/15) + **โบนัสสม่ำเสมอ 20** = `มา/(planned+leave)` — **วันลาหักคะแนนแล้ว** (ก่อน v36 ไม่หัก → ตัน 100 กันเพียบ) · `usort` มี **tiebreak**: มามากกว่า → สายน้อยกว่า → ขาดน้อยกว่า → `avg_in` เช้ากว่า **ห้ามเอาของเดิมที่เทียบแค่ score กลับ** (อันดับจะเรียงตามชื่อ) → `docs/notes/dashboard-report.md`
+- **แจ้งเตือน Push (v37)** เสียบไว้ที่ `notify_push`/`notify_broadcast` **จุดเดียว** — เพิ่มเหตุใหม่ให้เรียกสองตัวนี้ ไม่ใช่ `push_to_user` ตรงๆ · **iPhone ได้ push เฉพาะ PWA ที่เพิ่มลงหน้าจอโฮมแล้ว** (เปิดใน Safari ธรรมดา = ไม่มีทางได้) · `Notification.requestPermission()` ต้องอยู่ในจังหวะกดสด ห้าม `await` คั่นก่อน (กับดักเดียวกับเปิดกล้อง iOS) · **เปลี่ยน `vapid_public` = subscription เดิมพังหมด** → `docs/notes/push.md`
 - attendance/day_offs มี **UNIQUE (user_id, วันที่)** — insert ซ้ำจะ throw, เช็คก่อน insert แล้ว
 - รูปเก็บที่ `UPLOAD_DIR` (Railway = Volume `/data/uploads`) เสิร์ฟผ่าน `photo.php` เท่านั้น (ต้อง login, กัน path traversal ด้วย regex)
 - LINE report กันส่งซ้ำด้วยตาราง `line_logs` unique (type, date) — ปุ่มทดสอบในหน้าตั้งค่าใช้ `force=1`
