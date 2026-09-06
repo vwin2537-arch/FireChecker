@@ -2,7 +2,8 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 6 ก.ย. 2026 — **v39 แก้ปุ่มแจ้งเตือนปิดไม่ได้ deploy แล้ว** (commit `8c12ccd` — live ยืนยัน `?v=39` + `firecheck-v39` + โค้ด `fc_push_off`/`paintRow` อยู่ในไฟล์จริง, `FACE_CACHE` ไม่ถูกแตะ)
+อัปเดตล่าสุด: 6 ก.ย. 2026 — **v40 เปลี่ยนไอคอนแจ้งเตือนบน status bar เป็นเปลวไฟ** (commit `6a7ef08` — live ยืนยัน `?v=40` + `firecheck-v40` + `badge: 'badge-96.png'` + ไฟล์ตอบ 200 image/png, `FACE_CACHE` ไม่ถูกแตะ) · badge เดิมชี้ `icon-192.png` ที่ทึบทั้งใบ = สี่เหลี่ยมขาว → กับดัก + วิธีสร้าง badge ใน `docs/notes/push.md` · **พี่วินยังไม่ได้ยืนยันบนมือถือ** (ต้องเปิด PWA ให้ SW v40 activate แล้วกดปุ่มทดสอบ)
+อัปเดตก่อนหน้า: 6 ก.ย. 2026 — **v39 แก้ปุ่มแจ้งเตือนปิดไม่ได้ deploy แล้ว** (commit `8c12ccd` — live ยืนยัน `?v=39` + `firecheck-v39` + โค้ด `fc_push_off`/`paintRow` อยู่ในไฟล์จริง, `FACE_CACHE` ไม่ถูกแตะ)
 อัปเดตก่อนหน้า: 6 ก.ย. 2026 — **v38 แก้เคสมือถือไม่เด้ง deploy แล้ว** (commit `497c237` — live ยืนยัน `?v=38` + sw.js `firecheck-v38`, `FACE_CACHE` ไม่ถูกแตะ) · **พี่วินยังไม่ได้เปิดสวิตช์ `push_enabled`**
 อัปเดตก่อนหน้า: 6 ก.ย. 2026 — **แจ้งเตือนเข้ามือถือ Web Push (v37) deploy แล้ว** (commit `774f463`, `railway up` — live ยืนยัน `?v=37` ทั้ง 3 asset + sw.js `firecheck-v37`, `FACE_CACHE` ไม่ถูกแตะ · deploy log สะอาด PHP 8.3.33 · endpoint ใหม่ตอบ 401/403 ถูกต้อง · content-type เป็น json ไม่มี warning รั่ว) — **สวิตช์ยังปิด รอพี่วินกดสร้างกุญแจ**
 อัปเดตก่อนหน้า: 2 ก.ย. 2026 — **แก้สูตร Engagement Score (v36) deploy แล้ว** (commit `367b093`, `railway up` — live ยืนยัน `?v=36` ทั้ง 3 asset + sw.js `firecheck-v36`, `FACE_CACHE` ไม่ถูกแตะ)
@@ -11,7 +12,7 @@
 ### v37–v39 แจ้งเตือนเข้ามือถือ Web Push (6 ก.ย. 2026) — ✅ deploy แล้ว · **ใช้งานได้จริงยืนยันโดยพี่วิน**
 เขียน Web Push เอง (VAPID + aes128gcm ด้วย openssl+hash_hkdf ที่มากับ PHP) **ไม่พึ่ง Firebase/composer** — บน Android/Chrome วิ่งผ่านเซิร์ฟเวอร์ Google อยู่แล้วจึงได้ผลเท่า FCM
 เด้ง: 📢 ประกาศ · ✅❌ ผลอนุมัติลา · ⏰ เตือนคนยังไม่เช็คชื่อ (cron 08:00) · 🔔 หัวหน้ารู้เมื่อมีคนขอลา · เก็บ `user_devices` ให้หัวหน้าเห็นว่าใครพร้อมรับ push / ใคร (iPhone) ยังต้องเพิ่มลงหน้าจอโฮม
-รอบแก้: **v38** เด้งยืนยันตอนกดเปิด + ปุ่มทดสอบรายคน · **v39** ปุ่มปิดไม่ได้ (2 บั๊กซ้อน)
+รอบแก้: **v38** เด้งยืนยันตอนกดเปิด + ปุ่มทดสอบรายคน · **v39** ปุ่มปิดไม่ได้ (2 บั๊กซ้อน) · **v40** ไอคอน status bar เป็นสี่เหลี่ยมขาว → `badge-96.png`
 **เหลือ (พี่วินกดเอง):** เปิดสวิตช์ `push_enabled` ในหน้าตั้งค่า + ตั้ง cron `cron_push_remind` 08:00 + ไล่คนใช้ iPhone ให้กด "เพิ่มลงหน้าจอโฮม"
 **Technical + กับดักทั้งหมด → `docs/notes/push.md`** · วิธีทำซ้ำในโปรเจคอื่น → skill `web-push-pwa` · บทเรียน → Lesson 13
 
