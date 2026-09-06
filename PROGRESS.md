@@ -2,13 +2,13 @@
 
 ## สถานะ: 🚀 Deploy ขึ้น Railway แล้ว — https://sakpra-erawan.up.railway.app
 
-อัปเดตล่าสุด: 6 ก.ย. 2026 — **v39 แก้ปุ่มแจ้งเตือนปิดไม่ได้**
+อัปเดตล่าสุด: 6 ก.ย. 2026 — **v39 แก้ปุ่มแจ้งเตือนปิดไม่ได้ deploy แล้ว** (commit `8c12ccd` — live ยืนยัน `?v=39` + `firecheck-v39` + โค้ด `fc_push_off`/`paintRow` อยู่ในไฟล์จริง, `FACE_CACHE` ไม่ถูกแตะ)
 อัปเดตก่อนหน้า: 6 ก.ย. 2026 — **v38 แก้เคสมือถือไม่เด้ง deploy แล้ว** (commit `497c237` — live ยืนยัน `?v=38` + sw.js `firecheck-v38`, `FACE_CACHE` ไม่ถูกแตะ) · **พี่วินยังไม่ได้เปิดสวิตช์ `push_enabled`**
 อัปเดตก่อนหน้า: 6 ก.ย. 2026 — **แจ้งเตือนเข้ามือถือ Web Push (v37) deploy แล้ว** (commit `774f463`, `railway up` — live ยืนยัน `?v=37` ทั้ง 3 asset + sw.js `firecheck-v37`, `FACE_CACHE` ไม่ถูกแตะ · deploy log สะอาด PHP 8.3.33 · endpoint ใหม่ตอบ 401/403 ถูกต้อง · content-type เป็น json ไม่มี warning รั่ว) — **สวิตช์ยังปิด รอพี่วินกดสร้างกุญแจ**
 อัปเดตก่อนหน้า: 2 ก.ย. 2026 — **แก้สูตร Engagement Score (v36) deploy แล้ว** (commit `367b093`, `railway up` — live ยืนยัน `?v=36` ทั้ง 3 asset + sw.js `firecheck-v36`, `FACE_CACHE` ไม่ถูกแตะ)
 อัปเดตก่อนหน้า: 26 ส.ค. 2026 — **ประวัติการฝึกอบรม (v35) deploy แล้ว** (commit `eb570cc`) → รายละเอียด `PROGRESS_ARCHIVE.md` + `docs/notes/training.md`
 
-### v39 แก้ปุ่มแจ้งเตือน "ปิดไม่ได้" (6 ก.ย. 2026)
+### v39 แก้ปุ่มแจ้งเตือน "ปิดไม่ได้" (6 ก.ย. 2026) — ✅ deploy แล้ว
 พี่วินกดปิด → ป๊อบอัพบอกปิดแล้ว แต่ปุ่มยังเป็น "ปิด" เหมือนเปิดอยู่ตลอด · เจอ **2 บั๊กซ้อนกัน**:
 1. `rowHtml()` ตัดสินสถานะจาก `Notification.permission` — **กดปิดแล้วสิทธิ์ยังเป็น `granted`** ปุ่มเลยไม่มีวันเปลี่ยน → เปลี่ยนไปดู `pushManager.getSubscription()` เก็บใน `Push.subscribed` + `paintRow()` วาดแถวซ้ำหลังเช็คเสร็จ (แถววาดครั้งแรกแบบ sync ก่อนรู้ผล)
 2. เจอตอนไล่ต่อ: **ปิดแล้วเปิดแอปใหม่ ระบบ subscribe กลับเองเงียบๆ** (`report()` → `sync()`) = ปิดไม่ได้จริง → จำการปิดไว้ใน localStorage `fc_push_off`, `enable()` ลบธงทิ้ง
