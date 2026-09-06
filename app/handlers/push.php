@@ -60,6 +60,22 @@ function h_push_subscribe(): never {
                      p256dh = VALUES(p256dh), auth_secret = VALUES(auth_secret), fail_count = 0')
         ->execute([$u['id'], strlen($k) === 32 ? $k : '', $endpoint, hash('sha256', $endpoint), $p256dh, $auth]);
 
+    // เด้งยืนยันกลับไปที่เครื่องนั้นทันที = คนกดเปิดเห็นกับตาว่าใช้งานได้จริง
+    // ⚠️ เฉพาะตอนกดปุ่มเปิดเอง (welcome=1) เท่านั้น — Push.report() เรียก sync() เงียบๆ ทุกครั้งที่เปิดแอป
+    //    ถ้ายิงทุกครั้งจะกลายเป็นเด้งใส่เจ้าหน้าที่ทุกคนทุกครั้งที่เปิดแอป
+    // ใช้ push_send_raw ตรง (ข้าม push_enabled) เพราะเป็นการทดสอบที่ผู้ใช้กดเอง
+    if (param('welcome', false)) {
+        $st = db()->prepare('SELECT * FROM push_subscriptions WHERE endpoint_hash = ?');
+        $st->execute([hash('sha256', $endpoint)]);
+        if ($row = $st->fetch()) {
+            push_send_raw([$row], [
+                'title' => '🔔 เปิดแจ้งเตือนสำเร็จ',
+                'body'  => 'ต่อไปประกาศและผลอนุมัติลาจะเด้งขึ้นที่นี่',
+                'url'   => './', 'tag' => 'welcome',
+            ]);
+        }
+    }
+
     ok(['message' => 'เปิดแจ้งเตือนแล้ว']);
 }
 
@@ -86,14 +102,17 @@ function h_push_vapid_gen(): never {
     ok(['message' => 'สร้างกุญแจแจ้งเตือนแล้ว', 'vapid_public' => $kp['public']]);
 }
 
-/** แอดมินกดทดสอบ — ส่งเข้าเครื่องตัวเอง */
+/** แอดมินกดทดสอบ — ไม่ระบุ user_id = ส่งหาตัวเอง (ทุกเครื่องที่ตัวเองเปิดไว้) / ระบุ = ส่งหาเจ้าหน้าที่คนนั้น */
 function h_push_test(): never {
     $u = require_admin();
     if (setting('vapid_public', '') === '') fail('ยังไม่ได้สร้างกุญแจแจ้งเตือน');
+    $target = (int)param('user_id', 0) ?: (int)$u['id'];
     $st = db()->prepare('SELECT * FROM push_subscriptions WHERE user_id = ?');
-    $st->execute([$u['id']]);
+    $st->execute([$target]);
     $subs = $st->fetchAll();
-    if (!$subs) fail('เครื่องนี้ยังไม่ได้เปิดแจ้งเตือน — กดปุ่ม "เปิดแจ้งเตือนบนเครื่องนี้" ก่อน');
+    if (!$subs) fail($target === (int)$u['id']
+        ? 'บัญชีนี้ยังไม่ได้เปิดแจ้งเตือนบนเครื่องไหนเลย — กดปุ่ม "เปิดแจ้งเตือนบนเครื่องนี้" ก่อน'
+        : 'เจ้าหน้าที่คนนี้ยังไม่ได้กดเปิดแจ้งเตือนบนเครื่องของตัวเอง');
 
     // ทดสอบต้องส่งได้แม้สวิตช์รวมยังปิด จึงเรียก push_send_raw ตรง (ข้าม push_enabled)
     $r = push_send_raw($subs, [

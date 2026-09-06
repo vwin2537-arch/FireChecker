@@ -1895,7 +1895,7 @@ const Admin = {
         <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="Admin.pushKeyGen()">🔑 สร้างกุญแจแจ้งเตือน</button>
           <button class="btn btn-ghost btn-sm" onclick="Push.enable()">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>
-          <button class="btn btn-ghost btn-sm" onclick="Admin.pushTest()">📨 ส่งทดสอบหาเครื่องนี้</button>
+          <button class="btn btn-ghost btn-sm" onclick="Admin.pushTest()">📨 ส่งทดสอบหาตัวเอง</button>
         </div>
         <div id="deviceList" style="margin-top:14px">กำลังโหลดอุปกรณ์...</div>
         <div class="tiny" style="margin-top:8px">เตือนอัตโนมัติ: ตั้ง cron เรียก <code>/api.php?action=cron_push_remind&amp;key=CRON_SECRET</code> ตามเวลาที่ตั้งไว้</div>
@@ -1963,6 +1963,7 @@ const Admin = {
               ${+r.standalone ? ' · ติดตั้งเป็นแอปแล้ว' : ' · เปิดในเบราว์เซอร์'}
               · ล่าสุด ${String(r.last_seen).substr(5, 11)}</div></div>
           <span class="chip ${stat(r)[0]}">${stat(r)[1]}</span>
+          ${+r.sub_count ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="Admin.pushTest(${r.user_id})">ทดสอบ</button>` : ''}
         </div>`).join('') : '<div class="tiny" style="color:var(--muted)">ยังไม่มีเจ้าหน้าที่เปิดแอปหลังอัปเดตเวอร์ชันนี้</div>'}`;
   },
 
@@ -1983,8 +1984,9 @@ const Admin = {
     this.pushRefresh();
   },
 
-  async pushTest() {
-    const d = await App.api('push_test', {}, { soft: true });
+  /** ไม่ใส่ userId = ทดสอบหาตัวเอง / ใส่ = ยิงหาเจ้าหน้าที่คนนั้น (เช็คว่าเครื่องเขารับได้จริงไหม) */
+  async pushTest(userId) {
+    const d = await App.api('push_test', userId ? { user_id: userId } : {}, { soft: true });
     d.ok ? toast(d.message) : toast(d.error, 'error');
   },
 

@@ -1163,8 +1163,12 @@ const Push = {
     return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   },
 
-  /** ขอ subscription จากเบราว์เซอร์แล้วส่งขึ้น server (เรียกได้เฉพาะตอน permission = granted แล้ว) */
-  async sync() {
+  /**
+   * ขอ subscription จากเบราว์เซอร์แล้วส่งขึ้น server (เรียกได้เฉพาะตอน permission = granted แล้ว)
+   * welcome=true เฉพาะตอนผู้ใช้กดปุ่มเปิดเอง → server เด้งยืนยันกลับมาให้เห็นทันที
+   * ⚠️ ห้ามส่ง welcome ตอน report() เรียกเงียบๆ ไม่งั้นเด้งทุกครั้งที่เปิดแอป
+   */
+  async sync(welcome = false) {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     // กุญแจ VAPID ฝั่ง server เปลี่ยน = ของเดิมใช้ไม่ได้ ต้องถอนแล้วขอใหม่
@@ -1178,7 +1182,8 @@ const Push = {
     }
     const j = sub.toJSON();
     await App.api('push_subscribe', {
-      endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device_key: this.deviceKey(),
+      endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+      device_key: this.deviceKey(), welcome: welcome ? 1 : 0,
     }, { soft: true });
     return true;
   },
@@ -1200,10 +1205,10 @@ const Push = {
       this.refreshUI();
       return toast(perm === 'denied' ? 'ถูกปฏิเสธ — ต้องไปเปิดในตั้งค่าเบราว์เซอร์' : 'ยังไม่ได้อนุญาต', 'error');
     }
-    try { await this.sync(); } catch (e) { return toast('เปิดแจ้งเตือนไม่สำเร็จ: ' + e.message, 'error'); }
+    try { await this.sync(true); } catch (e) { return toast('เปิดแจ้งเตือนไม่สำเร็จ: ' + e.message, 'error'); }
     App.api('device_report', this.info(), { soft: true }).catch(() => {});
     this.refreshUI();
-    toast('เปิดแจ้งเตือนแล้ว 🔔');
+    toast('เปิดแจ้งเตือนแล้ว 🔔 — น่าจะมีข้อความเด้งขึ้นมาทันที');
   },
 
   async disable() {
