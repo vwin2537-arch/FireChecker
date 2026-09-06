@@ -1804,8 +1804,37 @@ const Admin = {
   },
 
   // =====================================================
-  // ตั้งค่า
+  // ตั้งค่า — แบ่ง 5 แท็บย่อย (v41): ประกาศ / กติกาเช็คชื่อ / วันพิเศษ / เชื่อมต่อ / ทั่วไป
+  // การ์ดค่าคงที่ใช้ "แถบบันทึกลอย" โผล่เฉพาะตอนมีค่าเปลี่ยน · รายการวันพิเศษเซฟทันทีเอง ไม่มีแถบ
+  // ฟีเจอร์ที่มีสวิตช์ จับช่องที่ขึ้นกับมันไว้ใต้สวิตช์ (G) — ปิดสวิตช์ = ช่องจางลง แต่ยังแก้ได้
   // =====================================================
+  setTab: localStorage.getItem('fc_settab') || 'announce',
+  setDirtyFlag: false,
+
+  async setSetTab(t) {
+    if (this.setDirtyFlag) {
+      const c = await Swal.fire({ icon: 'warning', title: 'ยังไม่ได้บันทึก', text: 'มีค่าที่แก้ไว้แต่ยังไม่ได้กดบันทึก จะทิ้งไหม?',
+        showCancelButton: true, confirmButtonText: 'ทิ้ง ไม่บันทึก', cancelButtonText: 'กลับไปบันทึก' });
+      if (!c.isConfirmed) return;
+    }
+    this.setTab = t;
+    localStorage.setItem('fc_settab', t);
+    this.vSettings();
+  },
+
+  setSegHtml() {
+    // 5 ปุ่ม แถวเดียวล้นจอมือถือ (วัดได้ 427px ในพื้นที่ 358px) → .seg-5 จอแคบวางไอคอนบน/ชื่อล่าง
+    const t = (v, ic, l) => `<button class="${this.setTab === v ? 'active' : ''}" onclick="Admin.setSetTab('${v}')"><span class="si">${ic}</span><span>${l}</span></button>`;
+    return `<div class="seg seg-5">${t('announce', '📢', 'ประกาศ')}${t('rules', '⏰', 'กติกา')}${t('days', '📅', 'วันพิเศษ')}${t('connect', '🔗', 'เชื่อมต่อ')}${t('general', '🏷️', 'ทั่วไป')}</div>`;
+  },
+
+  /** โชว์/ซ่อนแถบบันทึกลอยตามว่ามีค่าเปลี่ยนไหม */
+  setDirty(v) {
+    this.setDirtyFlag = v;
+    const b = byId('saveBar');
+    if (b) b.hidden = !v;
+  },
+
   async vSettings() {
     const s = (await App.api('settings_get')).settings;
     const T = (k, label, sub) => `<div class="setting-row">
@@ -1813,117 +1842,142 @@ const Admin = {
       <label class="switch"><input type="checkbox" id="st_${k}" ${s[k] === '1' ? 'checked' : ''}><span class="sl"></span></label></div>`;
     const I = (k, label, type = 'text', extra = '') => `<div class="field"><label>${label}</label>
       <input class="input" id="st_${k}" type="${type}" value="${esc(s[k])}" ${extra}></div>`;
+    const G = (k, label, sub, body) => `<div class="fgroup">${T(k, label, sub)}<div class="fg-body">${body}</div></div>`;
+    const status = (ok, text) => `<div class="st-status ${ok ? 'ok' : 'warn'}">${ok ? '✅' : '⚠️'} ${text}</div>`;
 
-    byId('view').innerHTML = `
-      ${this.announceHtml()}
-      <div class="card"><h3>🎚️ สวิตช์ฟีเจอร์</h3>
-        ${T('selfie_required', '🤳 บังคับเซลฟี่ตอนเช็คอิน', 'โค้ดพร้อมแล้ว เปิดเมื่อไหร่ก็ได้')}
-        ${T('checkout_enabled', '📝 เช็คเอาท์ + รายงานผลงานเย็น', 'เปิดแล้วคะแนนความขยันเปลี่ยนเป็นสูตรเต็ม 30/30/20/20')}
-        ${T('gps_enforce', '📍 บังคับ GPS ในรัศมีสถานี', 'ปิดชั่วคราวได้ตอนทดสอบระบบ')}
-        ${T('sunday_off', '🌴 วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด')}
-        ${T('sunday_work_enabled', '📅 เปิดเช็คชื่อวันอาทิตย์', 'ให้คนมาทำงาน/เข้าเวรวันหยุด กดเช็คชื่อได้ (ไม่นับสาย)')}
-        ${T('night_shift_enabled', '🌙 เวรกลางคืน (เฝ้าสำนักงาน)', 'เฉพาะ จนท.ชาย — ยกเว้นสายเช้าถัดมาให้อัตโนมัติ')}
-        ${T('push_enabled', '🔔 แจ้งเตือนเข้ามือถือ (Push)', 'ประกาศ/ผลอนุมัติลา เด้งขึ้นหน้าจอเหมือนแอปจริง — ต้องสร้างกุญแจในการ์ด \'🔔 แจ้งเตือนเข้ามือถือ\' ด้านล่างก่อน')}
-        ${T('push_remind_enabled', '⏰ เตือนคนที่ยังไม่เช็คชื่อ', 'ยิงเตือนก่อนถึงเวลาสาย เฉพาะคนที่ยังไม่เช็คและไม่ได้ลา (ทำงานเมื่อเปิดสวิตช์ Push ด้านบนแล้ว)')}
-        ${T('face_verify_enabled', '🙂 ยืนยันใบหน้าตอนเช็คชื่อ', 'สแกนหน้าสดแทนการเก็บรูป — ไม่ผ่าน 3 ครั้งยังเช็คชื่อได้ แต่ติดหมายเหตุให้หัวหน้าเห็น (ต้องลงทะเบียนใบหน้าที่แท็บเจ้าหน้าที่ก่อน)')}
-      </div>
-      <div class="card"><h3>🙂 เกณฑ์ยืนยันใบหน้า</h3>
-        <div class="tiny" style="margin-bottom:10px">ค่าตั้งต้นวัดมาจากรูปเช็คชื่อจริง 460 ใบของสถานี (รับคนอื่นผิด 0.30% · ปฏิเสธเจ้าตัว 3.8%)
-          — <b>ยิ่งน้อยยิ่งเข้ม</b> ถ้าเจ้าหน้าที่บ่นว่าไม่ผ่านบ่อย ค่อยๆ เพิ่มทีละ 0.02</div>
-        <div class="grid-2">
-          ${I('face_match_threshold', 'เกณฑ์ระยะ (0.20-0.90)', 'number', 'step=0.01 min=0.2 max=0.9')}
-          ${I('face_max_attempts', 'ลองได้กี่ครั้ง (1-5)', 'number', 'step=1 min=1 max=5')}
+    const tabs = {
+      // ---------- 📢 ประกาศ (งานรายวัน — ไม่ย้ายไปแดชบอร์ด เพราะแดชบอร์ดจองไว้ทำวิดเจ็ต Android) ----------
+      announce: () => this.announceHtml(),
+
+      // ---------- ⏰ กติกาเช็คชื่อ ----------
+      rules: () => `
+        <div class="card"><h3>⏰ เวลาเช็คชื่อ</h3>
+          <div class="grid-2">${I('checkin_open', 'เปิดเช็คอิน (น.)', 'time')}${I('late_cutoff', 'หลังเวลานี้ = สาย', 'time')}</div>
         </div>
-        <div class="field">${I('face_min_desc', 'ต้องมีใบหน้าอย่างน้อยกี่รูปถึงใช้งาน (1-10)', 'number', 'step=1 min=1 max=10')}</div>
-      </div>
-      <div class="card"><h3>⏰ เวลา</h3>
-        <div class="grid-2">
-          ${I('checkin_open', 'เปิดเช็คอิน (น.)', 'time')}${I('late_cutoff', 'หลังเวลานี้ = สาย', 'time')}
-          ${I('checkout_open', 'เปิดส่งรายงาน', 'time')}${I('report_cutoff', 'หลังเวลานี้ = รายงานช้า', 'time')}
-          ${I('night_checkin_open', 'เปิดลงเวรกลางคืน', 'time')}
-          ${I('push_remind_time', 'ยิงเตือนยังไม่เช็คชื่อ', 'time')}
+        <div class="card"><h3>📍 พิกัดสถานี</h3>
+          ${G('gps_enforce', 'บังคับ GPS ในรัศมีสถานี', 'ปิดชั่วคราวได้ตอนทดสอบระบบ', `
+            <div class="grid-2">${I('gps_lat', 'ละติจูด')}${I('gps_lng', 'ลองจิจูด')}</div>
+            ${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}
+            <button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="Admin.useHere()">📌 ใช้ตำแหน่งปัจจุบันของฉัน</button>`)}
         </div>
-      </div>
-      <div class="card"><h3>📍 พิกัดสถานี</h3>
-        <div class="grid-2">${I('gps_lat', 'ละติจูด')}${I('gps_lng', 'ลองจิจูด')}</div>
-        <div class="field">${I('gps_radius_m', 'รัศมี (เมตร)', 'number')}</div>
-        <button class="btn btn-ghost btn-sm" onclick="Admin.useHere()">📌 ใช้ตำแหน่งปัจจุบันของฉัน</button>
-      </div>
-      <div class="card"><h3>🎌 วันหยุดนักขัตฤกษ์</h3>
-        <div class="tiny" style="margin-bottom:10px">วันหยุดราชการ — ระบบถือเป็นวันหยุดสถานี (ไม่นับขาด ไม่ต้องเช็คชื่อ) และรวมเป็น<b>โควต้าวันหยุดของเดือนนั้นให้อัตโนมัติ</b> (โควต้า = วันอาทิตย์ + นักขัตฯในเดือน)</div>
-        <div id="holidayList" class="tiny">กำลังโหลด...</div>
-        <div class="grid-2" style="margin-top:12px">
-          <div class="field"><label>วันที่</label><input type="date" class="input" id="hoDate" value="${todayStr()}"></div>
-          <div class="field"><label>ชื่อวันหยุด</label><input class="input" id="hoName" maxlength="255" placeholder="เช่น วันปิยมหาราช"></div>
+        <div class="card"><h3>🤳 หลักฐานตอนเช็คอิน</h3>
+          ${T('selfie_required', 'บังคับเซลฟี่ตอนเช็คอิน', 'ต้องถ่ายรูปหน้าตัวเองทุกครั้ง เก็บเป็นหลักฐาน')}
+          ${G('face_verify_enabled', 'ยืนยันใบหน้าตอนเช็คชื่อ', 'สแกนหน้าสดแทนการเก็บรูป — ไม่ผ่านครบจำนวนครั้งยังเช็คชื่อได้ แต่ติดหมายเหตุให้หัวหน้าเห็น (ต้องลงทะเบียนใบหน้าที่แท็บเจ้าหน้าที่ก่อน)', `
+            <div class="tiny" style="margin-bottom:10px">ค่าตั้งต้นวัดมาจากรูปเช็คชื่อจริง 460 ใบของสถานี (รับคนอื่นผิด 0.30% · ปฏิเสธเจ้าตัว 3.8%)
+              — <b>ยิ่งน้อยยิ่งเข้ม</b> ถ้าเจ้าหน้าที่บ่นว่าไม่ผ่านบ่อย ค่อยๆ เพิ่มทีละ 0.02</div>
+            <div class="grid-2">
+              ${I('face_match_threshold', 'เกณฑ์ระยะ (0.20-0.90)', 'number', 'step=0.01 min=0.2 max=0.9')}
+              ${I('face_max_attempts', 'ลองได้กี่ครั้ง (1-5)', 'number', 'step=1 min=1 max=5')}
+            </div>
+            ${I('face_min_desc', 'ต้องมีใบหน้าอย่างน้อยกี่รูปถึงใช้งาน (1-10)', 'number', 'step=1 min=1 max=10')}`)}
         </div>
-        <button class="btn btn-primary btn-block" onclick="Admin.holidayAdd()">➕ เพิ่มวันหยุด</button>
-      </div>
-      <div class="card"><h3>📍 วันเช็คชื่อนอกสถานที่</h3>
-        <div class="tiny" style="margin-bottom:10px">วันที่สั่ง จนท. ไปกิจกรรมนอกสถานี — วันนั้นทุกคนเช็คชื่อจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย</div>
-        <div id="offsiteList" class="tiny">กำลังโหลด...</div>
-        <div class="grid-2" style="margin-top:12px">
-          <div class="field"><label>วันที่</label><input type="date" class="input" id="osDate" value="${todayStr()}"></div>
-          <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osReason" maxlength="255" placeholder="เช่น อบรมดับไฟป่า อ.เมือง"></div>
+        <div class="card"><h3>📝 เช็คเอาท์</h3>
+          ${G('checkout_enabled', 'เช็คเอาท์ + รายงานผลงานเย็น', 'เปิดแล้วคะแนนความขยันคิดจากเช็คเอาท์ด้วย (สูตร 25/25/15/15 + สม่ำเสมอ 20)', `
+            <div class="grid-2">${I('checkout_open', 'เปิดส่งรายงาน (น.)', 'time')}${I('report_cutoff', 'หลังเวลานี้ = รายงานช้า', 'time')}</div>`)}
         </div>
-        <div class="grid-2">
-          <div class="field"><label>เปิดเช็ค (น.)</label><input type="time" class="input" id="osStart" value="07:00"></div>
-          <div class="field"><label>ปิด — ไม่นับสาย (น.)</label><input type="time" class="input" id="osEnd" value="09:00"></div>
+        <div class="card"><h3>🌴 วันหยุดและเวร</h3>
+          ${G('sunday_off', 'วันอาทิตย์เป็นวันหยุดสถานี', 'ไม่ต้องเช็คชื่อ ไม่นับขาด',
+            T('sunday_work_enabled', 'เปิดเช็คชื่อวันอาทิตย์', 'ให้คนมาทำงาน/เข้าเวรวันหยุด กดเช็คชื่อได้ (ไม่นับสาย)'))}
+          ${G('night_shift_enabled', 'เวรกลางคืน (เฝ้าสำนักงาน)', 'เฉพาะ จนท.ชาย — ยกเว้นสายเช้าถัดมาให้อัตโนมัติ',
+            I('night_checkin_open', 'เปิดลงเวรกลางคืน (น.)', 'time'))}
+        </div>`,
+
+      // ---------- 📅 วันพิเศษ (ทุกการ์ดเซฟทันทีเอง ผ่าน handler แยกจาก settings_save) ----------
+      days: () => `
+        <div class="card"><h3>🎌 วันหยุดนักขัตฤกษ์</h3>
+          <div class="tiny" style="margin-bottom:10px">วันหยุดราชการ — ระบบถือเป็นวันหยุดสถานี (ไม่นับขาด ไม่ต้องเช็คชื่อ) และรวมเป็น<b>โควต้าวันหยุดของเดือนนั้นให้อัตโนมัติ</b> (โควต้า = วันอาทิตย์ + นักขัตฯในเดือน)</div>
+          <div id="holidayList" class="tiny">กำลังโหลด...</div>
+          <div class="grid-2" style="margin-top:12px">
+            <div class="field"><label>วันที่</label><input type="date" class="input" id="hoDate" value="${todayStr()}"></div>
+            <div class="field"><label>ชื่อวันหยุด</label><input class="input" id="hoName" maxlength="255" placeholder="เช่น วันปิยมหาราช"></div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="Admin.holidayAdd()">➕ เพิ่มวันหยุด</button>
         </div>
-        <button class="btn btn-primary btn-block" onclick="Admin.offsiteAdd()">➕ เพิ่มวันนอกสถานที่</button>
-      </div>
-      <div class="card"><h3>🧍 อนุญาตเช็คนอกสถานที่ (รายคน)</h3>
-        <div class="tiny" style="margin-bottom:10px">เจาะรายคน เช่น ได้รับคำสั่งไปประชุม — คนที่เลือกเช็คจากที่ไหนก็ได้ (ข้าม GPS) ในช่วงวันที่กำหนด · เวลาเปิด+คิดสาย = ปกติ · ระบบแจ้งเข้ากล่องข้อความให้เจ้าตัว</div>
-        <div id="osuList" class="tiny">กำลังโหลด...</div>
-        <div class="field" style="margin-top:12px"><label>เลือกเจ้าหน้าที่ (ได้หลายคน)</label>
-          <div id="osuPeople" class="osu-people">กำลังโหลด...</div></div>
-        <div class="grid-2">
-          <div class="field"><label>ตั้งแต่วันที่</label><input type="date" class="input" id="osuStart" value="${todayStr()}"></div>
-          <div class="field"><label>ถึงวันที่</label><input type="date" class="input" id="osuEnd" value="${todayStr()}"></div>
+        <div class="card"><h3>📍 วันเช็คชื่อนอกสถานที่</h3>
+          <div class="tiny" style="margin-bottom:10px">วันที่สั่ง จนท. ไปกิจกรรมนอกสถานี — วันนั้นทุกคนเช็คชื่อจากที่ไหนก็ได้ (ข้าม GPS) เช็คในช่วงเวลาที่ตั้ง = ไม่นับสาย</div>
+          <div id="offsiteList" class="tiny">กำลังโหลด...</div>
+          <div class="grid-2" style="margin-top:12px">
+            <div class="field"><label>วันที่</label><input type="date" class="input" id="osDate" value="${todayStr()}"></div>
+            <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osReason" maxlength="255" placeholder="เช่น อบรมดับไฟป่า อ.เมือง"></div>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>เปิดเช็ค (น.)</label><input type="time" class="input" id="osStart" value="07:00"></div>
+            <div class="field"><label>ปิด — ไม่นับสาย (น.)</label><input type="time" class="input" id="osEnd" value="09:00"></div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="Admin.offsiteAdd()">➕ เพิ่มวันนอกสถานที่</button>
         </div>
-        <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osuReason" maxlength="255" placeholder="เช่น ประชุมที่ว่าการอำเภอ"></div>
-        <label class="osu-nolate"><input type="checkbox" id="osuNoLate" checked> ✅ วันไปราชการ <b>ไม่นับสาย</b> (มาเมื่อไหร่ก็ถือว่าตรงเวลา — เหมาะกับคนไปประชุมตั้งแต่เช้า)</label>
-        <button class="btn btn-primary btn-block" onclick="Admin.offsiteUserAdd()">➕ อนุญาต + แจ้งเจ้าหน้าที่</button>
-      </div>
-      <div class="card"><h3>🏷️ ทั่วไป</h3>${I('station_name', 'ชื่อสถานี')}
-        <div class="setting-row" style="border:none;padding-top:4px">
-          <div class="sr-main"><div class="sr-title">🔑 เปลี่ยนรหัสผ่านแอดมิน</div>
-          <div class="sr-sub">ควรเปลี่ยนทันทีหลัง deploy ครั้งแรก</div></div>
-          <button class="btn btn-ghost btn-sm" onclick="App.changePass()">เปลี่ยน</button></div>
-      </div>
-      <div class="card"><h3>🔔 แจ้งเตือนเข้ามือถือ (Push)</h3>
-        <div id="pushStatus" class="tiny">กำลังตรวจสถานะ...</div>
-        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="Admin.pushKeyGen()">🔑 สร้างกุญแจแจ้งเตือน</button>
-          <button class="btn btn-ghost btn-sm" onclick="Push.enable()">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>
-          <button class="btn btn-ghost btn-sm" onclick="Admin.pushTest()">📨 ส่งทดสอบหาตัวเอง</button>
+        <div class="card"><h3>🧍 อนุญาตเช็คนอกสถานที่ (รายคน)</h3>
+          <div class="tiny" style="margin-bottom:10px">เจาะรายคน เช่น ได้รับคำสั่งไปประชุม — คนที่เลือกเช็คจากที่ไหนก็ได้ (ข้าม GPS) ในช่วงวันที่กำหนด · เวลาเปิด+คิดสาย = ปกติ · ระบบแจ้งเข้ากล่องข้อความให้เจ้าตัว</div>
+          <div id="osuList" class="tiny">กำลังโหลด...</div>
+          <div class="field" style="margin-top:12px"><label>เลือกเจ้าหน้าที่ (ได้หลายคน)</label>
+            <div id="osuPeople" class="osu-people">กำลังโหลด...</div></div>
+          <div class="grid-2">
+            <div class="field"><label>ตั้งแต่วันที่</label><input type="date" class="input" id="osuStart" value="${todayStr()}"></div>
+            <div class="field"><label>ถึงวันที่</label><input type="date" class="input" id="osuEnd" value="${todayStr()}"></div>
+          </div>
+          <div class="field"><label>เหตุผล/กิจกรรม</label><input class="input" id="osuReason" maxlength="255" placeholder="เช่น ประชุมที่ว่าการอำเภอ"></div>
+          <label class="osu-nolate"><input type="checkbox" id="osuNoLate" checked> ✅ วันไปราชการ <b>ไม่นับสาย</b> (มาเมื่อไหร่ก็ถือว่าตรงเวลา — เหมาะกับคนไปประชุมตั้งแต่เช้า)</label>
+          <button class="btn btn-primary btn-block" onclick="Admin.offsiteUserAdd()">➕ อนุญาต + แจ้งเจ้าหน้าที่</button>
+        </div>`,
+
+      // ---------- 🔗 เชื่อมต่อ (ทุกการ์ดขึ้นบรรทัดสถานะบนสุด) ----------
+      connect: () => `
+        <div class="card"><h3>🔔 แจ้งเตือนเข้ามือถือ (Push)</h3>
+          <div id="pushStatus" class="st-status">กำลังตรวจสถานะ...</div>
+          ${G('push_enabled', 'เปิดแจ้งเตือน Push', 'ประกาศ/ผลอนุมัติลา เด้งขึ้นหน้าจอเหมือนแอปจริง (ต้องสร้างกุญแจก่อน)',
+            G('push_remind_enabled', 'เตือนคนที่ยังไม่เช็คชื่อ', 'ยิงเตือนก่อนถึงเวลาสาย เฉพาะคนที่ยังไม่เช็คและไม่ได้ลา',
+              I('push_remind_time', 'เวลายิงเตือน (น.) — ควรก่อนเวลาสาย', 'time')))}
+          <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="Admin.pushKeyGen()">🔑 สร้างกุญแจแจ้งเตือน</button>
+            <button class="btn btn-ghost btn-sm" onclick="Push.enable()">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>
+            <button class="btn btn-ghost btn-sm" onclick="Admin.pushTest()">📨 ส่งทดสอบหาตัวเอง</button>
+          </div>
+          <div id="deviceList" style="margin-top:14px">กำลังโหลดอุปกรณ์...</div>
         </div>
-        <div id="deviceList" style="margin-top:14px">กำลังโหลดอุปกรณ์...</div>
-        <div class="tiny" style="margin-top:8px">เตือนอัตโนมัติ: ตั้ง cron เรียก <code>/api.php?action=cron_push_remind&amp;key=CRON_SECRET</code> ตามเวลาที่ตั้งไว้</div>
-      </div>
-      <div class="card"><h3>💬 LINE Bot</h3>
-        ${I('line_token', 'Channel Access Token')}${I('line_group_id', 'Group ID')}
-        <div class="row" style="gap:8px">
-          <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('morning')">ทดสอบสรุปเช้า</button>
-          <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('evening')">ทดสอบสรุปเย็น</button>
+        <div class="card"><h3>💬 LINE Bot</h3>
+          ${status(!!(s.line_token && s.line_group_id), s.line_token && s.line_group_id
+            ? 'ใส่ Token และ Group ID แล้ว — สรุปเช้า/เย็นส่งเข้ากลุ่มอัตโนมัติ'
+            : 'ยังไม่ได้ใส่ Token/Group ID — สรุปเช้า/เย็นจะไม่ถูกส่งเข้ากลุ่ม')}
+          ${I('line_token', 'Channel Access Token')}${I('line_group_id', 'Group ID')}
+          <div class="row" style="gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('morning')">ทดสอบสรุปเช้า</button>
+            <button class="btn btn-ghost btn-sm" onclick="Admin.testLine('evening')">ทดสอบสรุปเย็น</button>
+          </div>
         </div>
-        <div class="tiny" style="margin-top:8px">สรุปอัตโนมัติ: ตั้ง cron เรียก <code>php cron/report.php morning</code> (08:30) และ <code>evening</code> (17:30) — ดูวิธีใน README</div>
-      </div>
-      <div class="card"><h3>🖼️ สำเนารูปเช็คชื่อขึ้น Google Drive</h3>
-        ${I('gdrive_client_id', 'Client ID')}${I('gdrive_client_secret', 'Client Secret', 'password')}
-        <div id="gdriveStatus" class="tiny">กำลังตรวจสถานะ...</div>
-        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveConnect()">🔗 เชื่อมต่อ Google Drive</button>
-          <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveTest()">ทดสอบ + ส่งรูปค้าง</button>
-          <button class="btn btn-danger-ghost btn-sm" onclick="Admin.gdriveDisconnect()">ยกเลิกการเชื่อมต่อ</button>
-        </div>
-        <div class="tiny" style="margin-top:8px">รูปเซลฟี่เช็คอินจะถูกสำเนาขึ้น Drive อัตโนมัติ แยกโฟลเดอร์รายวัน (ปี พ.ศ.) — เช็คอินไม่ต้องรอ Drive ถ้าส่งพลาดระบบ retry ให้เอง</div>
-      </div>
-      <button class="btn btn-primary btn-block" onclick="Admin.saveSettings()" style="margin-bottom:20px">💾 บันทึกการตั้งค่าทั้งหมด</button>`;
-    this.gdriveRefreshStatus();
-    this.pushRefresh();
-    this.holidayRefresh();
-    this.offsiteRefresh();
-    this.offsiteUserRefresh();
+        <div class="card"><h3>🖼️ สำเนารูปเช็คชื่อขึ้น Google Drive</h3>
+          <div id="gdriveStatus" class="st-status">กำลังตรวจสถานะ...</div>
+          ${I('gdrive_client_id', 'Client ID')}${I('gdrive_client_secret', 'Client Secret', 'password')}
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveConnect()">🔗 เชื่อมต่อ Google Drive</button>
+            <button class="btn btn-ghost btn-sm" onclick="Admin.gdriveTest()">ทดสอบ + ส่งรูปค้าง</button>
+            <button class="btn btn-danger-ghost btn-sm" onclick="Admin.gdriveDisconnect()">ยกเลิกการเชื่อมต่อ</button>
+          </div>
+          <div class="tiny" style="margin-top:8px">รูปเซลฟี่เช็คอินจะถูกสำเนาขึ้น Drive อัตโนมัติ แยกโฟลเดอร์รายวัน (ปี พ.ศ.) — เช็คอินไม่ต้องรอ Drive ถ้าส่งพลาดระบบ retry ให้เอง</div>
+        </div>`,
+
+      // ---------- 🏷️ ทั่วไป ----------
+      general: () => `
+        <div class="card"><h3>🏷️ ทั่วไป</h3>${I('station_name', 'ชื่อสถานี')}
+          <div class="setting-row" style="border:none;padding-top:4px">
+            <div class="sr-main"><div class="sr-title">🔑 เปลี่ยนรหัสผ่านแอดมิน</div>
+            <div class="sr-sub">ควรเปลี่ยนทันทีหลัง deploy ครั้งแรก</div></div>
+            <button class="btn btn-ghost btn-sm" onclick="App.changePass()">เปลี่ยน</button></div>
+        </div>`,
+    };
+    if (!tabs[this.setTab]) this.setTab = 'announce';
+    const hasSave = ['rules', 'connect', 'general'].includes(this.setTab);
+
+    byId('view').innerHTML = this.setSegHtml() + tabs[this.setTab]() + (hasSave ? `
+      <div class="savebar" id="saveBar" hidden><span>มีค่าที่แก้แล้วยังไม่ได้บันทึก</span>
+        <button class="btn btn-primary btn-sm" onclick="Admin.saveSettings()">💾 บันทึก</button></div>` : '');
+
+    this.setDirty(false);
+    document.querySelectorAll('#view [id^="st_"]').forEach(el => {
+      el.addEventListener('input', () => this.setDirty(true));
+      el.addEventListener('change', () => this.setDirty(true));
+    });
+    if (this.setTab === 'days')    { this.holidayRefresh(); this.offsiteRefresh(); this.offsiteUserRefresh(); }
+    if (this.setTab === 'connect') { this.gdriveRefreshStatus(); this.pushRefresh(); }
   },
 
   // ---------- แจ้งเตือน Push (v37) ----------
@@ -1933,9 +1987,10 @@ const Admin = {
     if (!st) return;
     if (Push.vapid === null) await Push.report();   // ยังโหลดไม่เสร็จ (เปิดหน้าเร็วกว่า boot)
     const hasKey = !!Push.vapid;
+    st.className = 'st-status ' + (hasKey ? 'ok' : 'warn');
     st.innerHTML = hasKey
-      ? '<span style="color:var(--ok)">✅ สร้างกุญแจแล้ว</span> — เจ้าหน้าที่กดเปิดแจ้งเตือนได้จากหน้าโปรไฟล์ในแอป'
-      : '<span style="color:var(--absent)">⚠️ ยังไม่ได้สร้างกุญแจ</span> — กดปุ่ม "สร้างกุญแจแจ้งเตือน" ก่อน แล้วค่อยเปิดสวิตช์ด้านบน';
+      ? '✅ สร้างกุญแจแล้ว — เจ้าหน้าที่กดเปิดแจ้งเตือนได้จากหน้าโปรไฟล์ในแอป'
+      : '⚠️ ยังไม่ได้สร้างกุญแจ — กดปุ่ม "สร้างกุญแจแจ้งเตือน" ด้านล่างก่อน แล้วค่อยเปิดสวิตช์';
 
     const el = byId('deviceList');
     if (!el) return;
@@ -2094,6 +2149,7 @@ const Admin = {
     if (!el) return;
     const d = await App.api('gdrive_status', {}, { soft: true });
     if (!d.ok) { el.textContent = 'ตรวจสถานะไม่สำเร็จ'; return; }
+    el.className = 'st-status ' + (d.connected ? 'ok' : 'warn');
     el.innerHTML = d.connected
       ? `✅ เชื่อมต่อแล้ว${d.root_id ? ` — <a href="https://drive.google.com/drive/folders/${d.root_id}" target="_blank" rel="noopener">เปิดโฟลเดอร์ "${esc(d.root_name)}"</a>` : ''}
          <br>คิวรูป: รอส่ง ${d.pending} • ส่งแล้ว ${d.done} • ล้มเหลว ${d.error}
@@ -2130,25 +2186,23 @@ const Admin = {
     getPosition().then(p => {
       byId('st_gps_lat').value = p.lat.toFixed(6);
       byId('st_gps_lng').value = p.lng.toFixed(6);
+      this.setDirty(true);
       toast('ใส่พิกัดปัจจุบันแล้ว อย่าลืมกดบันทึก');
     }).catch(() => toast('หาตำแหน่งไม่ได้', 'error'));
   },
 
   async saveSettings() {
-    const keys = ['selfie_required', 'checkout_enabled', 'gps_enforce', 'sunday_off',
-      'sunday_work_enabled', 'night_shift_enabled', 'night_checkin_open',
-      'checkin_open', 'late_cutoff', 'checkout_open', 'report_cutoff',
-      'gps_lat', 'gps_lng', 'gps_radius_m', 'station_name', 'line_token', 'line_group_id',
-      'face_verify_enabled', 'face_match_threshold', 'face_max_attempts', 'face_min_desc',
-      'gdrive_client_id', 'gdrive_client_secret'];
+    // เก็บทุกช่อง st_* ที่อยู่บนจอ (แท็บย่อยไหนก็ได้) — server บันทึกเฉพาะ key ที่ส่งไป
+    // (เดิมใช้รายชื่อ key ตายตัว ลืม push_* 3 ตัว = สวิตช์ Push ไม่เคยถูกเซฟ)
     const settings = {};
-    keys.forEach(k => {
-      const el = byId('st_' + k);
-      settings[k] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+    document.querySelectorAll('#view [id^="st_"]').forEach(el => {
+      settings[el.id.slice(3)] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
     });
     const d = await App.api('settings_save', { settings });
     toast(d.message);
+    this.setDirty(false);
     App.adminData = await App.api('admin_data');
+    if (settings.station_name && byId('tbSub')) byId('tbSub').textContent = settings.station_name;
   },
 
   async testLine(type) {
