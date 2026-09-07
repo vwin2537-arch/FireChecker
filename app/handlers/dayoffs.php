@@ -105,16 +105,23 @@ function h_dayoff_add(): never {
     if (!$r['added'] && $r['skipped']) fail('จองไม่สำเร็จ: ' . $r['skipped'][0][1]);
 
     // แจ้งเข้ากลุ่ม LINE ทันที (async ผ่านคิว) — หัวหน้ารู้ทันทีไม่ต้องรอรายงานเช้า/เย็น
-    // ลาป่วย/ลากิจ = แจ้งทุกวันที่ยื่น / วันหยุด = แจ้งเฉพาะที่เกินโควต้า (รออนุมัติ) — dayoff ในโควต้ายังเงียบ
-    $notifyDates = ($type === 'sick' || $type === 'personal') ? $r['added'] : $r['over_quota'];
-    if ($notifyDates) {
-        $dates = implode(', ', array_map(fn($d) => thai_date($d, false), $notifyDates));
+    // ลาป่วย/ลากิจ = แจ้งทุกวันที่ยื่น / วันหยุด = แจ้งเฉพาะที่เกินโควต้า (รออนุมัติ) — dayoff ในโควต้าไม่รบกวนกลุ่ม
+    $lineDates = ($type === 'sick' || $type === 'personal') ? $r['added'] : $r['over_quota'];
+    if ($lineDates) {
+        $dates = implode(', ', array_map(fn($d) => thai_date($d, false), $lineDates));
         $head  = ($type === 'dayoff') ? '🔔 ขอใช้วันหยุดเกินโควต้า' : '🔔 มีคำขอลา';
         line_enqueue("{$head}\n• {$u['name']} — " . OFF_TYPES[$type] . " {$dates}"
                    . ($note !== '' ? "\n📝 {$note}" : '')
                    . ($r['pending'] ? "\n⏳ รออนุมัติจากหัวหน้าสถานี" : ''));
+    }
 
-        // เด้งหาหัวหน้าด้วย (push อย่างเดียว ไม่เขียนกล่องข้อความ — หัวหน้ามีคิวอนุมัติในแอปอยู่แล้ว)
+    // เด้ง push หาหัวหน้า "ทุกครั้ง" ที่เจ้าหน้าที่ลงวันหยุด/ลา (รวม dayoff ในโควต้าที่ LINE เงียบ) — พี่วินขอรู้ทุกรายการ
+    // push อย่างเดียว ไม่เขียนกล่องข้อความ (หัวหน้ามีปฏิทิน+คิวอนุมัติในแอปอยู่แล้ว)
+    if ($r['added']) {
+        $dates = implode(', ', array_map(fn($d) => thai_date($d, false), $r['added']));
+        if ($type !== 'dayoff')      $head = '🔔 มีคำขอลา';
+        elseif ($r['over_quota'])    $head = '🔔 ขอใช้วันหยุดเกินโควต้า';
+        else                         $head = '📅 ลงวันหยุด';
         $admins = db()->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
         push_to_users(array_map('intval', $admins), $head,
             "{$u['name']} — " . OFF_TYPES[$type] . " {$dates}" . ($r['pending'] ? ' (รออนุมัติ)' : ''), './');
@@ -136,10 +143,14 @@ function h_dayoff_cancel(): never {
     if ($off['off_date'] < date('Y-m-d')) fail('ยกเลิกวันที่ผ่านมาแล้วไม่ได้');
 
     db()->prepare('DELETE FROM day_offs WHERE id = ?')->execute([$id]);
-    // แจ้งเข้ากลุ่ม LINE เมื่อยกเลิกลาป่วย/ลากิจ (async) — หัวหน้ารู้ว่าคำขอถูกถอน
+    $line = "{$u['name']} — " . OFF_TYPES[$off['type']] . ' ' . thai_date($off['off_date'], false);
+    // แจ้งเข้ากลุ่ม LINE เมื่อยกเลิกลาป่วย/ลากิจ (async) — หัวหน้ารู้ว่าคำขอถูกถอน (ยกเลิกวันหยุดธรรมดาไม่รบกวนกลุ่ม)
     if ($off['type'] === 'sick' || $off['type'] === 'personal') {
-        line_enqueue("❌ ยกเลิกคำขอลา\n• {$u['name']} — " . OFF_TYPES[$off['type']] . ' ' . thai_date($off['off_date'], false));
+        line_enqueue("❌ ยกเลิกคำขอลา\n• {$line}");
     }
+    // เด้ง push หาหัวหน้าทุกครั้งที่ยกเลิก (คู่กับตอนลง — พี่วินขอรู้ทุกรายการ) push อย่างเดียว ไม่เขียนกล่องข้อความ
+    $admins = db()->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+    push_to_users(array_map('intval', $admins), $off['type'] === 'dayoff' ? '❌ ยกเลิกวันหยุด' : '❌ ยกเลิกคำขอลา', $line, './');
     ok(['message' => 'ยกเลิกวันหยุดแล้ว']);
 }
 
