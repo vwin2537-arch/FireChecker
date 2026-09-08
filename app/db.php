@@ -224,6 +224,17 @@ function ensure_admin(): void {
         db()->exec("ALTER TABLE night_shifts
                     ADD COLUMN face_flag TINYINT(1) NOT NULL DEFAULT 0 AFTER selfie_path");
     }
+
+    // migrate: attendance.by_admin / night_shifts.by_admin (เช็คชื่อแทนโดยหัวหน้า v43) — DB เดิมยังไม่มี
+    // probe ตัวเดียวคุมทั้งสองตาราง (เพิ่มพร้อมกันเสมอ)
+    $hasByAdmin = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'by_admin'"
+    )->fetchColumn();
+    if (!(int)$hasByAdmin) {
+        db()->exec("ALTER TABLE attendance   ADD COLUMN by_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER face_photo");
+        db()->exec("ALTER TABLE night_shifts ADD COLUMN by_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER face_flag");
+    }
 }
 
 /** ใส่ท่าทดสอบสมรรถภาพตั้งต้นครั้งแรก (ตารางว่าง) — แอดมินแก้/เพิ่ม/ซ่อนได้ภายหลัง

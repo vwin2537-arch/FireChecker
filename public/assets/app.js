@@ -405,7 +405,7 @@ const App = {
     if (!rows.length) return '';
     return `<div class="card"><h3>🕐 ${title}</h3>${rows.map(a => `
       <div class="list-row"><span class="dot ${+a.late ? 'dot-late' : 'dot-ok'}"></span>
-        <div class="lr-main"><div class="lr-title">${thaiDate(a.work_date)}</div>
+        <div class="lr-main"><div class="lr-title">${thaiDate(a.work_date)}${+a.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : ''}</div>
           <div class="lr-sub">เข้า ${a.time_in.substr(11, 5)} น.${a.time_out ? ' • ส่งรายงาน ' + a.time_out.substr(11, 5) + ' น.' : ''}${a.note ? ' • 📝 ' + esc(a.note) : ''}</div></div>
         <span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span>
       </div>`).join('')}</div>`;
@@ -1046,7 +1046,7 @@ const App = {
     byId('histList').innerHTML = (this.historyCard(d.attendance, 'บันทึกเช็คชื่อ') || '<div class="card empty"><span class="e-ico">📭</span>เดือนนี้ยังไม่มีบันทึก</div>')
       + (nights.length ? `<div class="card"><h3>🌙 เวรกลางคืน <span class="h-right">${nights.length} คืน</span></h3>${nights.map(n => `
         <div class="list-row"><span class="dot" style="background:#6366f1"></span>
-          <div class="lr-main"><div class="lr-title">${thaiDate(n.duty_date)}</div>
+          <div class="lr-main"><div class="lr-title">${thaiDate(n.duty_date)}${+n.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : ''}</div>
           <div class="lr-sub">ลงเวร ${n.time_in.substr(11, 5)} น.</div></div></div>`).join('')}</div>` : '')
       + (d.day_offs.length ? `<div class="card"><h3>🔵 วันลา/หยุด</h3>${d.day_offs.map(o => `
         <div class="list-row"><span class="dot dot-leave"></span>

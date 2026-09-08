@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   face_flag   TINYINT(1) NOT NULL DEFAULT 0, -- ยืนยันใบหน้า (v33): 0=ผ่าน/ปิดระบบ · 1=ไม่ผ่านครบ 3 ครั้ง · 2=ยังไม่ลงทะเบียนใบหน้า
   face_dist   DECIMAL(6,4) NULL,             -- ระยะที่ใกล้ที่สุดตอนเช็คชื่อ (เอาไว้ปรับเกณฑ์จากข้อมูลจริง)
   face_photo  VARCHAR(255) NULL,             -- รูปตอนพลาด (เฉพาะ face_flag=1 ให้หัวหน้าดู)
+  by_admin    TINYINT(1) NOT NULL DEFAULT 0, -- หัวหน้าเช็คชื่อแทน (v43) — ข้าม GPS/เซลฟี่/ใบหน้า, ลบได้จากหน้าแอดมิน
   UNIQUE KEY uq_user_date (user_id, work_date),
   KEY idx_work_date (work_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS night_shifts (
   distance_m  INT NULL,
   selfie_path VARCHAR(255) NULL,
   face_flag   TINYINT(1) NOT NULL DEFAULT 0, -- ยืนยันใบหน้า (v33) ความหมายเดียวกับ attendance.face_flag
+  by_admin    TINYINT(1) NOT NULL DEFAULT 0, -- หัวหน้าลงเวรแทน (v43)
   UNIQUE KEY uq_user_night (user_id, duty_date),
   KEY idx_duty_date (duty_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

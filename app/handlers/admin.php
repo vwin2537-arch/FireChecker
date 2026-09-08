@@ -8,7 +8,7 @@ function roster_for(string $date): array {
     $st = db()->prepare(
         "SELECT u.id, u.name, u.position,
                 a.time_in, a.late, a.time_out, a.report_late, a.distance_m, a.selfie_path,
-                a.face_flag, a.face_dist, a.face_photo,
+                a.face_flag, a.face_dist, a.face_photo, a.by_admin,
                 o.type AS off_type, o.note AS off_note, o.over_quota
          FROM users u
          LEFT JOIN attendance a ON a.user_id = u.id AND a.work_date = ?
@@ -53,7 +53,7 @@ function h_admin_data(): never {
     $holidayWorkers = [];
     if ($isHoliday) {
         $st = db()->prepare(
-            "SELECT u.name, u.position, a.time_in, a.note, a.distance_m, a.selfie_path
+            "SELECT u.name, u.position, a.time_in, a.note, a.distance_m, a.selfie_path, a.by_admin
              FROM attendance a JOIN users u ON u.id = a.user_id
              WHERE a.work_date = ? ORDER BY a.time_in");
         $st->execute([$today]);
@@ -66,7 +66,7 @@ function h_admin_data(): never {
     // ---------- เข้าเวรกลางคืน "คืนนี้" (ใครลงเวรบ้าง) ----------
     $nightDate = tonight_duty_date();
     $st = db()->prepare(
-        "SELECT u.name, u.position, n.time_in FROM night_shifts n JOIN users u ON u.id = n.user_id
+        "SELECT u.name, u.position, n.time_in, n.by_admin FROM night_shifts n JOIN users u ON u.id = n.user_id
          WHERE n.duty_date = ? ORDER BY n.time_in");
     $st->execute([$nightDate]);
     $nightTonight = $st->fetchAll();
@@ -438,7 +438,7 @@ function h_night_roster(): never {
     require_admin();
     $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)param('date')) ? param('date') : tonight_duty_date();
     $st = db()->prepare(
-        "SELECT u.name, u.position, n.time_in FROM night_shifts n JOIN users u ON u.id = n.user_id
+        "SELECT u.name, u.position, n.time_in, n.by_admin FROM night_shifts n JOIN users u ON u.id = n.user_id
          WHERE n.duty_date = ? ORDER BY n.time_in");
     $st->execute([$date]);
     ok(['date' => $date, 'items' => $st->fetchAll()]);
@@ -618,4 +618,95 @@ function h_offsite_user_del(): never {
     require_admin();
     db()->prepare('DELETE FROM offsite_users WHERE id = ?')->execute([(int)param('id', 0)]);
     ok(['message' => 'ลบแล้ว']);
+}
+
+// ---------- เช็คชื่อแทนเจ้าหน้าที่ (v43) ----------
+// หัวหน้าบันทึกเช็คชื่อเช้า/ลงเวรกลางคืนแทน จนท. ที่กดเองไม่ได้ (แอปพัง/สแกนหน้าไม่ผ่าน/มือถือเสีย)
+// ข้าม GPS/เซลฟี่/ใบหน้าทั้งหมด · ติดธง by_admin=1 (โชว์ป้าย "หัวหน้าเช็คให้" + ลบได้เฉพาะรายการนี้)
+// เวลาเข้า: วันนี้ = NOW() / วันย้อนหลัง = เวลาเปิดเช็คชื่อของวันนั้น (ห้ามใช้ NOW() กับวันย้อนหลัง — จะได้เวลาของวันนี้ปนวันเก่า)
+
+function h_proxy_checkin(): never {
+    require_admin();
+    $uid  = (int)param('user_id');
+    $date = trim((string)param('date', ''));
+    $kind = (string)param('kind', 'morning');
+    $note = mb_substr(trim((string)param('note', '')), 0, 255) ?: null;
+    $today = date('Y-m-d');
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) fail('วันที่ไม่ถูกต้อง');
+    if ($date > $today) fail('เช็คชื่อแทนล่วงหน้าไม่ได้');
+    if (!in_array($kind, ['morning', 'night'], true)) fail('ประเภทไม่ถูกต้อง');
+
+    $st = db()->prepare("SELECT id, name, gender FROM users WHERE id = ? AND role = 'staff' AND status = 'active'");
+    $st->execute([$uid]);
+    if (!($u = $st->fetch())) fail('ไม่พบเจ้าหน้าที่คนนี้');
+
+    if ($kind === 'morning') {
+        // กติกาเดียวกับ h_checkin: วันหยุดสถานีเช็คได้ก็ต่อเมื่อเปิดงานวันอาทิตย์ หรือเป็นวันนอกสถานที่
+        if (is_station_holiday($date) && !offsite_for($date) && setting('sunday_work_enabled', '1') !== '1')
+            fail('วันนั้นเป็นวันหยุดสถานี ไม่ต้องเช็คชื่อค่ะ');
+
+        $st = db()->prepare('SELECT type FROM day_offs WHERE user_id = ? AND off_date = ?');
+        $st->execute([$uid, $date]);
+        if ($off = $st->fetch()) {
+            $label = ['dayoff' => 'วันหยุด', 'sick' => 'ลาป่วย', 'personal' => 'ลากิจ'][$off['type']] ?? 'วันหยุด';
+            fail("วันนั้น {$u['name']} มี{$label}อยู่ — ลบใบลาในปฏิทินก่อน แล้วค่อยเช็คชื่อแทน");
+        }
+        $st = db()->prepare('SELECT id FROM attendance WHERE user_id = ? AND work_date = ?');
+        $st->execute([$uid, $date]);
+        if ($st->fetch()) fail("{$u['name']} เช็คชื่อวันนั้นไปแล้ว");
+
+        $late   = (int)!!param('late', 0);
+        $timeIn = $date === $today ? date('Y-m-d H:i:s') : $date . ' ' . setting('checkin_open', '08:05') . ':00';
+        db()->prepare('INSERT INTO attendance (user_id, work_date, time_in, late, note, by_admin) VALUES (?, ?, ?, ?, ?, 1)')
+            ->execute([$uid, $date, $timeIn, $late, $note]);
+
+        notify_push($uid, 'announcement', '👤 หัวหน้าเช็คชื่อให้แล้ว',
+            'วันที่ ' . thai_date($date) . ' เวลา ' . substr($timeIn, 11, 5) . ' น. (' . ($late ? 'สาย' : 'ตรงเวลา') . ')'
+            . ($note ? " — {$note}" : ''));
+        ok(['message' => "เช็คชื่อแทน {$u['name']} แล้ว (" . ($late ? 'สาย' : 'ตรงเวลา') . ')']);
+    }
+
+    // ---- เวรกลางคืน (กติกาเดียวกับ h_night_checkin: เปิดระบบ + ชายเท่านั้น) — date = duty_date (คืนวันที่) ----
+    if (setting('night_shift_enabled', '1') !== '1') fail('ระบบเวรกลางคืนยังไม่เปิดใช้งาน');
+    if (($u['gender'] ?? null) !== 'male')
+        fail(($u['gender'] ?? null) === 'female' ? 'เวรกลางคืนสำหรับเจ้าหน้าที่ชายเท่านั้นค่ะ'
+                                                  : "ยังไม่ได้ระบุเพศของ {$u['name']} — ตั้งค่าในหน้าเจ้าหน้าที่ก่อนค่ะ");
+    $st = db()->prepare('SELECT id FROM night_shifts WHERE user_id = ? AND duty_date = ?');
+    $st->execute([$uid, $date]);
+    if ($st->fetch()) fail("{$u['name']} ลงเวรคืนนั้นไปแล้ว");
+
+    $timeIn = $date === $today ? date('Y-m-d H:i:s') : $date . ' ' . setting('night_checkin_open', '18:00') . ':00';
+    db()->prepare('INSERT INTO night_shifts (user_id, duty_date, time_in, by_admin) VALUES (?, ?, ?, 1)')
+        ->execute([$uid, $date, $timeIn]);
+
+    notify_push($uid, 'announcement', '🌙 หัวหน้าลงเวรกลางคืนให้แล้ว',
+        'คืนวันที่ ' . thai_date($date) . ' เวลา ' . substr($timeIn, 11, 5) . ' น.' . ($note ? " — {$note}" : ''));
+    ok(['message' => "ลงเวรกลางคืนแทน {$u['name']} แล้ว"]);
+}
+
+/** รายการที่หัวหน้าเช็คแทนไว้ 30 วันล่าสุด (ทั้งเช้า + เวรคืน) — ให้ดู/ลบกรณีกดผิดคน */
+function h_proxy_list(): never {
+    require_admin();
+    $st = db()->prepare(
+        "SELECT 'morning' kind, a.id, a.work_date d, a.time_in, a.late, a.note, u.name
+           FROM attendance a JOIN users u ON u.id = a.user_id
+          WHERE a.by_admin = 1 AND a.work_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         UNION ALL
+         SELECT 'night', n.id, n.duty_date, n.time_in, 0, NULL, u.name
+           FROM night_shifts n JOIN users u ON u.id = n.user_id
+          WHERE n.by_admin = 1 AND n.duty_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         ORDER BY d DESC, time_in DESC");
+    $st->execute();
+    ok(['items' => $st->fetchAll()]);
+}
+
+/** ลบได้เฉพาะ row ที่ by_admin=1 — รายการที่ จนท. เช็คเองห้ามแตะ (WHERE by_admin=1 คือกำแพงทั้งหมดของ endpoint นี้) */
+function h_proxy_del(): never {
+    require_admin();
+    $kind = (string)param('kind', '');
+    $table = ['morning' => 'attendance', 'night' => 'night_shifts'][$kind] ?? fail('ประเภทไม่ถูกต้อง');
+    $st = db()->prepare("DELETE FROM {$table} WHERE id = ? AND by_admin = 1");
+    $st->execute([(int)param('id', 0)]);
+    $st->rowCount() ? ok(['message' => 'ลบรายการแล้ว']) : fail('ไม่พบรายการ หรือไม่ใช่รายการที่หัวหน้าเช็คแทน');
 }

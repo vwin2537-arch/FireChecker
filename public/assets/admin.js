@@ -146,7 +146,7 @@ const Admin = {
       <div class="rg-head"><span class="dot dot-${dotClass}"></span>${icon} ${label} <b>${list.length}</b></div>
       <div class="roster">${list.map(r => `
         <div class="roster-cell s-${state}">
-          <div><div class="rc-name">${esc(r.name)}${faceFlagChip(r)}</div>
+          <div><div class="rc-name">${esc(r.name)}${faceFlagChip(r)}${proxyChip(r)}</div>
           <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
             state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
         </div>`).join('')}</div>
@@ -206,7 +206,7 @@ const Admin = {
     const head = `<div class="tiny" style="margin-bottom:8px">คืนวันที่ ${date ? thaiDate(date) : '-'} · ${list.length} คน</div>`;
     if (!list.length) return head + '<div class="empty" style="padding:16px"><span class="e-ico">🌙</span>ยังไม่มีใครลงเวรคืนนี้</div>';
     return head + list.map(n => `<div class="list-row"><span class="dot dot-ok"></span>
-      <div class="lr-main"><div class="lr-title">${esc(n.name)}</div>
+      <div class="lr-main"><div class="lr-title">${esc(n.name)}${proxyChip(n)}</div>
       <div class="lr-sub">เข้าเวร ${n.time_in.substr(11, 5)} น.${n.position ? ' • ' + esc(n.position) : ''}</div></div></div>`).join('');
   },
 
@@ -499,7 +499,7 @@ const Admin = {
   aYm: null,
   async vDayoff() {
     this.aYm = this.aYm || ymNow();
-    const [d, ul, lp] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list'), App.api('leave_pending')]);
+    const [d, ul, lp, px] = await Promise.all([App.api('dayoff_month', { ym: this.aYm }), App.api('users_list'), App.api('leave_pending'), App.api('proxy_list')]);
     const staff = ul.users.filter(u => u.role === 'staff' && u.status === 'active');
     const pend = lp.pending || [];
     const pendCard = pend.length ? `<div class="card" style="border:1.5px solid #fed7aa">
@@ -551,7 +551,60 @@ const Admin = {
         </div>
         <div class="field"><label>หมายเหตุ</label><input class="input" id="aoNote" maxlength="255"></div>
         <button class="btn btn-primary btn-block" onclick="Admin.addOff()">บันทึก</button>
+      </div>
+      <div class="card"><h3>✅ เช็คชื่อแทนเจ้าหน้าที่ <span class="h-right">กรณีกดเองไม่ได้ (แอปพัง/สแกนหน้าไม่ผ่าน)</span></h3>
+        <div class="field"><label>เจ้าหน้าที่</label><select class="select" id="pxUser">
+          ${staff.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
+        <div class="grid-2">
+          <div class="field"><label>ประเภท</label><select class="select" id="pxKind" onchange="Admin.proxyKindChange()">
+            <option value="morning">เช็คชื่อเช้า</option><option value="night">ลงเวรกลางคืน</option></select></div>
+          <div class="field"><label id="pxDateLabel">วันที่</label><input type="date" class="input" id="pxDate" value="${todayStr()}" max="${todayStr()}"></div>
+        </div>
+        <label class="field" id="pxLateWrap" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="pxLate"> <span>มาสาย (ไม่ติ๊ก = ตรงเวลา)</span></label>
+        <div class="field" id="pxNoteWrap"><label>หมายเหตุ</label><input class="input" id="pxNote" maxlength="255" placeholder="เช่น แอปสแกนหน้าไม่ผ่าน"></div>
+        <div class="tiny" style="margin-bottom:10px">เวลาเข้า: วันนี้ = เวลาที่กดบันทึก · วันย้อนหลัง = เวลาเปิดเช็คชื่อของวันนั้น · ข้าม GPS/เซลฟี่/สแกนหน้า · เจ้าตัวได้รับแจ้งในกล่องข้อความ</div>
+        <button class="btn btn-primary btn-block" onclick="Admin.proxyAdd()">บันทึกเช็คชื่อแทน</button>
+        ${this.proxyListHtml(px.items || [])}
       </div>`;
+  },
+
+  // รายการที่เช็คแทนไว้ 30 วันล่าสุด — ลบได้เฉพาะรายการนี้ (server กัน by_admin=1 อีกชั้น)
+  proxyListHtml(items) {
+    if (!items.length) return '';
+    return `<div class="tiny" style="margin:14px 0 6px"><b>เช็คแทนไว้ 30 วันล่าสุด</b> (${items.length} รายการ)</div>` + items.map(it => `
+      <div class="list-row"><span class="dot" style="background:${it.kind === 'night' ? '#6366f1' : (+it.late ? 'var(--late)' : 'var(--ok)')}"></span>
+        <div class="lr-main"><div class="lr-title">${esc(it.name)} <span class="tiny">${it.kind === 'night' ? '🌙 เวรคืน' : (+it.late ? '🟡 สาย' : '🟢 ตรงเวลา')}</span></div>
+          <div class="lr-sub">${thaiDate(it.d)} · ${it.time_in.substr(11, 5)} น.${it.note ? ' — ' + esc(it.note) : ''}</div></div>
+        <button class="link-btn" style="color:var(--absent);font-size:13px;flex-shrink:0" onclick="Admin.proxyDel('${it.kind}',${it.id})">ลบ</button>
+      </div>`).join('');
+  },
+
+  proxyKindChange() {
+    const night = byId('pxKind').value === 'night';
+    byId('pxLateWrap').style.display = night ? 'none' : 'flex';
+    byId('pxNoteWrap').style.display = night ? 'none' : '';   // night_shifts ไม่มีคอลัมน์ note — ซ่อนไว้ ไม่ให้พิมพ์แล้วหาย
+    if (night) byId('pxNote').value = '';
+    byId('pxDateLabel').textContent = night ? 'คืนวันที่' : 'วันที่';
+  },
+
+  async proxyAdd() {
+    const d = await App.api('proxy_checkin', {
+      user_id: +byId('pxUser').value, date: byId('pxDate').value, kind: byId('pxKind').value,
+      late: byId('pxLate').checked ? 1 : 0, note: byId('pxNote').value.trim(),
+    });
+    toast(d.message);
+    App.adminData = await App.api('admin_data');   // แดชบอร์ดอ่านจาก cache นี้ — ไม่รีเฟรชจะยังโชว์ "ยังไม่มา"
+    this.vDayoff();
+  },
+
+  async proxyDel(kind, id) {
+    const c = await Swal.fire({ icon: 'warning', title: 'ลบรายการเช็คชื่อแทนนี้?', text: 'วันนั้นจะกลับเป็น "ยังไม่มา/ขาด"', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ไม่' });
+    if (!c.isConfirmed) return;
+    const d = await App.api('proxy_del', { kind, id });
+    toast(d.message);
+    App.adminData = await App.api('admin_data');
+    this.vDayoff();
   },
 
   // ช่องปฏิทิน — ทุกคน: ไล่สีตามจำนวนคนหยุด / รายคน: สีตามประเภทการลา
@@ -2573,6 +2626,11 @@ const Admin = {
 };
 
 /** ป้ายธงยืนยันใบหน้า (ใช้ในตารางรายชื่อ) */
+// ป้าย "หัวหน้าเช็คให้" (v43) — row ที่แอดมินเช็คชื่อ/ลงเวรแทน (by_admin=1) ใช้สไตล์ .face-flag.f2 เดิม ไม่ต้องเพิ่ม CSS
+function proxyChip(r) {
+  return +r.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : '';
+}
+
 function faceFlagChip(r) {
   if (+r.face_flag === 1) return ` <span class="face-flag" onclick="Admin.faceFlagList()">⚠️ ยืนยันหน้าไม่ผ่าน</span>`;
   if (+r.face_flag === 2) return ` <span class="face-flag f2">🆕 ยังไม่ลงทะเบียนหน้า</span>`;
