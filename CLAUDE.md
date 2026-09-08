@@ -35,7 +35,7 @@
 | [`training.md`](docs/notes/training.md) | ประวัติการฝึกอบรม (v35) | `training.php` |
 | [`push.md`](docs/notes/push.md) | แจ้งเตือนเข้ามือถือ Web Push (v37) + เก็บข้อมูลอุปกรณ์ | `push.php`, `sw.js`, `Push` ใน app.js |
 | [`settings.md`](docs/notes/settings.md) | หน้าตั้งค่าแอดมิน 5 แท็บย่อย (v41): โครง, แถบบันทึกลอย, กับดัก `saveSettings`/`.seg-5` | `vSettings`, `saveSettings`, เพิ่ม setting ใหม่ |
-| [`proxy-checkin.md`](docs/notes/proxy-checkin.md) | แอดมินเช็คชื่อ/ลงเวรแทน จนท. (v43): คอลัมน์ `by_admin`, เวลาเข้าวันย้อนหลัง, กับดัก `App.adminData` cache | `h_proxy_*`, การ์ดเช็คแทนใน `vDayoff`, `proxyChip` |
+| [`proxy-checkin.md`](docs/notes/proxy-checkin.md) | แอดมินเช็คชื่อ/ลงเวรแทน จนท. (v43) + แก้สาย/ตรงเวลาบนแถวเดิม (v44): คอลัมน์ `by_admin`/`late_fix` (NULL vs `''`), เวลาเข้าวันย้อนหลัง, กับดัก `App.adminData` cache | `h_proxy_*`, การ์ดเช็คแทน/แก้สายใน `vDayoff`, `proxyChip`/`lateFixChip` |
 | [`dashboard-report.md`](docs/notes/dashboard-report.md) | แต่งหน้าแดชบอร์ด/ปฏิทิน + รายงานอันดับความขยัน (ปริ้น/PNG) | `admin.js` `analyticsHtml`, `openReport`, `.rp-*` |
 
 **timeline + สถานะโปรเจค + Lesson learned** → `PROGRESS.md` (log เก่า → `PROGRESS_ARCHIVE.md`)
