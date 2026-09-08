@@ -1447,15 +1447,45 @@ function loadFaceModels() {
 
 const faceOpts = () => new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
 
-/** คำนวณ descriptor จาก <video>/<canvas>/<img> — คืน {desc, box} หรือ null ถ้าไม่พบหน้า */
+/** ยืดคอนทราสต์ (ตัด 1% มืดสุด/สว่างสุด) — รูปเซลฟี่ย้อนแสง/ซีดขาว ssd หาหน้าไม่เจอทั้งที่หน้าชัด
+ *  วัดจริง 8 ก.ย. 69 กับรูปสถานี 460 ใบ: ที่พลาด 23 ใบ ส่วนใหญ่ไม่มีหน้าจริงๆ แต่ใบที่มีหน้าชัด (ทศพร/สมบุญ/คามิน/เขมรินทร์)
+ *  ยืดคอนทราสต์แล้วเจอ score 0.86-0.99 · ไม่ทำรูปที่เคยผ่านพัง (40/40) · descriptor ขยับจากรูปดิบ median 0.07 (เกณฑ์ 0.40)
+ *  ใช้เป็นรอบสองเฉพาะตอนรูปดิบไม่เจอหน้า ไม่ใช้ตลอด
+ */
+function faceEnhance(el) {
+  const w = el.naturalWidth || el.videoWidth || el.width, h = el.naturalHeight || el.videoHeight || el.height;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d'); cx.drawImage(el, 0, 0, w, h);
+  const im = cx.getImageData(0, 0, w, h), d = im.data, hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) hist[(d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0]++;
+  const n = d.length / 4; let acc = 0, lo = 0, hi = 255;
+  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= n * 0.01) { lo = i; break; } }
+  acc = 0; for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc >= n * 0.01) { hi = i; break; } }
+  const rng = Math.max(1, hi - lo), lut = new Uint8ClampedArray(256);
+  for (let i = 0; i < 256; i++) lut[i] = 255 * Math.min(1, Math.max(0, (i - lo) / rng));
+  for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+  cx.putImageData(im, 0, 0);
+  return cv;
+}
+
+/** ตรวจหาหน้าเดียว — รูปดิบก่อน ไม่เจอค่อยลองแบบยืดคอนทราสต์ */
+async function faceDetect(el) {
+  return (await faceapi.detectSingleFace(el, faceOpts())) || faceapi.detectSingleFace(faceEnhance(el), faceOpts());
+}
+
+/** คำนวณ descriptor จาก <video>/<canvas>/<img> — คืน {desc, box} หรือ null ถ้าไม่พบหน้า (ลองยืดคอนทราสต์เป็นรอบสอง) */
 async function faceDescriptorFrom(el) {
-  const d = await faceapi.detectSingleFace(el, faceOpts()).withFaceLandmarks().withFaceDescriptor();
+  let d = await faceapi.detectSingleFace(el, faceOpts()).withFaceLandmarks().withFaceDescriptor();
+  if (!d) d = await faceapi.detectSingleFace(faceEnhance(el), faceOpts()).withFaceLandmarks().withFaceDescriptor();
   return d ? { desc: Array.from(d.descriptor), box: d.detection.box, score: d.detection.score } : null;
 }
 
 /** เปิดกล้องสด + กรอบจับหน้า → เก็บ 3 เฟรมนิ่งแล้วคืนทั้งหมด
- *  คืน {descs:[[...],...], dataUrl} | 'denied' | 'timeout' | 'cancel'
+ *  คืน {descs:[[...],...], dataUrl} | 'denied' | 'cancel'
  *  เก็บ 3 เฟรมเพราะเฟรมเดียวอาจเบลอ/กระพริบตา — เซิร์ฟเวอร์เอาเฟรมที่ใกล้สุดไปตัดสิน
+ *  ⚠️ จับหน้าไม่ได้ (หมดเวลา 30 วิ / กด "ถ่ายเลย" แล้วไม่เจอหน้า) = คืน descs ว่าง **แต่ต้องมี dataUrl เฟรมล่าสุดเสมอ**
+ *  เดิมคืน 'timeout' เปล่าๆ → skip ไปโดยไม่มีรูป → h_checkin ปฏิเสธ "กรุณาถ่ายรูปเซลฟี่" ตอน selfie_required เปิด
+ *  = จนท.ติดอยู่หน้าประตูทั้งวัน (นางสมบุญ 8 ก.ย. 69 ลอง 10 ครั้ง) ขัดกฎเหล็ก "ไม่มีใครถูกบล็อกเช็คชื่อ"
  */
 async function faceLiveCapture() {
   await loadFaceModels();
@@ -1502,10 +1532,21 @@ async function faceLiveCapture() {
   const cx = cv.getContext('2d');
   const t0 = Date.now();
   let stable = 0, lastCx = null, descs = [], shot = null;
+  const grab = () => {   // เฟรมปัจจุบันจากกล้อง (ต้องเรียกก่อน cleanup — stream ปิดแล้วจะได้ภาพดำ)
+    const c = document.createElement('canvas');
+    c.width = vid.videoWidth; c.height = vid.videoHeight;
+    if (!c.width) return null;
+    c.getContext('2d').drawImage(vid, 0, 0);
+    return c;
+  };
   try {
     while (!closed && descs.length < 3) {
-      if (Date.now() - t0 > 30000) { cleanup(); return 'timeout'; }
-      const det = await faceapi.detectSingleFace(vid, faceOpts());
+      if (Date.now() - t0 > 30000) {
+        const last = grab();
+        if (!shot && last) shot = last.toDataURL('image/jpeg', 0.6);   // หมดเวลา = เก็บเฟรมสุดท้ายเป็นหลักฐาน/เซลฟี่
+        break;
+      }
+      const det = await faceDetect(vid);
       if (closed) break;
       cv.width = vid.clientWidth; cv.height = vid.clientHeight;
       cx.clearRect(0, 0, cv.width, cv.height);
@@ -1529,14 +1570,15 @@ async function faceLiveCapture() {
       }
       stable = ready ? stable + 1 : 0;
       if (stable >= 2 || forced) {
-        const snap = document.createElement('canvas');
-        snap.width = vid.videoWidth; snap.height = vid.videoHeight;
-        snap.getContext('2d').drawImage(vid, 0, 0);
+        const snap = grab();
+        if (!snap) { stable = 0; continue; }
         const got = await faceDescriptorFrom(snap);
         if (got) {
           descs.push(got.desc);
           if (!shot) shot = snap.toDataURL('image/jpeg', 0.6);   // เก็บเฟรมแรกไว้ใช้เป็นเซลฟี่/หลักฐาน
           st.textContent = `เก็บภาพแล้ว ${descs.length}/3`;
+        } else if (forced && !shot) {
+          shot = snap.toDataURL('image/jpeg', 0.6);   // กด "ถ่ายเลย" แล้วไม่เจอหน้า — ก็ยังต้องมีรูปติดไปให้หัวหน้าดู
         }
         if (forced) break;
         stable = 0;
@@ -1544,8 +1586,7 @@ async function faceLiveCapture() {
     }
   } finally { if (!closed) cleanup(); }
   if (result === 'cancel') return 'cancel';
-  if (!descs.length) return 'timeout';
-  return { descs, dataUrl: shot };
+  return { descs, dataUrl: shot };   // descs ว่าง = จับหน้าไม่ได้ (แต่มี dataUrl ถ้ากล้องเปิดติด)
 }
 
 /** ยืนยันใบหน้าให้ครบกระบวนการ — คืน {ok:true,dataUrl} | {flagged:true,dataUrl} | 'cancel'
@@ -1559,11 +1600,12 @@ async function faceVerifyFlow(ctx, liveFirst) {
     if (live) {
       let cap;
       try { cap = await faceLiveCapture(); }
-      catch (e) { await faceSkip(ctx, 'no_lib', null); return { flagged: true, dataUrl }; }
+      catch (e) { cap = 'denied'; }   // โหลดโมเดล/ไลบรารีไม่ขึ้น → ถอยไปถ่ายรูปนิ่ง (ทางนั้นถ้าโหลดไม่ขึ้นอีกจะ skip แบบมีรูป) ไม่ skip มือเปล่า
       if (cap === 'cancel') return 'cancel';
       if (cap === 'denied') {
         // สิทธิ์ "กดสด" หมดไปกับ getUserMedia ที่ถูกปฏิเสธแล้ว → ต้องให้ผู้ใช้แตะใหม่ ก่อนเปิด file picker
-        localStorage.setItem('fc_gum', '0');
+        // จำเป็น timestamp (หมดอายุ 1 วัน) ไม่ใช่ '0' ถาวร — เดิมใครเผลอกด "บล็อก" ครั้งเดียวจะไม่ได้ใช้กล้องสดอีกเลยตลอดกาล
+        localStorage.setItem('fc_gum', String(Date.now()));
         const c = await Swal.fire({ icon: 'info', title: 'เปิดกล้องสดไม่ได้',
           text: 'แตะปุ่มด้านล่างเพื่อถ่ายรูปยืนยันแทนค่ะ', confirmButtonText: '📸 ถ่ายรูป',
           showCancelButton: true, cancelButtonText: 'ยกเลิก' });
@@ -1571,15 +1613,16 @@ async function faceVerifyFlow(ctx, liveFirst) {
         live = false;
         continue;                                  // วนใหม่ในจังหวะกดสดของปุ่มนี้
       }
-      if (cap === 'timeout') {
+      if (cap.dataUrl) dataUrl = cap.dataUrl;      // เฟรมจากกล้องสด — ใช้เป็นหลักฐาน/เซลฟี่แม้จับหน้าไม่ได้
+      if (!cap.descs.length) {
         const c = await Swal.fire({ icon: 'warning', title: 'จับใบหน้าไม่ได้',
           text: 'ลองใหม่อีกครั้ง หรือข้ามไปเช็คชื่อ (หัวหน้าจะเห็นหมายเหตุ)',
           confirmButtonText: 'ลองใหม่', showCancelButton: true, cancelButtonText: 'ข้ามไปเช็คชื่อ' });
         if (c.isConfirmed) continue;
-        await faceSkip(ctx, 'no_face', null);
+        await faceSkip(ctx, 'no_face', dataUrl);   // ต้องแนบรูป — ไม่งั้น h_checkin ปฏิเสธตอน selfie_required เปิด
         return { flagged: true, dataUrl };
       }
-      descs = cap.descs; dataUrl = cap.dataUrl;
+      descs = cap.descs;
       localStorage.removeItem('fc_gum');
     } else {
       const img = await captureSelfie();
@@ -1635,10 +1678,13 @@ async function faceSkip(ctx, reason, photo) {
   catch { /* ถ้ายิงไม่ได้ ก็ให้ h_checkin เด้ง 'กรุณายืนยันใบหน้าก่อน' เอง */ }
 }
 
-/** ใช้กล้องสดได้ไหม — ตัดสินแบบ synchronous เพื่อไม่เผาสิทธิ์ "กดสด" ของ iOS */
+/** ใช้กล้องสดได้ไหม — ตัดสินแบบ synchronous เพื่อไม่เผาสิทธิ์ "กดสด" ของ iOS
+ *  fc_gum = timestamp ที่ getUserMedia เคยถูกปฏิเสธ → เลี่ยงกล้องสดแค่ 1 วัน แล้วลองใหม่ (ค่าเก่า '0' = หมดอายุทันที)
+ */
 function faceCanLive() {
+  const denied = +localStorage.getItem('fc_gum') || 0;
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-    && window.isSecureContext && localStorage.getItem('fc_gum') !== '0';
+    && window.isSecureContext && Date.now() - denied > 86400e3;
 }
 
 /** ถ่ายเซลฟี่ผ่านกล้องหน้า (input capture) คืน dataURL หรือ null ถ้ายกเลิก */

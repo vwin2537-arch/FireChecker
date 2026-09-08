@@ -14,7 +14,7 @@
 - Auth: token 64 hex ใน header `X-Auth-Token` เก็บ DB (`auth_tokens`) + localStorage ฝั่ง client
 - เวลา: `Asia/Bangkok` ทุกที่ (ตั้งใน config.php) — **ห้ามใช้ toISOString()/UTC เทียบวันที่**
 - settings ทุกตัวอยู่ในตาราง `settings` แก้ผ่านหน้าตั้งค่า — อย่า hardcode ค่าที่ควรเป็น setting
-- ฟีเจอร์มีสวิตช์: `selfie_required`, `checkout_enabled`, `push_enabled` (ตอนนี้ปิดทั้งหมด — โค้ดพร้อมแล้วทั้งฝั่ง API และ UI)
+- ฟีเจอร์มีสวิตช์: `selfie_required`, `checkout_enabled`, `push_enabled`, `face_verify_enabled` — **สถานะ prod (8 ก.ย. 2569): เซลฟี่ เปิด · สแกนหน้า เปิด (`face_max_attempts=5`) · push เปิด · เช็คเอาท์ ปิด** อย่าเชื่อเอกสารเก่าที่บอกว่าปิดหมด — ดูค่าจริงในตาราง `settings` ก่อน เพราะเคยพลาดทดสอบเคส "เซลฟี่+สแกนหน้าเปิดพร้อมกัน" จนติดจุดตันวันใช้งานจริง
 - **แดชบอร์ดแอดมินจองไว้ทำวิดเจ็ต Android** — ห้ามเอาฟอร์ม/งานทำ (เช่น ส่งประกาศ) ไปใส่แดชบอร์ด ให้อยู่หน้าตั้งค่า
 - schema สร้างอัตโนมัติตอน request แรก (ensure_admin ใน db.php รัน schema.sql ถ้าไม่เจอตาราง)
 

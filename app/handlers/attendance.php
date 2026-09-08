@@ -156,12 +156,13 @@ function h_checkin(): never {
     // ---- เซลฟี่ (เปิด/ปิดได้จากตั้งค่า) ----
     $selfiePath = null;
     $selfie = param('selfie');
-    if (setting('selfie_required', '0') === '1') {
-        if (!$selfie) fail('กรุณาถ่ายรูปเซลฟี่ยืนยันตัวตน');
-        $selfiePath = save_photo($selfie, 'selfie_u' . $u['id']);
-        if (!$selfiePath) fail('บันทึกรูปเซลฟี่ไม่สำเร็จ กรุณาลองใหม่');
-    } elseif ($selfie) {
-        $selfiePath = save_photo($selfie, 'selfie_u' . $u['id']); // ส่งมาก็เก็บให้ แม้ไม่บังคับ
+    $selfieReq = setting('selfie_required', '0') === '1';
+    // ติดธงใบหน้า (flag=1) แล้วไม่มีรูป = ยอมให้ผ่าน — เดิมปฏิเสธจน จนท. วนตายทั้งวัน (สมบุญ 8 ก.ย. 69) ขัดกฎ "ไม่มีใครถูกบล็อก"
+    // (client เก่าที่ยังไม่ได้ v42 / โหลดโมเดลไม่ขึ้น / กล้องเปิดแต่ยังไม่มีเฟรม ล้วนมาทางนี้) รูปตอนพลาดยังมีใน face_attempts.photo_path ถ้ามี
+    if ($selfieReq && !$selfie && $faceFlag !== 1) fail('กรุณาถ่ายรูปเซลฟี่ยืนยันตัวตน');
+    if ($selfie) {
+        $selfiePath = save_photo($selfie, 'selfie_u' . $u['id']);   // ส่งมาก็เก็บให้ แม้ไม่บังคับ
+        if (!$selfiePath && $selfieReq) fail('บันทึกรูปเซลฟี่ไม่สำเร็จ กรุณาลองใหม่');
     }
 
     // คิดสาย: offsite ใช้ end_time ของวันนั้น / วันทำงานปกติใช้ late_cutoff (+ยกเว้นเวรกลางคืน) / วันหยุด (งานวันอาทิตย์) ไม่นับสาย
@@ -242,12 +243,13 @@ function h_night_checkin(): never {
     // ---- เซลฟี่ (ใช้สวิตช์ selfie_required เดียวกับเช็คชื่อ) ----
     $selfiePath = null;
     $selfie = param('selfie');
-    if (setting('selfie_required', '0') === '1') {
-        if (!$selfie) fail('กรุณาถ่ายรูปเซลฟี่ยืนยันตัวตน');
-        $selfiePath = save_photo($selfie, 'night_u' . $u['id']);
-        if (!$selfiePath) fail('บันทึกรูปเซลฟี่ไม่สำเร็จ กรุณาลองใหม่');
-    } elseif ($selfie) {
-        $selfiePath = save_photo($selfie, 'night_u' . $u['id']);
+    $selfieReq = setting('selfie_required', '0') === '1';
+    // ติดธงใบหน้า (flag=1) แล้วไม่มีรูป = ยอมให้ผ่าน — เดิมปฏิเสธจน จนท. วนตายทั้งวัน (สมบุญ 8 ก.ย. 69) ขัดกฎ "ไม่มีใครถูกบล็อก"
+    // (client เก่าที่ยังไม่ได้ v42 / โหลดโมเดลไม่ขึ้น / กล้องเปิดแต่ยังไม่มีเฟรม ล้วนมาทางนี้) รูปตอนพลาดยังมีใน face_attempts.photo_path ถ้ามี
+    if ($selfieReq && !$selfie && $faceFlag !== 1) fail('กรุณาถ่ายรูปเซลฟี่ยืนยันตัวตน');
+    if ($selfie) {
+        $selfiePath = save_photo($selfie, 'night_u' . $u['id']);   // ส่งมาก็เก็บให้ แม้ไม่บังคับ
+        if (!$selfiePath && $selfieReq) fail('บันทึกรูปเซลฟี่ไม่สำเร็จ กรุณาลองใหม่');
     }
 
     db()->prepare('INSERT INTO night_shifts (user_id, duty_date, time_in, lat, lng, distance_m, selfie_path, face_flag)
