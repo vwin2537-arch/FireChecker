@@ -8,7 +8,7 @@ function roster_for(string $date): array {
     $st = db()->prepare(
         "SELECT u.id, u.name, u.position,
                 a.time_in, a.late, a.time_out, a.report_late, a.distance_m, a.selfie_path,
-                a.face_flag, a.face_dist, a.face_photo, a.by_admin,
+                a.face_flag, a.face_dist, a.face_photo, a.by_admin, a.late_fix,
                 o.type AS off_type, o.note AS off_note, o.over_quota
          FROM users u
          LEFT JOIN attendance a ON a.user_id = u.id AND a.work_date = ?
@@ -654,7 +654,7 @@ function h_proxy_checkin(): never {
         }
         $st = db()->prepare('SELECT id FROM attendance WHERE user_id = ? AND work_date = ?');
         $st->execute([$uid, $date]);
-        if ($st->fetch()) fail("{$u['name']} เช็คชื่อวันนั้นไปแล้ว");
+        if ($st->fetch()) fail("{$u['name']} เช็คชื่อวันนั้นไปแล้ว — ถ้าต้องการเปลี่ยนสาย/ตรงเวลา ใช้การ์ด \"แก้สาย/ตรงเวลา\" ด้านล่าง");
 
         $late   = (int)!!param('late', 0);
         $timeIn = $date === $today ? date('Y-m-d H:i:s') : $date . ' ' . setting('checkin_open', '08:05') . ':00';
@@ -683,6 +683,37 @@ function h_proxy_checkin(): never {
     notify_push($uid, 'announcement', '🌙 หัวหน้าลงเวรกลางคืนให้แล้ว',
         'คืนวันที่ ' . thai_date($date) . ' เวลา ' . substr($timeIn, 11, 5) . ' น.' . ($note ? " — {$note}" : ''));
     ok(['message' => "ลงเวรกลางคืนแทน {$u['name']} แล้ว"]);
+}
+
+/** หัวหน้าแก้สาย/ตรงเวลาบนแถวเดิม (v44) — เคส จนท. มาทำงานในเวลาแต่อยู่นอกสถานี พอกลับมาเช็คถึงขึ้นสาย
+ *  แก้ที่แถวเดิม (เซลฟี่/GPS/เวลาจริงอยู่ครบ) สลับได้ทั้งสองทิศ · late_fix เก็บเหตุผล ('' = แก้แล้วแต่ไม่ได้ให้เหตุผล) */
+function h_proxy_set_late(): never {
+    require_admin();
+    $uid  = (int)param('user_id');
+    $date = trim((string)param('date', ''));
+    $late = (int)!!param('late', 0);
+    $note = mb_substr(trim((string)param('note', '')), 0, 255);
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) fail('วันที่ไม่ถูกต้อง');
+    if ($date > date('Y-m-d')) fail('แก้สถานะวันล่วงหน้าไม่ได้');
+
+    $st = db()->prepare("SELECT id, name FROM users WHERE id = ? AND role = 'staff' AND status = 'active'");
+    $st->execute([$uid]);
+    if (!($u = $st->fetch())) fail('ไม่พบเจ้าหน้าที่คนนี้');
+
+    $st = db()->prepare('SELECT id, late FROM attendance WHERE user_id = ? AND work_date = ?');
+    $st->execute([$uid, $date]);
+    if (!($att = $st->fetch())) fail("{$u['name']} ยังไม่มีการเช็คชื่อวันนั้น — ใช้การ์ด \"เช็คชื่อแทน\" ด้านบนแทนค่ะ");
+
+    $label = fn(int $l) => $l ? 'สาย' : 'ตรงเวลา';
+    if ((int)$att['late'] === $late) fail("{$u['name']} วันนั้นเป็น{$label($late)}อยู่แล้ว");
+
+    db()->prepare('UPDATE attendance SET late = ?, late_fix = ? WHERE id = ?')->execute([$late, $note, $att['id']]);
+
+    $change = $label((int)$att['late']) . ' → ' . $label($late);
+    notify_push($uid, 'announcement', '✏️ หัวหน้าแก้สถานะเช็คชื่อให้',
+        'วันที่ ' . thai_date($date) . ' เปลี่ยนจาก ' . $change . ($note !== '' ? " — {$note}" : ''));
+    ok(['message' => "แก้ {$u['name']} " . thai_date($date) . " จาก {$change} แล้ว"]);
 }
 
 /** รายการที่หัวหน้าเช็คแทนไว้ 30 วันล่าสุด (ทั้งเช้า + เวรคืน) — ให้ดู/ลบกรณีกดผิดคน */

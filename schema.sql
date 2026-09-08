@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   face_dist   DECIMAL(6,4) NULL,             -- ระยะที่ใกล้ที่สุดตอนเช็คชื่อ (เอาไว้ปรับเกณฑ์จากข้อมูลจริง)
   face_photo  VARCHAR(255) NULL,             -- รูปตอนพลาด (เฉพาะ face_flag=1 ให้หัวหน้าดู)
   by_admin    TINYINT(1) NOT NULL DEFAULT 0, -- หัวหน้าเช็คชื่อแทน (v43) — ข้าม GPS/เซลฟี่/ใบหน้า, ลบได้จากหน้าแอดมิน
+  late_fix    VARCHAR(255) NULL,             -- หัวหน้าแก้สาย/ตรงเวลา (v44): NULL = ไม่เคยแก้ · มีค่า (แม้ '') = แก้แล้ว เก็บเหตุผล
   UNIQUE KEY uq_user_date (user_id, work_date),
   KEY idx_work_date (work_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

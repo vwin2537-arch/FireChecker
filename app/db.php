@@ -235,6 +235,15 @@ function ensure_admin(): void {
         db()->exec("ALTER TABLE attendance   ADD COLUMN by_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER face_photo");
         db()->exec("ALTER TABLE night_shifts ADD COLUMN by_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER face_flag");
     }
+
+    // migrate: attendance.late_fix (หัวหน้าแก้สาย/ตรงเวลาบนแถวที่ จนท. เช็คเอง v44)
+    $hasLateFix = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'late_fix'"
+    )->fetchColumn();
+    if (!(int)$hasLateFix) {
+        db()->exec("ALTER TABLE attendance ADD COLUMN late_fix VARCHAR(255) NULL AFTER by_admin");
+    }
 }
 
 /** ใส่ท่าทดสอบสมรรถภาพตั้งต้นครั้งแรก (ตารางว่าง) — แอดมินแก้/เพิ่ม/ซ่อนได้ภายหลัง

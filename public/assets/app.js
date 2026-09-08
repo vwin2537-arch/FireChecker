@@ -405,8 +405,8 @@ const App = {
     if (!rows.length) return '';
     return `<div class="card"><h3>🕐 ${title}</h3>${rows.map(a => `
       <div class="list-row"><span class="dot ${+a.late ? 'dot-late' : 'dot-ok'}"></span>
-        <div class="lr-main"><div class="lr-title">${thaiDate(a.work_date)}${+a.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : ''}</div>
-          <div class="lr-sub">เข้า ${a.time_in.substr(11, 5)} น.${a.time_out ? ' • ส่งรายงาน ' + a.time_out.substr(11, 5) + ' น.' : ''}${a.note ? ' • 📝 ' + esc(a.note) : ''}</div></div>
+        <div class="lr-main"><div class="lr-title">${thaiDate(a.work_date)}${+a.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : ''}${a.late_fix != null ? ` <span class="face-flag f2">✏️ หัวหน้าแก้เป็น${+a.late ? 'สาย' : 'ตรงเวลา'}</span>` : ''}</div>
+          <div class="lr-sub">เข้า ${a.time_in.substr(11, 5)} น.${a.time_out ? ' • ส่งรายงาน ' + a.time_out.substr(11, 5) + ' น.' : ''}${a.note ? ' • 📝 ' + esc(a.note) : ''}${a.late_fix ? ' • ✏️ ' + esc(a.late_fix) : ''}</div></div>
         <span class="chip ${+a.late ? 'chip-late' : 'chip-ok'}">${+a.late ? 'สาย' : 'ตรงเวลา'}</span>
       </div>`).join('')}</div>`;
   },

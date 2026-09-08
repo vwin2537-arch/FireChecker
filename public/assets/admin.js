@@ -146,7 +146,7 @@ const Admin = {
       <div class="rg-head"><span class="dot dot-${dotClass}"></span>${icon} ${label} <b>${list.length}</b></div>
       <div class="roster">${list.map(r => `
         <div class="roster-cell s-${state}">
-          <div><div class="rc-name">${esc(r.name)}${faceFlagChip(r)}${proxyChip(r)}</div>
+          <div><div class="rc-name">${esc(r.name)}${faceFlagChip(r)}${proxyChip(r)}${lateFixChip(r)}</div>
           <div class="rc-sub">${r.time_in ? 'เข้า ' + r.time_in.substr(11, 5) + ' น.' :
             state === 'leave' ? offLabel(r.off_type) + (r.off_note ? ' — ' + esc(r.off_note) : '') : 'ยังไม่เช็คชื่อ'}</div></div>
         </div>`).join('')}</div>
@@ -566,7 +566,30 @@ const Admin = {
         <div class="tiny" style="margin-bottom:10px">เวลาเข้า: วันนี้ = เวลาที่กดบันทึก · วันย้อนหลัง = เวลาเปิดเช็คชื่อของวันนั้น · ข้าม GPS/เซลฟี่/สแกนหน้า · เจ้าตัวได้รับแจ้งในกล่องข้อความ</div>
         <button class="btn btn-primary btn-block" onclick="Admin.proxyAdd()">บันทึกเช็คชื่อแทน</button>
         ${this.proxyListHtml(px.items || [])}
+      </div>
+      <div class="card"><h3>🔁 แก้สาย/ตรงเวลา <span class="h-right">แถวที่เช็คชื่อไว้แล้ว (จนท. กดเอง หรือเช็คแทน)</span></h3>
+        <div class="grid-2">
+          <div class="field"><label>เจ้าหน้าที่</label><select class="select" id="lfUser">
+            ${staff.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>
+          <div class="field"><label>วันที่</label><input type="date" class="input" id="lfDate" value="${todayStr()}" max="${todayStr()}"></div>
+        </div>
+        <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input class="input" id="lfNote" maxlength="255" placeholder="เช่น มาส่งเอกสารให้หัวหน้านอกสถานที่"></div>
+        <div class="tiny" style="margin-bottom:10px">แก้ที่แถวเดิม เซลฟี่/GPS/เวลาที่มาถึงอยู่ครบ · คะแนนความขยันเปลี่ยนตาม · เจ้าตัวได้รับแจ้งพร้อมเหตุผล</div>
+        <div class="grid-2">
+          <button class="btn btn-primary btn-block" onclick="Admin.proxySetLate(0)">🟢 ให้เป็นตรงเวลา</button>
+          <button class="btn btn-block" style="background:var(--late);color:#fff" onclick="Admin.proxySetLate(1)">🟡 ให้เป็นสาย</button>
+        </div>
       </div>`;
+  },
+
+  // แก้สาย/ตรงเวลาบนแถวเดิม (v44) — server ตอบ "เป็น...อยู่แล้ว" ถ้าไม่เปลี่ยน / ชี้ไปการ์ดเช็คแทนถ้ายังไม่มีแถว
+  async proxySetLate(late) {
+    const d = await App.api('proxy_set_late', {
+      user_id: +byId('lfUser').value, date: byId('lfDate').value, late, note: byId('lfNote').value.trim(),
+    });
+    toast(d.message);
+    App.adminData = await App.api('admin_data');   // แดชบอร์ดอ่านจาก cache นี้
+    this.vDayoff();
   },
 
   // รายการที่เช็คแทนไว้ 30 วันล่าสุด — ลบได้เฉพาะรายการนี้ (server กัน by_admin=1 อีกชั้น)
@@ -2629,6 +2652,11 @@ const Admin = {
 // ป้าย "หัวหน้าเช็คให้" (v43) — row ที่แอดมินเช็คชื่อ/ลงเวรแทน (by_admin=1) ใช้สไตล์ .face-flag.f2 เดิม ไม่ต้องเพิ่ม CSS
 function proxyChip(r) {
   return +r.by_admin ? ' <span class="face-flag f2">👤 หัวหน้าเช็คให้</span>' : '';
+}
+
+// ป้าย "หัวหน้าแก้เป็นสาย/ตรงเวลา" (v44) — late_fix เป็น '' ได้ (แก้แล้วแต่ไม่ให้เหตุผล) ห้ามเช็คแบบ truthy
+function lateFixChip(r) {
+  return r.late_fix != null ? ` <span class="face-flag f2" title="${esc(r.late_fix)}">✏️ หัวหน้าแก้เป็น${+r.late ? 'สาย' : 'ตรงเวลา'}</span>` : '';
 }
 
 function faceFlagChip(r) {

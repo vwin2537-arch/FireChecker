@@ -68,6 +68,7 @@ const ACTIONS = [
     'proxy_checkin'   => 'h_proxy_checkin',
     'proxy_list'      => 'h_proxy_list',
     'proxy_del'       => 'h_proxy_del',
+    'proxy_set_late'  => 'h_proxy_set_late',
     'holiday_list'    => 'h_holiday_list',
     'holiday_add'     => 'h_holiday_add',
     'holiday_del'     => 'h_holiday_del',

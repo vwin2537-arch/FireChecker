@@ -29,3 +29,18 @@
 ## วิธีเทสซ้ำ (curl กับ `php -S 127.0.0.1:8123` token แอดมินใน `X-Auth-Token`)
 
 เช้าวันนี้ → roster `by_admin=1` state ตาม late · ซ้ำ → fail · ย้อนหลัง → `time_in = "<date> <checkin_open>:00"` · วันที่มีใบลา → fail บอกให้ลบใบลา · อนาคต → fail · `kind` มั่ว → fail · user แอดมิน → "ไม่พบเจ้าหน้าที่" · เวรคืนหญิง → fail · เวรคืนย้อนหลัง → `time_in = "<date> 18:00:00"` · `proxy_del` id ปกติ → fail แถวอยู่ · `my_history` ของ จนท. มี `by_admin` + `notify_list` มีข้อความ · ล้าง: `DELETE FROM attendance WHERE by_admin=1` (local เท่านั้น)
+
+---
+
+## แก้สาย/ตรงเวลาบนแถวเดิม (v44 — 8 ก.ย. 2026)
+
+**ทำไมต้องมี:** เคสจริงเช้า 8 ก.ย. — จนท. เอาเอกสารมาให้หัวหน้าเซ็นนอกสถานที่ (มาในเวลา) แล้วกลับไปเช็คที่สถานีขึ้น "สาย" · เช็คแทนช่วยไม่ได้เพราะแถวมีแล้ว ("เช็คชื่อวันนั้นไปแล้ว") และ `proxy_del` ลบได้เฉพาะ `by_admin=1` → จุดตัน
+
+- **UI:** การ์ด **"🔁 แก้สาย/ตรงเวลา"** ต่อท้ายการ์ดเช็คแทน หน้าวันหยุด (ปฏิทิน) — เลือกชื่อ · วันที่ (`max=วันนี้`) · เหตุผล (ไม่บังคับ) · ปุ่ม 2 ปุ่ม "ให้เป็นตรงเวลา" / "ให้เป็นสาย" (`Admin.proxySetLate(late)` — ต้อง refresh `App.adminData` ก่อน `vDayoff()` เหมือน `proxyAdd`)
+- **Backend `h_proxy_set_late`** (action `proxy_set_late`): แก้ที่แถวเดิม `UPDATE attendance SET late=?, late_fix=?` — เซลฟี่/GPS/`time_in` จริงอยู่ครบ (ตั้งใจ ไม่ลบ-สร้างใหม่) · สลับได้ทั้งสองทิศ · ใช้กับแถว `by_admin=1` ได้ด้วย · ไม่มีแถว → fail ชี้ไปการ์ดเช็คแทน · สถานะเท่าเดิม → fail "เป็น...อยู่แล้ว" · อนาคต → fail · **ไม่แตะ `note`** (เป็นหมายเหตุของ จนท. ตอนเช็คอิน)
+- **คอลัมน์ `attendance.late_fix VARCHAR(255) NULL`** (migrate probe ใน db.php) — **NULL = ไม่เคยแก้ · มีค่าแม้ `''` = หัวหน้าแก้แล้ว** เก็บเหตุผลไว้ในตัว → **ฝั่ง JS ต้องเช็ค `late_fix != null` ห้ามเช็ค truthy** (`''` จะหาย) · `roster_for` ต้องใส่ `a.late_fix` ในรายการคอลัมน์เอง (ไม่ใช่ `SELECT *`) · `h_my_history` ได้ฟรี
+- **แสดงผล:** `lateFixChip(r)` (admin.js ข้าง `proxyChip`) → "✏️ หัวหน้าแก้เป็นสาย/ตรงเวลา" (`title` = เหตุผล) บนแดชบอร์ด · `historyCard` ฝั่ง จนท. ชิปเดียวกัน + เหตุผลใน `lr-sub` · push `announcement` บอก "จาก X → Y — เหตุผล"
+- คะแนนความขยัน/กลุ่มสาย-ตรงเวลาบนแดชบอร์ด **เปลี่ยนตามอัตโนมัติ** เพราะทุกที่อ่านคอลัมน์ `late` ตัวเดิม (ทดสอบแล้ว: roster state `late` → `ontime` ทันที)
+- ข้อความ fail ของ `proxy_checkin` กรณีซ้ำ เพิ่มคำชี้ไปการ์ดนี้แล้ว (จุดตันเดิมของเช้า 8 ก.ย.)
+
+**เทสซ้ำ (curl token แอดมิน):** seed แถว late=1 → `proxy_set_late late=0 note=x` → `admin_data` roster state=ontime + late_fix=x · ซ้ำ late=0 → fail · late=1 ไม่ใส่ note → `late_fix=''` (IS NULL = 0) · วันไม่มีแถว → fail ชี้เช็คแทน · อนาคต/user แอดมิน/token จนท. → fail · `my_history` มี `late_fix` · `notify_list` มีข้อความ
