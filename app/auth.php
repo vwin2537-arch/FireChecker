@@ -21,7 +21,7 @@ function current_user(): ?array {
             "SELECT u.* FROM auth_tokens t
              JOIN users u ON u.id = t.user_id
              WHERE t.token = ? AND u.status = 'active'
-               AND t.created_at > DATE_SUB(NOW(), INTERVAL 90 DAY)");
+               AND COALESCE(t.last_used_at, t.created_at) > DATE_SUB(NOW(), INTERVAL 90 DAY)");
         $st->execute([$token]);
         $user = $st->fetch() ?: null;
         if ($user) {
@@ -48,8 +48,8 @@ function require_admin(): array {
 function issue_token(int $userId): string {
     $token = bin2hex(random_bytes(32));
     db()->prepare('INSERT INTO auth_tokens (token, user_id) VALUES (?, ?)')->execute([$token, $userId]);
-    // เก็บกวาด token เก่าเกิน 90 วัน
-    db()->exec("DELETE FROM auth_tokens WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)");
+    // เก็บกวาด token ที่ไม่ได้ใช้เกิน 90 วัน (นับจากใช้ล่าสุด ไม่ใช่วันล็อกอิน — กันทุกคนโดนเตะพร้อมกัน)
+    db()->exec("DELETE FROM auth_tokens WHERE COALESCE(last_used_at, created_at) < DATE_SUB(NOW(), INTERVAL 90 DAY)");
     return $token;
 }
 
