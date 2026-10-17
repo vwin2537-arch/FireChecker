@@ -244,6 +244,43 @@ function ensure_admin(): void {
     if (!(int)$hasLateFix) {
         db()->exec("ALTER TABLE attendance ADD COLUMN late_fix VARCHAR(255) NULL AFTER by_admin");
     }
+
+    // migrate: fitness_results.note (หมายเหตุรายคน เช่น บาดเจ็บ/ยกเว้น — v45)
+    $hasFitNote = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fitness_results' AND COLUMN_NAME = 'note'"
+    )->fetchColumn();
+    if (!(int)$hasFitNote) {
+        db()->exec("ALTER TABLE fitness_results ADD COLUMN note VARCHAR(255) NULL AFTER tone");
+    }
+    seed_fitness_run2k();   // ท่าวิ่ง 2 กม. (เกณฑ์คะแนน 60-100) — DB เดิมที่ seed ไปแล้วก็ได้ด้วย
+}
+
+/** ใส่ท่า "วิ่ง 2 กม." แบบ mode=step ครั้งเดียว (เช็คจาก mode รวมท่าที่ซ่อนแล้ว — ซ่อนไปแล้วไม่ใส่ซ้ำ)
+ *  เกณฑ์: การเลือกสรรพนักงานราชการ ตำแหน่งพนักงานพิทักษ์ป่า ปี 2561 (เอกสารหมายเลข 5)
+ *  ทุกช่องอายุ×เพศเป็นสูตรเดียวกัน: เวลา ≤ top_sec = 100 คะแนน, ช้าลงทุก 5 วิ หัก 1 ถึง 60, ช้ากว่านั้น = ไม่ผ่าน
+ *  → เก็บแค่ top_sec (วินาที = ขอบบนของแถว 100 คะแนน) ต่อช่วงอายุ×เพศ
+ */
+function seed_fitness_run2k(): void {
+    $has = db()->query("SELECT COUNT(*) FROM fitness_items WHERE criteria_json LIKE '%\"mode\":\"step\"%'")->fetchColumn();
+    if ((int)$has > 0) return;
+    $m = fn(int $min, int $sec) => $min * 60 + $sec;
+    $crit = json_encode([
+        'mode' => 'step', 'step_sec' => 5, 'top' => 100, 'floor' => 60, 'absent_fail' => true,
+        'bands' => [
+            ['min_age' => 17, 'max_age' => 21,  'male' => $m(9, 50),  'female' => $m(10, 50)],
+            ['min_age' => 22, 'max_age' => 26,  'male' => $m(10, 15), 'female' => $m(11, 15)],
+            ['min_age' => 27, 'max_age' => 31,  'male' => $m(10, 45), 'female' => $m(11, 45)],
+            ['min_age' => 32, 'max_age' => 36,  'male' => $m(11, 15), 'female' => $m(12, 15)],
+            ['min_age' => 37, 'max_age' => 41,  'male' => $m(11, 50), 'female' => $m(12, 50)],
+            ['min_age' => 42, 'max_age' => 46,  'male' => $m(12, 25), 'female' => $m(13, 25)],
+            ['min_age' => 47, 'max_age' => 51,  'male' => $m(13, 0),  'female' => $m(14, 0)],
+            ['min_age' => 52, 'max_age' => 999, 'male' => $m(13, 35), 'female' => $m(14, 35)],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    $sort = (int)db()->query('SELECT COALESCE(MAX(sort_order),0)+1 FROM fitness_items')->fetchColumn();
+    db()->prepare('INSERT INTO fitness_items (name, unit, direction, criteria_json, sort_order) VALUES (?, ?, ?, ?, ?)')
+        ->execute(['วิ่ง 2 กม.', 'นาที:วินาที', 'lower', $crit, $sort]);
 }
 
 /** ใส่ท่าทดสอบสมรรถภาพตั้งต้นครั้งแรก (ตารางว่าง) — แอดมินแก้/เพิ่ม/ซ่อนได้ภายหลัง

@@ -264,7 +264,8 @@ CREATE TABLE IF NOT EXISTS fitness_results (
   user_id    INT NOT NULL,
   raw_value  DECIMAL(8,2) NULL,          -- ค่าที่วัดได้ (จำนวนครั้ง/วินาที/ซม./นาที)
   level      VARCHAR(40)  NULL,          -- ระดับที่จัดได้ (null = ยังไม่จัดระดับ เช่นไม่มีอายุ/เพศ)
-  tone       VARCHAR(8)   NULL,          -- ok/warn/bad สำหรับสีป้าย (คำนวณตอนกรอก)
+  tone       VARCHAR(8)   NULL,          -- ok/warn/bad/skip สำหรับสีป้าย (คำนวณตอนกรอก · skip = ยกเว้น)
+  note       VARCHAR(255) NULL,          -- หมายเหตุรายคน เช่น บาดเจ็บ / เจ้าหน้าที่คุมการทดสอบ
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_round_user (round_id, user_id),
   KEY idx_item_user (item_id, user_id),

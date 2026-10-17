@@ -956,9 +956,9 @@ const App = {
       <h3>${esc(r.title)} <span class="h-right">${thaiDate(r.test_date)}</span></h3>
       ${r.items.map(it => `<div class="hm-row">
         <div class="hm-label" style="flex:1">${esc(it.item_name)}</div>
-        <div class="hm-val" style="flex:0 0 auto">${it.raw_value !== null ? (+it.raw_value % 1 === 0 ? +it.raw_value : (+it.raw_value).toFixed(1)) : '—'}${it.unit ? ` <span class="hm-unit">${esc(it.unit)}</span>` : ''}</div>
+        <div class="hm-val" style="flex:0 0 auto">${it.raw_value === null ? '—' : it.is_time ? fmtMSS(it.raw_value) : (+it.raw_value % 1 === 0 ? +it.raw_value : (+it.raw_value).toFixed(1))}${it.unit && it.raw_value !== null ? ` <span class="hm-unit">${esc(it.unit)}</span>` : ''}</div>
         <div class="hm-chip">${fitnessChip(it.level, it.tone)}</div>
-      </div>`).join('')}
+      </div>${it.note ? `<div class="tiny" style="margin:-4px 0 6px">📝 ${esc(it.note)}</div>` : ''}`).join('')}
     </div>`).join('');
   },
 
@@ -1322,7 +1322,21 @@ function healthChip(cls) {
   const c = HEALTH_LV[cls.level] || '#64748b';
   return `<span class="hchip" style="background:${c}1a;color:${c}">${esc(cls.label)}</span>`;
 }
-// ป้ายระดับสมรรถภาพ — level = label string, tone = ok/warn/bad จาก backend (null = ยังไม่จัดระดับ)
+// เวลา (วินาที) → "12:34" สำหรับท่าแบบจับเวลา (วิ่ง 2 กม.)
+function fmtMSS(sec) {
+  if (sec === null || sec === undefined || sec === '') return '';
+  const t = Math.floor(+sec);
+  return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+}
+// "12:34" / "12.34" / "12:34.5" → วินาที (ตัดเศษทิ้ง) · ช่องว่าง = '' · รูปแบบผิด = null
+function parseMSS(str) {
+  const v = String(str || '').trim();
+  if (!v) return '';
+  const m = v.match(/^(\d{1,2})[:.](\d{2})(?:[.,]\d+)?$/);
+  if (!m || +m[2] > 59) return null;
+  return +m[1] * 60 + +m[2];
+}
+// ป้ายระดับสมรรถภาพ — level = label string, tone = ok/warn/bad/skip จาก backend (null = ยังไม่จัดระดับ · skip = ยกเว้น สีเทา)
 function fitnessChip(level, tone) {
   if (!level) return `<span class="hchip" style="background:#f1f5f9;color:#64748b">ยังไม่จัดระดับ</span>`;
   const c = HEALTH_LV[tone] || '#64748b';

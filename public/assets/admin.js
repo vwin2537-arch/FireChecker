@@ -1161,8 +1161,18 @@ const Admin = {
     const rows = d.staff.map(s => {
       const cells = d.items.map(it => {
         const r = d.results[s.id + '_' + it.id];
-        const val = r && r.raw_value !== null ? +r.raw_value : '';
         const chip = r && r.level ? fitnessChip(r.level, r.tone) : '';
+        if (it.is_time) {   // วิ่ง 2 กม.: เวลา นาที:วินาที + ยกเว้น + หมายเหตุ (ว่างและไม่ยกเว้น = ไม่ผ่าน)
+          const t = r && r.raw_value !== null ? fmtMSS(r.raw_value) : '';
+          const ex = r && r.tone === 'skip';
+          return `<td class="num" style="min-width:130px">
+            <input type="text" inputmode="decimal" class="input fit-time" style="width:74px;padding:4px 6px" placeholder="เวลา" data-u="${s.id}" data-i="${it.id}" value="${t}"${ex ? ' disabled' : ''} oninput="Admin.fitTimeHint(this)">
+            <div class="tiny fit-hint">${t ? '= ' + t + ' น.' : ''}</div>
+            <label class="tiny" style="display:block;white-space:nowrap"><input type="checkbox" class="fit-ex" data-u="${s.id}" data-i="${it.id}"${ex ? ' checked' : ''} onchange="Admin.fitExToggle(this)"> ยกเว้น</label>
+            <input type="text" class="input fit-note" style="width:120px;padding:4px 6px;margin-top:3px" placeholder="หมายเหตุ" data-u="${s.id}" data-i="${it.id}" value="${esc(r && r.note ? r.note : '')}">
+            <div class="fit-chip">${chip}</div></td>`;
+        }
+        const val = r && r.raw_value !== null ? +r.raw_value : '';
         return `<td class="num"><input type="number" step="0.1" inputmode="decimal" class="input fit-in" style="width:74px;padding:4px 6px" data-u="${s.id}" data-i="${it.id}" value="${val}"><div class="fit-chip">${chip}</div></td>`;
       }).join('');
       const meta = (s.age !== null ? 'อายุ ' + s.age + ' ปี' : '<span style="color:#dc2626">ไม่มีวันเกิด</span>') + (!s.gender ? ' <span style="color:#dc2626">·ไม่ระบุเพศ</span>' : '');
@@ -1172,7 +1182,7 @@ const Admin = {
       <div class="card">
         <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('rounds')">← กลับ</button>
         <h3 style="margin-top:10px">${esc(d.round.title)} <span class="h-right">${thaiDate(d.round.test_date)}</span></h3>
-        <div class="tiny" style="margin-bottom:8px">💡 กรอกค่าที่วัดได้ → ระบบจัดระดับให้ตอนกดบันทึก (ช่องว่าง = ไม่มีผล) · คนที่ไม่มีวันเกิด/เพศ จะยังไม่จัดระดับท่าที่อิงอายุ</div>
+        <div class="tiny" style="margin-bottom:8px">💡 กรอกค่าที่วัดได้ → ระบบจัดระดับให้ตอนกดบันทึก (ช่องว่าง = ไม่มีผล) · คนที่ไม่มีวันเกิด/เพศ จะยังไม่จัดระดับท่าที่อิงอายุ${d.items.some(it => it.is_time) ? '<br>⏱️ ท่าจับเวลา: พิมพ์ <b>12.34</b> หรือ <b>12:34</b> = 12 นาที 34 วินาที (เศษวินาทีตัดทิ้ง) · <b>เว้นว่าง = ไม่ผ่าน</b> ถ้ารอบนี้มีคนกรอกเวลาแล้ว · ติ๊ก "ยกเว้น" สำหรับคนที่ไม่ต้องทดสอบ' : ''}</div>
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>เจ้าหน้าที่</th>${head}</tr>
           ${rows || '<tr><td class="empty">ไม่มีเจ้าหน้าที่ active</td></tr>'}
@@ -1180,8 +1190,23 @@ const Admin = {
         <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.fitSaveResults()">บันทึกผลทั้งหมด</button>
       </div>`;
   },
+  fitTimeHint(el) {
+    const v = parseMSS(el.value), h = el.parentElement.querySelector('.fit-hint');
+    h.innerHTML = v === '' ? '' : v === null ? '<span style="color:#dc2626">รูปแบบผิด</span>' : '= ' + fmtMSS(v) + ' น.';
+  },
+  fitExToggle(cb) {
+    const t = cb.closest('td').querySelector('.fit-time');
+    t.disabled = cb.checked;
+    if (cb.checked) { t.value = ''; this.fitTimeHint(t); }
+  },
   async fitSaveResults() {
     const results = [...document.querySelectorAll('.fit-in')].map(el => ({ user_id: +el.dataset.u, item_id: +el.dataset.i, value: el.value }));
+    for (const el of document.querySelectorAll('.fit-time')) {
+      const td = el.closest('td'), v = parseMSS(el.value);
+      if (v === null) { el.focus(); return toast('เวลา "' + el.value + '" รูปแบบไม่ถูก — พิมพ์แบบ 12.34 หรือ 12:34', 'error'); }
+      results.push({ user_id: +el.dataset.u, item_id: +el.dataset.i, value: v,
+        exempt: td.querySelector('.fit-ex').checked ? 1 : 0, note: td.querySelector('.fit-note').value.trim() });
+    }
     const d = await App.api('fitness_result_save', { round_id: this.fitRoundId, results });
     toast(d.message); this.fitLoadEntry();
   },
@@ -1191,13 +1216,14 @@ const Admin = {
     const d = await App.api('fitness_items_admin');
     this.fitItems = d.items;
     const dirL = { higher: 'มากยิ่งดี', lower: 'น้อย/เร็วยิ่งดี', cap: 'ผ่านภายในเพดาน' };
+    const isStep = it => (JSON.parse(it.criteria_json || 'null') || {}).mode === 'step';
     byId('fitBox').innerHTML = `
       <div class="card"><h3>⚙️ ท่าทดสอบ & เกณฑ์</h3>
         <div class="tiny" style="margin-bottom:8px">ตั้งท่าเอง — cap = ผ่านภายในเพดาน (เช่น WCT ไม่ใช้อายุ/เพศ) · มากยิ่งดี (ดันพื้น) · น้อย/เร็วยิ่งดี (เวลาวิ่ง) มีเกณฑ์ตามอายุ×เพศ</div>
         <button class="btn btn-primary btn-sm" onclick="Admin.fitEditItem(0)">+ เพิ่มท่าทดสอบ</button>
       </div>
       <div class="card">${d.items.map(it => `<div class="list-row" style="${it.is_active == 0 ? 'opacity:.5' : ''}">
-        <div class="lr-main"><div class="lr-title">${esc(it.name)}</div><div class="lr-sub">${esc(it.unit || '')} • ${dirL[it.direction]}</div></div>
+        <div class="lr-main"><div class="lr-title">${esc(it.name)}</div><div class="lr-sub">${esc(it.unit || '')} • ${isStep(it) ? 'คะแนน 60-100 ตามอายุ×เพศ (เกณฑ์ระบบตั้งให้)' : dirL[it.direction]}</div></div>
         <button class="btn btn-ghost btn-sm" onclick="Admin.fitEditItem(${it.id})">แก้ไข</button>
         <button class="btn btn-danger-ghost btn-sm" onclick="Admin.fitToggleItem(${it.id},${it.is_active == 1 ? 0 : 1})">${it.is_active == 1 ? 'ซ่อน' : 'แสดง'}</button>
       </div>`).join('') || '<div class="empty">ยังไม่มีท่าทดสอบ</div>'}</div>`;
@@ -1214,6 +1240,23 @@ const Admin = {
 
   fitRenderItemEdit() {
     const e = this.fitEdit;
+    if (e.criteria.mode === 'step') {   // วิ่ง 2 กม.: เกณฑ์ระบบตั้งให้ แก้ได้แค่ชื่อ (ฟอร์มระดับข้างล่างจะทับเกณฑ์จนพัง)
+      // 3 คอลัมน์ (ไม่แตก 100/60 เป็น 4) — จอ 430px เห็นครบไม่ต้องลากขวา
+      const rows = (e.criteria.bands || []).map(b => `<tr><td>${b.max_age >= 999 ? b.min_age + '+' : b.min_age + '-' + b.max_age}</td>
+        ${['male', 'female'].map(k => `<td class="num">${fmtMSS(b[k])} → ${fmtMSS(b[k] + e.criteria.step_sec * (e.criteria.top - e.criteria.floor))}</td>`).join('')}</tr>`).join('');
+      byId('fitBox').innerHTML = `
+        <div class="card">
+          <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('items')">← กลับ</button>
+          <h3 style="margin-top:10px">แก้ไขท่าทดสอบ</h3>
+          <div class="field"><label>ชื่อท่า</label><input class="input" id="fiName" value="${esc(e.name)}"></div>
+          <div class="tiny" style="margin-bottom:6px">🔒 เกณฑ์คะแนนระบบตั้งให้ (การเลือกสรรพนักงานพิทักษ์ป่า 2561) — เร็วกว่า/เท่ากับเวลาเต็ม = 100 คะแนน · ช้าลงทุก ${e.criteria.step_sec} วินาที หัก 1 คะแนน · ช้ากว่าเวลา 60 คะแนน = ไม่ผ่าน</div>
+          <div class="tbl-wrap"><table class="tbl" style="min-width:0">
+            <tr><th>อายุ</th><th class="num">ชาย<div class="tiny">100 → 60 คะแนน</div></th><th class="num">หญิง<div class="tiny">100 → 60 คะแนน</div></th></tr>${rows}
+          </table></div>
+          <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="Admin.fitSaveStepName()">บันทึกชื่อท่า</button>
+        </div>`;
+      return;
+    }
     byId('fitBox').innerHTML = `
       <div class="card">
         <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('items')">← กลับ</button>
@@ -1285,6 +1328,12 @@ const Admin = {
   fitAddBand() { this.fitSyncCrit(); this.fitEdit.criteria.bands.push({ min_age: '', max_age: '', male: [], female: [] }); this.fitRenderCrit(); },
   fitDelBand(bi) { this.fitSyncCrit(); this.fitEdit.criteria.bands.splice(bi, 1); this.fitRenderCrit(); },
 
+  async fitSaveStepName() {
+    const name = byId('fiName').value.trim();
+    if (!name) return toast('กรอกชื่อท่า', 'error');
+    const d = await App.api('fitness_item_save', { id: this.fitEdit.id, name });
+    toast(d.message); this.fitGo('items');
+  },
   async fitSaveItem() {
     const e = this.fitEdit;
     e.name = byId('fiName').value.trim(); e.unit = byId('fiUnit').value.trim(); e.direction = byId('fiDir').value;
