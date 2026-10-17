@@ -474,6 +474,50 @@ function h_fitness_result_save(): never {
     ok(['message' => "บันทึกผลแล้ว {$saved} รายการ"]);
 }
 
+/** แจ้งผลรายคน (กล่อง 📬 + push) — หัวหน้ากดเองหลังกรอกครบ ไม่ยิงตอนบันทึก
+ *  (บันทึกครึ่งทีม = คนที่ยังไม่กรอกเป็น "ไม่ผ่าน" ชั่วคราว ถ้ายิงอัตโนมัติจะแจ้งผิดคน) · 1 คน = 1 ข้อความ รวมทุกท่าในรอบ
+ */
+function h_fitness_notify(): never {
+    require_admin();
+    $round = db()->prepare('SELECT * FROM fitness_rounds WHERE id = ?');
+    $round->execute([(int)param('round_id')]);
+    $round = $round->fetch();
+    if (!$round) fail('ไม่พบรอบทดสอบนี้');
+
+    $st = db()->prepare(
+        "SELECT f.user_id, f.raw_value, f.level, f.tone, f.note, i.name item_name, i.unit, i.criteria_json
+         FROM fitness_results f
+         JOIN fitness_items i ON i.id = f.item_id
+         JOIN users u ON u.id = f.user_id AND u.role = 'staff' AND u.status = 'active'
+         WHERE f.round_id = ? ORDER BY f.user_id, i.sort_order, i.id");
+    $st->execute([$round['id']]);
+    $lines = [];
+    $ST = ['pass' => 'ผ่าน', 'watch' => 'เฝ้าระวัง', 'fail' => 'ไม่ผ่าน', 'skip' => 'ยกเว้น', 'none' => 'ยังไม่จัดระดับ'];
+    foreach ($st->fetchAll() as $r) {
+        $status = fitness_status((string)$r['criteria_json'], $r['level'], $r['tone']);
+        $isStep = fitness_is_step($r);
+        $val = '';
+        if ($r['raw_value'] !== null) {
+            $v = (float)$r['raw_value'];
+            $val = $isStep ? sprintf('%d:%02d น.', intdiv((int)$v, 60), (int)$v % 60)
+                           : (fmod($v, 1.0) == 0.0 ? (string)(int)$v : (string)round($v, 1)) . ($r['unit'] !== '' ? " {$r['unit']}" : '');
+        }
+        if ($status === 'skip' || $r['raw_value'] === null) $res = $ST[$status];        // ยกเว้น / ไม่ผ่านเพราะไม่ได้ทดสอบ
+        elseif ($r['level'] === null || $r['level'] === '') $res = "{$val} (ยังไม่จัดระดับ)";
+        elseif ($r['level'] === $ST[$status]) $res = "{$val} → {$r['level']}";        // cap: ผ่าน/ไม่ผ่าน ไม่ต้องซ้ำ
+        else $res = "{$val} → {$r['level']} ({$ST[$status]})";
+        $lines[(int)$r['user_id']][] = "• {$r['item_name']}: {$res}" . ($r['note'] ? " · {$r['note']}" : '');
+    }
+    if (!$lines) fail('รอบนี้ยังไม่มีผลทดสอบ');
+
+    $head = "{$round['title']} (" . thai_date($round['test_date'], false) . ")";
+    foreach ($lines as $uid => $ls) {
+        notify_push($uid, 'announcement', '🏃 ผลทดสอบสมรรถภาพของคุณ', $head . "\n" . implode("\n", $ls) . "\nดูรายละเอียด: เมนู 🩺 สุขภาพ → 🏃 สมรรถภาพ", (int)$round['id']);
+    }
+    db()->prepare('UPDATE fitness_rounds SET notified_at = NOW() WHERE id = ?')->execute([$round['id']]);
+    ok(['message' => 'แจ้งผลแล้ว ' . count($lines) . ' คน', 'count' => count($lines)]);
+}
+
 /** รายงานผลทดสอบ 1 ท่า × 1 รอบ (ปริ้น/บันทึกรูป) — ทุกคนที่มีผลในท่านั้น · เรียงชื่อฝั่ง client (Intl ไทย ตัดคำนำหน้า) */
 function h_fitness_report(): never {
     require_admin();

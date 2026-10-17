@@ -263,6 +263,15 @@ function ensure_admin(): void {
     if (!(int)$hasFitLoc) {
         db()->exec("ALTER TABLE fitness_rounds ADD COLUMN location VARCHAR(120) NOT NULL DEFAULT '' AFTER test_date");
     }
+
+    // migrate: fitness_rounds.notified_at (กดแจ้งผลรายคนล่าสุดเมื่อไหร่ — กดซ้ำจะเตือน v47)
+    $hasFitNotified = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fitness_rounds' AND COLUMN_NAME = 'notified_at'"
+    )->fetchColumn();
+    if (!(int)$hasFitNotified) {
+        db()->exec("ALTER TABLE fitness_rounds ADD COLUMN notified_at DATETIME NULL AFTER note");
+    }
 }
 
 /** ใส่ท่า "วิ่ง 2 กม." แบบ mode=step ครั้งเดียว (เช็คจาก mode รวมท่าที่ซ่อนแล้ว — ซ่อนไปแล้วไม่ใส่ซ้ำ)

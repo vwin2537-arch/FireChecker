@@ -129,6 +129,7 @@ const ACTIONS = [
     'fitness_round_get'   => 'h_fitness_round_get',
     'fitness_round_location' => 'h_fitness_round_location',
     'fitness_report'      => 'h_fitness_report',
+    'fitness_notify'      => 'h_fitness_notify',
     'fitness_result_save' => 'h_fitness_result_save',
     // การ์ดวัคซีน (admin)
     'vaccine_types_admin' => 'h_vaccine_types_admin',

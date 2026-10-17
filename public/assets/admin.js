@@ -1188,7 +1188,9 @@ const Admin = {
         <h3 style="margin-top:10px">${esc(d.round.title)} <span class="h-right">${thaiDate(d.round.test_date)}</span></h3>
         <div class="tiny" style="margin-bottom:8px">📍 ${d.round.location ? esc(d.round.location) : '<span style="color:#dc2626">ยังไม่ระบุสถานที่</span>'}
           <button class="btn btn-ghost btn-sm" style="padding:2px 8px;margin-left:4px" onclick="Admin.fitEditLocation()">✏️ แก้</button></div>
-        ${reportBtns ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">${reportBtns}</div>` : ''}
+        ${reportBtns ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">${reportBtns}
+          <button class="btn btn-ghost btn-sm" onclick="Admin.fitNotify()">📣 แจ้งผลให้เจ้าหน้าที่</button></div>
+          <div class="tiny" style="margin:-4px 0 10px">${d.round.notified_at ? '✅ แจ้งผลไปแล้วเมื่อ ' + thaiDate(d.round.notified_at.slice(0, 10)) + ' ' + d.round.notified_at.slice(11, 16) + ' น.' : '📣 ยังไม่ได้แจ้งผล — กรอกครบและตรวจแล้วค่อยกด (ส่งเข้ากล่องข้อความ + เด้งมือถือ คนละ 1 ข้อความ)'}</div>` : ''}
         <div class="tiny" style="margin-bottom:8px">💡 กรอกค่าที่วัดได้ → ระบบจัดระดับให้ตอนกดบันทึก (ช่องว่าง = ไม่มีผล) · คนที่ไม่มีวันเกิด/เพศ จะยังไม่จัดระดับท่าที่อิงอายุ${d.items.some(it => it.is_time) ? '<br>⏱️ ท่าจับเวลา: พิมพ์ <b>12.34</b> หรือ <b>12:34</b> = 12 นาที 34 วินาที (เศษวินาทีตัดทิ้ง) · <b>เว้นว่าง = ไม่ผ่าน</b> ถ้ารอบนี้มีคนกรอกเวลาแล้ว · ติ๊ก "ยกเว้น" สำหรับคนที่ไม่ต้องทดสอบ' : ''}</div>
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>เจ้าหน้าที่</th>${head}</tr>
@@ -1205,6 +1207,17 @@ const Admin = {
     const t = cb.closest('td').querySelector('.fit-time');
     t.disabled = cb.checked;
     if (cb.checked) { t.value = ''; this.fitTimeHint(t); }
+  },
+  async fitNotify() {
+    const d = await App.api('fitness_round_get', { round_id: this.fitRoundId });
+    const n = new Set(Object.values(d.results).map(r => +r.user_id)).size;
+    const again = d.round.notified_at ? `<br><b style="color:#dc2626">⚠️ รอบนี้แจ้งไปแล้วเมื่อ ${thaiDate(d.round.notified_at.slice(0, 10)) + ' ' + d.round.notified_at.slice(11, 16)} น. — กดอีกครั้งทุกคนจะได้ข้อความซ้ำ</b>` : '';
+    const c = await Swal.fire({ icon: again ? 'warning' : 'question', title: 'แจ้งผลให้เจ้าหน้าที่?',
+      html: `ส่งผลของแต่ละคนเข้ากล่องข้อความ 📬 + เด้งมือถือ<br>ถึง <b>${n}</b> คนที่มีผลในรอบนี้ (เห็นเฉพาะผลของตัวเอง)${again}`,
+      showCancelButton: true, confirmButtonText: 'ส่งเลย', cancelButtonText: 'ยกเลิก' });
+    if (!c.isConfirmed) return;
+    const r = await App.api('fitness_notify', { round_id: this.fitRoundId });
+    toast(r.message); this.fitLoadEntry();
   },
   async fitEditLocation() {
     const r = await Swal.fire({ title: 'สถานที่ทดสอบ', input: 'text', inputValue: this.fitRoundLoc || App.adminData?.settings?.station_name || '',

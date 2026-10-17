@@ -254,6 +254,7 @@ CREATE TABLE IF NOT EXISTS fitness_rounds (
   test_date  DATE NOT NULL,
   location   VARCHAR(120) NOT NULL DEFAULT '',   -- สถานที่ทดสอบ (โชว์ในรายงาน)
   note       VARCHAR(255) NOT NULL DEFAULT '',
+  notified_at DATETIME NULL,                     -- กด "แจ้งผลให้เจ้าหน้าที่" ล่าสุด (NULL = ยังไม่เคยแจ้ง)
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
