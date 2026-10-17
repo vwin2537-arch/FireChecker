@@ -531,6 +531,13 @@ body.rpt-open { overflow: hidden; }
 .rp-rank { font-weight: 700; color: var(--ink-2); width: 56px; }
 .rp-score { font-weight: 700; color: var(--green-700); font-size: 16px; }
 .rp-pos { font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.rp-info { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; padding: 14px 28px; font-size: 15px; color: var(--ink); }
+.rp-info span { display: inline-block; min-width: 92px; color: var(--ink-3); font-size: 13px; }
+.rp-st { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.rp-st-pass  { background: #dcfce7; color: #15803d; }
+.rp-st-watch { background: #fef3c7; color: #b45309; }
+.rp-st-fail  { background: #fee2e2; color: #b91c1c; }
+.rp-st-skip  { background: #f1f5f9; color: #64748b; }
 .rp-foot { padding: 14px 20px 18px; font-size: 12px; color: var(--ink-3); text-align: center; line-height: 1.5; }
 
 @media print {
@@ -540,6 +547,15 @@ body.rpt-open { overflow: hidden; }
   body.rpt-printing .rpt-bar { display: none !important; }
   body.rpt-printing .rpt-scroll { overflow: visible; padding: 0; display: block; }
   body.rpt-printing .rpt-paper { width: 100%; box-shadow: none; border-radius: 0; }
+  /* รายงานสมรรถภาพ (.rp-fit): บีบระยะให้ทั้งทีม ~20 คนจบใน A4 หน้าเดียว */
+  body.rpt-printing .rp-fit .rp-head { padding: 14px 22px; }
+  body.rpt-printing .rp-fit .rp-info { padding: 10px 22px; font-size: 13px; }
+  body.rpt-printing .rp-fit .rp-stat { padding: 8px 4px; }
+  body.rpt-printing .rp-fit .rp-tbl { font-size: 13px; margin-top: 8px; }
+  body.rpt-printing .rp-fit .rp-tbl th, body.rpt-printing .rp-fit .rp-tbl td { padding: 4px 6px; }
+  body.rpt-printing .rp-fit .rp-tbl td.rp-pos { white-space: nowrap; font-size: 11px; }
+  body.rpt-printing .rp-fit .rp-score { font-size: 14px; }
+  body.rpt-printing .rp-fit .rp-foot { padding: 8px 16px 0; font-size: 11px; }
   @page { size: A4 portrait; margin: 10mm; }
 }
 

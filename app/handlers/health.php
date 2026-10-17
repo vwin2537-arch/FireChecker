@@ -234,6 +234,27 @@ function grade_fitness_step(array $crit, float $raw, int $age, string $gender): 
     return null;   // ไม่มีช่วงอายุตรง (เช่น ต่ำกว่า 17 ปี)
 }
 
+/** สถานะผล 1 แถว: pass/watch/fail/skip/none — ใช้ทั้งการ์ดภาพรวมและรายงาน (กฎเดียวกัน ห้ามแยกเขียน)
+ *  ท่ามี levels ≥2: ระดับล่างสุด = fail · รองล่างสุด = watch · นอกนั้น pass (ไม่ใช้ tone ดิบ เพราะ "ดี"=warn จะ false-alarm)
+ *  ไม่มี levels (cap / step): ตาม tone — bad = fail · warn = watch (step 60-79) · skip = ยกเว้น
+ */
+function fitness_status(string $criteriaJson, ?string $level, ?string $tone): string {
+    if ($tone === 'skip') return 'skip';
+    if ($level === null || $level === '') return 'none';       // ยังไม่จัดระดับ
+    $crit = json_decode($criteriaJson, true);
+    $levels = (is_array($crit) && !empty($crit['levels'])) ? $crit['levels'] : null;
+    if (is_array($levels) && count($levels) >= 2) {
+        $idx = array_search($level, $levels, true);
+        $last = count($levels) - 1;
+        if ($idx === $last) return 'fail';
+        if ($idx === $last - 1) return 'watch';
+        return 'pass';
+    }
+    if ($tone === 'bad') return 'fail';
+    if ($tone === 'warn') return 'watch';
+    return 'pass';
+}
+
 /** ท่าแบบ mode=step (เวลา นาที:วินาที, ไม่มีผล = ไม่ผ่าน, มีสถานะยกเว้น) */
 function fitness_is_step(array $item): bool {
     $crit = json_decode((string)($item['criteria_json'] ?? ''), true);
@@ -345,11 +366,22 @@ function h_fitness_round_add(): never {
     $date = (string)param('test_date', '');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || strtotime($date) === false) fail('วันที่ทดสอบไม่ถูกต้อง');
     $note = mb_substr(trim((string)param('note', '')), 0, 255);
+    $loc  = mb_substr(trim((string)param('location', '')), 0, 120);
+    if ($loc === '') $loc = (string)setting('station_name');   // เว้นว่าง = ที่สถานี
 
-    db()->prepare('INSERT INTO fitness_rounds (title, test_date, note) VALUES (?, ?, ?)')->execute([$title, $date, $note]);
+    db()->prepare('INSERT INTO fitness_rounds (title, test_date, location, note) VALUES (?, ?, ?, ?)')->execute([$title, $date, $loc, $note]);
     $id = (int)db()->lastInsertId();
     line_enqueue("🏃 เปิดรอบทดสอบสมรรถภาพ\n• {$title}\n• วันที่ " . thai_date($date));
     ok(['message' => 'สร้างรอบทดสอบแล้ว', 'id' => $id]);
+}
+
+/** แก้สถานที่ของรอบทดสอบ (รอบเก่าก่อน v46 ยังไม่มีสถานที่) */
+function h_fitness_round_location(): never {
+    require_admin();
+    $loc = mb_substr(trim((string)param('location', '')), 0, 120);
+    if ($loc === '') fail('กรอกสถานที่');
+    db()->prepare('UPDATE fitness_rounds SET location = ? WHERE id = ?')->execute([$loc, (int)param('round_id')]);
+    ok(['message' => 'บันทึกสถานที่แล้ว']);
 }
 
 /** ลบรอบทดสอบ (cascade ผลทั้งรอบ) */
@@ -381,7 +413,8 @@ function h_fitness_round_get(): never {
     $results = [];
     foreach ($res->fetchAll() as $r) $results[$r['user_id'] . '_' . $r['item_id']] = $r;
 
-    ok(['round' => $round, 'items' => $items, 'staff' => $staff, 'results' => $results]);
+    $withRes = array_values(array_unique(array_map(fn($r) => (int)$r['item_id'], $results)));
+    ok(['round' => $round, 'items' => $items, 'staff' => $staff, 'results' => $results, 'items_with_results' => $withRes]);
 }
 
 /** บันทึกผลทดสอบแบบ batch (ทั้งทีมในรอบ) — คำนวณระดับตอนบันทึก, ค่าว่าง = ลบผลเดิม */
@@ -439,6 +472,47 @@ function h_fitness_result_save(): never {
         $saved++;
     }
     ok(['message' => "บันทึกผลแล้ว {$saved} รายการ"]);
+}
+
+/** รายงานผลทดสอบ 1 ท่า × 1 รอบ (ปริ้น/บันทึกรูป) — ทุกคนที่มีผลในท่านั้น · เรียงชื่อฝั่ง client (Intl ไทย ตัดคำนำหน้า) */
+function h_fitness_report(): never {
+    require_admin();
+    $round = db()->prepare('SELECT * FROM fitness_rounds WHERE id = ?');
+    $round->execute([(int)param('round_id')]);
+    $round = $round->fetch();
+    if (!$round) fail('ไม่พบรอบทดสอบนี้');
+    $item = db()->prepare('SELECT * FROM fitness_items WHERE id = ?');
+    $item->execute([(int)param('item_id')]);
+    $item = $item->fetch();
+    if (!$item) fail('ไม่พบท่าทดสอบนี้');
+
+    $st = db()->prepare(
+        'SELECT u.name, u.gender, u.birthdate, f.raw_value, f.level, f.tone, f.note
+         FROM fitness_results f JOIN users u ON u.id = f.user_id
+         WHERE f.round_id = ? AND f.item_id = ?');
+    $st->execute([$round['id'], $item['id']]);
+    $rows = []; $sum = ['pass' => 0, 'watch' => 0, 'fail' => 0, 'skip' => 0, 'none' => 0];
+    $scores = [];
+    $isStep = fitness_is_step($item);
+    foreach ($st->fetchAll() as $r) {
+        $status = fitness_status((string)$item['criteria_json'], $r['level'], $r['tone']);
+        $sum[$status]++;
+        if ($isStep && preg_match('/^(\d+) คะแนน$/u', (string)$r['level'], $m)) $scores[] = (int)$m[1];
+        $rows[] = [
+            'name' => $r['name'], 'gender' => $r['gender'], 'age' => age_at($r['birthdate'], $round['test_date']),
+            'raw_value' => $r['raw_value'], 'level' => $r['level'], 'status' => $status, 'note' => $r['note'],
+        ];
+    }
+    ok([
+        'station_name' => setting('station_name'),
+        'round' => ['title' => $round['title'], 'date_label' => thai_date($round['test_date']),
+                    'location' => $round['location'], 'note' => $round['note']],
+        'item' => ['name' => $item['name'], 'unit' => $item['unit'], 'is_time' => $isStep,
+                   'criteria' => $isStep ? 'เกณฑ์การเลือกสรรพนักงานพิทักษ์ป่า ปี 2561 (คะแนนตามอายุและเพศ)' : ''],
+        'rows' => $rows,
+        'summary' => $sum + ['avg' => $scores ? round(array_sum($scores) / count($scores), 1) : null],
+        'generated_at' => date('d/m/') . (date('Y') + 543) . ' ' . date('H:i'),
+    ]);
 }
 
 // =====================================================
@@ -504,23 +578,9 @@ function h_health_dashboard(): never {
         if (!$data['rows']) continue;                       // ยกเว้นทุกท่าในรอบล่าสุด = ซ่อน (เหมือนคนไม่มีข้อมูล)
         $bad = []; $warn = [];
         foreach ($data['rows'] as $row) {
-            $lvl = $row['level'];
-            if ($lvl === null || $lvl === '') continue;    // ยังไม่จัดระดับ = ข้าม
-            $crit = json_decode((string)$row['criteria_json'], true);
-            $levels = (is_array($crit) && !empty($crit['levels'])) ? $crit['levels'] : null;
-            if (is_array($levels) && count($levels) >= 2) {
-                // ใช้ตำแหน่งระดับ: ล่างสุด = แดง · รองล่างสุด = เหลือง (ระดับกลาง/ดี ไม่เตือน)
-                $idx = array_search($lvl, $levels, true);
-                $last = count($levels) - 1;
-                if ($idx === $last)          $bad[]  = "{$row['item_name']}: {$lvl}";
-                elseif ($idx === $last - 1)  $warn[] = "{$row['item_name']}: {$lvl}";
-            } elseif ($row['tone'] === 'bad') {
-                // cap (ผ่าน/ไม่ผ่าน) หรือไม่มีระดับ → พึ่ง tone
-                $bad[] = "{$row['item_name']}: {$lvl}";
-            } elseif ($row['tone'] === 'warn') {
-                // mode=step (วิ่ง 2 กม.) 60-79 คะแนน → เฝ้าระวัง · skip (ยกเว้น) ไม่เตือน
-                $warn[] = "{$row['item_name']}: {$lvl}";
-            }
+            $st = fitness_status((string)$row['criteria_json'], $row['level'], $row['tone']);
+            if ($st === 'fail')      $bad[]  = "{$row['item_name']}: {$row['level']}";
+            elseif ($st === 'watch') $warn[] = "{$row['item_name']}: {$row['level']}";
         }
         if ($bad)      $fRed[]    = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => array_merge($bad, $warn)];
         elseif ($warn) $fYellow[] = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => $warn];

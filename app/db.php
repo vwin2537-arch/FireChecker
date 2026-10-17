@@ -254,6 +254,15 @@ function ensure_admin(): void {
         db()->exec("ALTER TABLE fitness_results ADD COLUMN note VARCHAR(255) NULL AFTER tone");
     }
     seed_fitness_run2k();   // ท่าวิ่ง 2 กม. (เกณฑ์คะแนน 60-100) — DB เดิมที่ seed ไปแล้วก็ได้ด้วย
+
+    // migrate: fitness_rounds.location (สถานที่ทดสอบ โชว์ในรายงาน — v46)
+    $hasFitLoc = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fitness_rounds' AND COLUMN_NAME = 'location'"
+    )->fetchColumn();
+    if (!(int)$hasFitLoc) {
+        db()->exec("ALTER TABLE fitness_rounds ADD COLUMN location VARCHAR(120) NOT NULL DEFAULT '' AFTER test_date");
+    }
 }
 
 /** ใส่ท่า "วิ่ง 2 กม." แบบ mode=step ครั้งเดียว (เช็คจาก mode รวมท่าที่ซ่อนแล้ว — ซ่อนไปแล้วไม่ใส่ซ้ำ)

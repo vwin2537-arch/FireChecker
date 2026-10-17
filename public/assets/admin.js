@@ -343,7 +343,7 @@ const Admin = {
       <div class="rp-foot">ออกรายงานเมื่อ ${d.generated_at} น. · จัดอันดับจากการมาทำงาน การตรงต่อเวลา และความสม่ำเสมอตลอดเดือน · ระบบเช็คชื่อ FireCheck</div>`;
   },
 
-  async reportSave() {
+  async reportSave(fileName) {
     if (typeof html2canvas !== 'function') return toast('โหลดตัวสร้างรูปไม่สำเร็จ ลองรีเฟรช', 'error');
     toast('กำลังสร้างรูป…');
     await document.fonts.ready;
@@ -351,7 +351,7 @@ const Admin = {
     canvas.toBlob(blob => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `ความขยัน-${byId('rptMonth').value}.png`;
+      a.download = fileName || `ความขยัน-${byId('rptMonth').value}.png`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       toast('บันทึกรูปแล้ว 📥');
@@ -1126,12 +1126,13 @@ const Admin = {
           <div class="field"><label>วันที่ทดสอบ</label><input type="date" class="input" id="frDate" value="${todayStr()}"></div>
           <div class="field"><label>หมายเหตุ</label><input class="input" id="frNote"></div>
         </div>
+        <div class="field"><label>สถานที่</label><input class="input" id="frLoc" value="${esc(App.adminData?.settings?.station_name || '')}"></div>
         <button class="btn btn-primary btn-block" onclick="Admin.fitAddRound()">สร้างรอบ + แจ้ง LINE</button>
       </div>
       ${d.rounds.length ? `<div class="card"><h3>รอบทดสอบทั้งหมด</h3>
         ${d.rounds.map(r => `<div class="list-row">
           <div class="lr-main"><div class="lr-title">${esc(r.title)}</div>
-            <div class="lr-sub">${thaiDate(r.test_date)} • ทดสอบแล้ว ${r.tested} คน${r.note ? ' • ' + esc(r.note) : ''}</div></div>
+            <div class="lr-sub">${thaiDate(r.test_date)}${r.location ? ' • 📍 ' + esc(r.location) : ''} • ทดสอบแล้ว ${r.tested} คน${r.note ? ' • ' + esc(r.note) : ''}</div></div>
           <button class="btn btn-primary btn-sm" onclick="Admin.fitOpenEntry(${r.id})">กรอก/ดูผล</button>
           <button class="btn btn-danger-ghost btn-sm" onclick="Admin.fitDelRound(${r.id})">ลบ</button>
         </div>`).join('')}</div>` : '<div class="card empty"><span class="e-ico">📋</span>ยังไม่มีรอบทดสอบ</div>'}`;
@@ -1139,7 +1140,7 @@ const Admin = {
   async fitAddRound() {
     const title = byId('frTitle').value.trim();
     if (!title) return toast('กรอกชื่อรอบ', 'error');
-    const d = await App.api('fitness_round_add', { title, test_date: byId('frDate').value, note: byId('frNote').value.trim() });
+    const d = await App.api('fitness_round_add', { title, test_date: byId('frDate').value, note: byId('frNote').value.trim(), location: byId('frLoc').value.trim() });
     toast(d.message); this.fitOpenEntry(d.id);
   },
   async fitDelRound(id) {
@@ -1158,6 +1159,9 @@ const Admin = {
       return;
     }
     const head = d.items.map(it => `<th class="num">${esc(it.name)}<div class="tiny">${esc(it.unit || '')}</div></th>`).join('');
+    this.fitRoundLoc = d.round.location || '';
+    const reportBtns = d.items.filter(it => d.items_with_results.includes(+it.id))
+      .map(it => `<button class="btn btn-primary btn-sm" onclick="Admin.fitReportOpen(${it.id})">📄 รายงาน ${esc(it.name)}</button>`).join('');
     const rows = d.staff.map(s => {
       const cells = d.items.map(it => {
         const r = d.results[s.id + '_' + it.id];
@@ -1182,6 +1186,9 @@ const Admin = {
       <div class="card">
         <button class="btn btn-ghost btn-sm" onclick="Admin.fitGo('rounds')">← กลับ</button>
         <h3 style="margin-top:10px">${esc(d.round.title)} <span class="h-right">${thaiDate(d.round.test_date)}</span></h3>
+        <div class="tiny" style="margin-bottom:8px">📍 ${d.round.location ? esc(d.round.location) : '<span style="color:#dc2626">ยังไม่ระบุสถานที่</span>'}
+          <button class="btn btn-ghost btn-sm" style="padding:2px 8px;margin-left:4px" onclick="Admin.fitEditLocation()">✏️ แก้</button></div>
+        ${reportBtns ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">${reportBtns}</div>` : ''}
         <div class="tiny" style="margin-bottom:8px">💡 กรอกค่าที่วัดได้ → ระบบจัดระดับให้ตอนกดบันทึก (ช่องว่าง = ไม่มีผล) · คนที่ไม่มีวันเกิด/เพศ จะยังไม่จัดระดับท่าที่อิงอายุ${d.items.some(it => it.is_time) ? '<br>⏱️ ท่าจับเวลา: พิมพ์ <b>12.34</b> หรือ <b>12:34</b> = 12 นาที 34 วินาที (เศษวินาทีตัดทิ้ง) · <b>เว้นว่าง = ไม่ผ่าน</b> ถ้ารอบนี้มีคนกรอกเวลาแล้ว · ติ๊ก "ยกเว้น" สำหรับคนที่ไม่ต้องทดสอบ' : ''}</div>
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>เจ้าหน้าที่</th>${head}</tr>
@@ -1199,6 +1206,80 @@ const Admin = {
     t.disabled = cb.checked;
     if (cb.checked) { t.value = ''; this.fitTimeHint(t); }
   },
+  async fitEditLocation() {
+    const r = await Swal.fire({ title: 'สถานที่ทดสอบ', input: 'text', inputValue: this.fitRoundLoc || App.adminData?.settings?.station_name || '',
+      showCancelButton: true, confirmButtonText: 'บันทึก', cancelButtonText: 'ยกเลิก', inputValidator: v => !v.trim() && 'กรอกสถานที่' });
+    if (!r.isConfirmed) return;
+    const d = await App.api('fitness_round_location', { round_id: this.fitRoundId, location: r.value.trim() });
+    toast(d.message); this.fitLoadEntry();
+  },
+
+  // ---------- รายงานผลทดสอบ 1 ท่า × 1 รอบ (reuse overlay #reportOverlay + reportPrint/reportSave/reportClose) ----------
+  async fitReportOpen(itemId) {
+    const d = await App.api('fitness_report', { round_id: this.fitRoundId, item_id: itemId });
+    const file = `ผลทดสอบ-${d.item.name}-${d.round.date_label}.png`.replace(/[\\/:*?"<>|\s]+/g, '-');
+    const ov = document.createElement('div');
+    ov.id = 'reportOverlay';
+    ov.className = 'rpt-overlay';
+    ov.innerHTML = `
+      <div class="rpt-bar">
+        <button class="btn btn-primary" onclick="Admin.reportSave('${file}')">🖼️ บันทึกรูป</button>
+        <button class="btn" onclick="Admin.reportPrint()">🖨️ ปริ้น</button>
+        <button class="btn rpt-close" onclick="Admin.reportClose()">✕ ปิด</button>
+      </div>
+      <div class="rpt-scroll"><div id="rptPaper" class="rpt-paper rp-fit">${this.fitPaperHtml(d)}</div></div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('rpt-open');
+  },
+
+  fitPaperHtml(d) {
+    // เรียงชื่อ ก-ฮ ตัดคำนำหน้า (นาย/นาง/น.ส.) — ไม่งั้นจับกลุ่มตามคำนำหน้า · Intl ไทยจัดสระหน้า (เ แ โ) ถูก
+    const bare = n => n.replace(/^(นางสาว|น\.ส\.|นาย|นาง)\s*/, '');
+    const coll = new Intl.Collator('th');
+    const rows = [...d.rows].sort((a, b) => coll.compare(bare(a.name), bare(b.name)));
+    const ST = { pass: ['ผ่าน', 'pass'], watch: ['เฝ้าระวัง', 'watch'], fail: ['ไม่ผ่าน', 'fail'], skip: ['ยกเว้น', 'skip'], none: ['ยังไม่จัดระดับ', 'skip'] };
+    const g = { male: 'ชาย', female: 'หญิง' };
+    const it = d.item;
+    const val = r => r.raw_value === null ? '—' : it.is_time ? fmtMSS(r.raw_value) : (+r.raw_value % 1 === 0 ? +r.raw_value : (+r.raw_value).toFixed(1));
+    const res = r => it.is_time ? ((String(r.level || '').match(/^(\d+) คะแนน$/) || [])[1] || '—') : (r.status === 'skip' || !r.level ? '—' : esc(r.level));
+    const body = rows.map((r, i) => `<tr>
+      <td class="rp-rank">${i + 1}</td>
+      <td class="l"><b>${esc(r.name)}</b></td>
+      <td>${g[r.gender] || '—'}</td><td>${r.age ?? '—'}</td>
+      <td>${val(r)}</td><td class="rp-score">${res(r)}</td>
+      <td><span class="rp-st rp-st-${ST[r.status][1]}">${ST[r.status][0]}</span></td>
+      <td class="l rp-pos">${r.note ? esc(r.note) : ''}</td></tr>`).join('');
+    const s = d.summary;
+    return `<div class="rp-head">
+        <span class="rp-fire">🏃</span>
+        <div>
+          <div class="rp-station">${esc(d.station_name)}</div>
+          <div class="rp-title">รายงานผลการทดสอบสมรรถภาพ</div>
+          <div class="rp-month">${esc(it.name)}</div>
+        </div>
+      </div>
+      <div class="rp-info">
+        <div><span>รอบทดสอบ</span>${esc(d.round.title)}</div>
+        <div><span>วันที่ทดสอบ</span>${esc(d.round.date_label)}</div>
+        <div><span>สถานที่</span>${esc(d.round.location || '-')}</div>
+        ${it.criteria ? `<div><span>เกณฑ์</span>${esc(it.criteria)}</div>` : ''}
+      </div>
+      <div class="rp-sumrow" style="grid-template-columns:repeat(${s.avg !== null ? 6 : 5},1fr)">
+        ${this.rpStat(rows.length, 'รายชื่อทั้งหมด (คน)')}
+        ${this.rpStat(s.pass, 'ผ่าน')}${this.rpStat(s.watch, 'เฝ้าระวัง')}${this.rpStat(s.fail, 'ไม่ผ่าน')}${this.rpStat(s.skip, 'ยกเว้น')}
+        ${s.avg !== null ? this.rpStat(s.avg, 'คะแนนเฉลี่ย') : ''}
+      </div>
+      <div style="padding:4px 22px 4px">
+        <table class="rp-tbl">
+          <thead><tr><th>ที่</th><th class="l">ชื่อ-สกุล</th><th>เพศ</th><th>อายุ</th>
+            <th>${it.is_time ? 'เวลาที่ใช้<br><small>(นาที:วินาที)</small>' : 'ค่าที่วัดได้' + (it.unit ? `<br><small>(${esc(it.unit)})</small>` : '')}</th>
+            <th>${it.is_time ? 'คะแนน<br><small>(เต็ม 100)</small>' : 'ผลเทียบเกณฑ์'}</th><th>สถานะ</th><th class="l">หมายเหตุ</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      <div class="rp-foot">${it.is_time ? 'สถานะ: ผ่าน = 80 คะแนนขึ้นไป · เฝ้าระวัง = 60-79 คะแนน · ไม่ผ่าน = ช้ากว่าเกณฑ์ 60 คะแนน หรือไม่ได้ทดสอบ · อายุนับเต็มปี ณ วันทดสอบ<br>' : ''}ออกรายงานเมื่อ ${esc(d.generated_at)} น. · ระบบเช็คชื่อ FireCheck</div>`;
+  },
+
   async fitSaveResults() {
     const results = [...document.querySelectorAll('.fit-in')].map(el => ({ user_id: +el.dataset.u, item_id: +el.dataset.i, value: el.value }));
     for (const el of document.querySelectorAll('.fit-time')) {
