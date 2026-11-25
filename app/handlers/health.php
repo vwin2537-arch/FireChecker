@@ -70,6 +70,70 @@ function grade_pulse($pulse): ?array {
     return ['label' => 'ปกติ', 'level' => 'ok'];
 }
 
+/** รายการแลบที่รองรับ: code => [หมวด, ชื่อ, หน่วย, ค่าปกติชาย, ค่าปกติหญิง] — เกณฑ์ตามใบ รพ.พหลฯ 2569 (ใช้เติมช่องตอนกรอก แก้ได้) */
+const HEALTH_LABS = [
+    'fbs'   => ['น้ำตาล', 'น้ำตาลในเลือด (FBS)', 'mg/dl', '74-106', '74-106'],
+    'chol'  => ['ไขมัน', 'คอเลสเตอรอล', 'mg/dl', '<200', '<200'],
+    'tg'    => ['ไขมัน', 'ไตรกลีเซอไรด์', 'mg/dl', '0-150', '0-150'],
+    'hdl'   => ['ไขมัน', 'HDL (ไขมันดี)', 'mg/dl', '>40', '>40'],
+    'ldl'   => ['ไขมัน', 'LDL (ไขมันเลว)', 'mg/dl', '<130', '<130'],
+    'bun'   => ['ไต', 'BUN', 'mg/dl', '8-20', '8-20'],
+    'cr'    => ['ไต', 'Creatinine', 'mg/dl', '0.72-1.18', '0.55-1.02'],
+    'gfr'   => ['ไต', 'GFR', 'ml/min', '>60', '>60'],
+    'uric'  => ['กรดยูริก', 'กรดยูริก', 'mg/dl', '3.5-7.2', '2.6-6.0'],
+    'ast'   => ['ตับ', 'AST (SGOT)', 'U/L', '<50', '<35'],
+    'alt'   => ['ตับ', 'ALT (SGPT)', 'U/L', '<50', '<35'],
+    'alp'   => ['ตับ', 'ALP', 'U/L', '30-120', '30-120'],
+    'rbc'   => ['เม็ดเลือด', 'เม็ดเลือดแดง', 'x10^6', '4.0-6.0', '4.0-6.0'],
+    'hb'    => ['เม็ดเลือด', 'ฮีโมโกลบิน (Hb)', 'g/dl', '13-18', '12-16'],
+    'hct'   => ['เม็ดเลือด', 'ความเข้มข้นเลือด (Hct)', '%', '40-54', '36-47'],
+    'mcv'   => ['เม็ดเลือด', 'ขนาดเม็ดเลือดแดง (MCV)', 'fl', '83-97', '83-97'],
+    'mch'   => ['เม็ดเลือด', 'MCH', 'pg', '27-33', '27-33'],
+    'mchc'  => ['เม็ดเลือด', 'MCHC', 'g/dl', '31-35', '31-35'],
+    'rdw'   => ['เม็ดเลือด', 'RDW', '', '11-16', '11-16'],
+    'wbc'   => ['เม็ดเลือด', 'เม็ดเลือดขาว', 'x10^3', '4-11', '4-11'],
+    'plt'   => ['เม็ดเลือด', 'เกล็ดเลือด', 'x10^3', '150-400', '150-400'],
+    'morph' => ['เม็ดเลือด', 'รูปร่างเม็ดเลือดแดง', '', 'Normal', 'Normal'],
+    'ucolor'=> ['ปัสสาวะ', 'สีปัสสาวะ', '', '', ''],
+    'uglu'  => ['ปัสสาวะ', 'น้ำตาลในปัสสาวะ', '', 'Negative', 'Negative'],
+    'uprot' => ['ปัสสาวะ', 'โปรตีนในปัสสาวะ', '', 'Negative', 'Negative'],
+    'uph'   => ['ปัสสาวะ', 'กรด-ด่าง (pH)', '', '4.5-8.0', '4.5-8.0'],
+    'usg'   => ['ปัสสาวะ', 'ความถ่วงจำเพาะ', '', '1.003-1.035', '1.003-1.035'],
+    'urbc'  => ['ปัสสาวะ', 'เม็ดเลือดแดงในปัสสาวะ', '/HPF', '0-5', '0-5'],
+    'uwbc'  => ['ปัสสาวะ', 'เม็ดเลือดขาวในปัสสาวะ', '/HPF', '0-5', '0-5'],
+    'uepi'  => ['ปัสสาวะ', 'เซลล์บุผิวในปัสสาวะ', '/HPF', '0-5', '0-5'],
+];
+
+/** ทิศของค่าที่ผิดปกติเทียบค่าปกติในใบ: 'hi' / 'lo' / '' (ข้อความ/อ่านไม่ออก) — ใช้แค่โชว์ลูกศร ไม่ใช้ตัดสินว่าผิดปกติ */
+function lab_dir(string $val, string $ref): string {
+    if (!is_numeric($val)) return '';
+    $v = (float)$val;
+    if (preg_match('/^<\s*([\d.]+)$/', $ref, $m)) return $v >= (float)$m[1] ? 'hi' : '';
+    if (preg_match('/^>\s*([\d.]+)$/', $ref, $m)) return $v <= (float)$m[1] ? 'lo' : '';
+    if (preg_match('/^([\d.]+)\s*-\s*([\d.]+)$/', $ref, $m)) return $v > (float)$m[2] ? 'hi' : ($v < (float)$m[1] ? 'lo' : '');
+    return '';
+}
+
+/** เติม labs[] ให้ทุก record (เรียงตาม HEALTH_LABS) */
+function health_attach_labs(array $rows): array {
+    if (!$rows) return $rows;
+    $ids = array_map(fn($r) => (int)$r['id'], $rows);
+    $by = [];
+    foreach (db()->query('SELECT record_id, code, val, ref, abnormal FROM health_labs WHERE record_id IN (' . implode(',', $ids) . ')') as $l)
+        $by[$l['record_id']][$l['code']] = $l;
+    foreach ($rows as &$r) {
+        $r['labs'] = [];
+        foreach (HEALTH_LABS as $code => [$group, $label, $unit]) {
+            if (!isset($by[$r['id']][$code])) continue;
+            $l = $by[$r['id']][$code];
+            $r['labs'][] = ['code' => $code, 'group' => $group, 'label' => $label, 'unit' => $unit, 'val' => $l['val'],
+                'ref' => $l['ref'], 'abnormal' => (int)$l['abnormal'],
+                'dir' => (int)$l['abnormal'] ? lab_dir($l['val'], $l['ref']) : ''];
+        }
+    }
+    return $rows;
+}
+
 /** เติมค่าที่คำนวณ/จัดระดับให้ 1 record (ใช้ทั้งฝั่งเจ้าหน้าที่/แอดมิน) — ต้องรู้เพศเพื่อจัดระดับรอบเอว */
 function health_decorate(array $r, ?string $gender): array {
     $bmi = calc_bmi($r['weight_kg'] ?? null, $r['height_cm'] ?? null);
@@ -113,10 +177,11 @@ function health_validate_input(): array {
 function h_health_my(): never {
     $u = require_user();
     $st = db()->prepare(
-        'SELECT id, record_date, checkup_place, weight_kg, height_cm, waist_cm, bp_sys, bp_dia, pulse, note, created_at
+        'SELECT id, record_date, checkup_place, weight_kg, height_cm, waist_cm, bp_sys, bp_dia, pulse, note,
+                xray, xray_level, doctor_summary, created_at
          FROM health_records WHERE user_id = ? ORDER BY record_date DESC, id DESC');
     $st->execute([$u['id']]);
-    $rows = array_map(fn($r) => health_decorate($r, $u['gender'] ?? null), $st->fetchAll());
+    $rows = health_attach_labs(array_map(fn($r) => health_decorate($r, $u['gender'] ?? null), $st->fetchAll()));
     ok(['records' => $rows, 'gender' => $u['gender'] ?? null]);
 }
 
@@ -132,11 +197,15 @@ function h_health_admin_list(): never {
     if (!$user) fail('ไม่พบเจ้าหน้าที่คนนี้');
 
     $st = db()->prepare(
-        'SELECT id, record_date, checkup_place, weight_kg, height_cm, waist_cm, bp_sys, bp_dia, pulse, note, created_at
+        'SELECT id, record_date, checkup_place, weight_kg, height_cm, waist_cm, bp_sys, bp_dia, pulse, note,
+                xray, xray_level, doctor_summary, follow_status, follow_date, follow_note, created_at
          FROM health_records WHERE user_id = ? ORDER BY record_date DESC, id DESC');
     $st->execute([$uid]);
-    $rows = array_map(fn($r) => health_decorate($r, $user['gender']), $st->fetchAll());
-    ok(['records' => $rows, 'user' => $user]);
+    $rows = health_attach_labs(array_map(fn($r) => health_decorate($r, $user['gender']), $st->fetchAll()));
+    $cat = [];                                             // แม่แบบฟอร์มกรอกแลบ (ค่าปกติตามเพศ)
+    foreach (HEALTH_LABS as $code => [$g, $label, $unit, $m, $f])
+        $cat[] = ['code' => $code, 'group' => $g, 'label' => $label, 'unit' => $unit, 'ref' => $user['gender'] === 'female' ? $f : $m];
+    ok(['records' => $rows, 'user' => $user, 'lab_catalog' => $cat]);
 }
 
 /** แอดมินบันทึกผลตรวจให้เจ้าหน้าที่ (เพิ่มใหม่เสมอ — หลาย entry ต่อคน) */
@@ -160,6 +229,61 @@ function h_health_admin_del(): never {
     require_admin();
     db()->prepare('DELETE FROM health_records WHERE id = ?')->execute([(int)param('id')]);
     ok(['message' => 'ลบแล้ว']);
+}
+
+/** บันทึกผลแลบ/เอกซเรย์/สรุปหมอ ของผลตรวจเดิม 1 รายการ (แลบ = แทนที่ทั้งชุด) */
+function h_health_labs_save(): never {
+    require_admin();
+    $id = (int)param('record_id');
+    $cur = db()->prepare('SELECT follow_status FROM health_records WHERE id = ?');
+    $cur->execute([$id]);
+    $cur = $cur->fetch();
+    if (!$cur) fail('ไม่พบผลตรวจรายการนี้');
+
+    $labs = param('labs');
+    if (!is_array($labs)) fail('ข้อมูลแลบไม่ถูกต้อง');
+    $xray = mb_substr(trim((string)param('xray', '')), 0, 255);
+    $lv   = in_array(param('xray_level'), ['ok', 'warn', 'refer'], true) ? param('xray_level') : null;
+    $sum  = mb_substr(trim((string)param('doctor_summary', '')), 0, 255);
+    $note = mb_substr(trim((string)param('note', '')), 0, 500);
+    // หมอสั่งพบแพทย์ → เข้าคิวติดตามให้เลย (ไม่ทับสถานะที่หัวหน้าตั้งไว้แล้ว)
+    $follow = $cur['follow_status'] ?? ($lv === 'refer' ? 'wait' : null);
+
+    db()->beginTransaction();
+    try {
+        db()->prepare('UPDATE health_records SET xray = ?, xray_level = ?, doctor_summary = ?, note = ?, follow_status = ? WHERE id = ?')
+            ->execute([$xray, $lv, $sum, $note, $follow, $id]);
+        db()->prepare('DELETE FROM health_labs WHERE record_id = ?')->execute([$id]);
+        $ins = db()->prepare('INSERT INTO health_labs (record_id, code, val, ref, abnormal) VALUES (?, ?, ?, ?, ?)');
+        $seen = [];
+        foreach ($labs as $l) {
+            $code = is_array($l) ? (string)($l['code'] ?? '') : '';
+            if (!isset(HEALTH_LABS[$code]) || isset($seen[$code])) continue;
+            $val = mb_substr(trim((string)($l['val'] ?? '')), 0, 30);
+            $abn = !empty($l['abn']) ? 1 : 0;
+            if ($val === '' && !$abn) continue;            // ไม่ได้ตรวจ
+            $seen[$code] = 1;
+            $ins->execute([$id, $code, $val, mb_substr(trim((string)($l['ref'] ?? '')), 0, 40), $abn]);
+        }
+        db()->commit();
+    } catch (Throwable $e) {
+        db()->rollBack();
+        throw $e;
+    }
+    ok(['message' => 'บันทึกผลแลบแล้ว']);
+}
+
+/** ตั้งสถานะติดตามพบแพทย์ของผลตรวจ 1 รายการ (ค่าว่าง = ไม่ต้องติดตาม) */
+function h_health_follow_save(): never {
+    require_admin();
+    $st = param('status');
+    $st = in_array($st, ['wait', 'booked', 'done'], true) ? $st : null;
+    $date = (string)param('date', '');
+    $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && strtotime($date) !== false ? $date : null;
+    if ($st === 'booked' && !$date) fail('ใส่วันนัดก่อน');
+    $q = db()->prepare('UPDATE health_records SET follow_status = ?, follow_date = ?, follow_note = ? WHERE id = ?');
+    $q->execute([$st, $st ? $date : null, $st ? mb_substr(trim((string)param('note', '')), 0, 255) : '', (int)param('record_id')]);
+    ok(['message' => 'บันทึกการติดตามแล้ว']);
 }
 
 // =====================================================
@@ -580,6 +704,40 @@ function h_health_dashboard(): never {
     $latest = [];                                          // เก็บ record แรก (id สูงสุด) ต่อคน
     foreach ($rows as $r) if (!isset($latest[$r['user_id']])) $latest[$r['user_id']] = $r;
 
+    // แลบ/เอกซเรย์: ใบล่าสุดที่มีผล (บันทึกน้ำหนักอย่างเดียวทีหลังต้องไม่บังผลแลบเดิม)
+    $full = [];
+    $lr = db()->query(
+        "SELECT h.id, h.user_id, h.xray, h.xray_level, h.follow_status FROM health_records h
+         WHERE h.xray <> '' OR h.xray_level IS NOT NULL OR EXISTS (SELECT 1 FROM health_labs l WHERE l.record_id = h.id)
+         ORDER BY h.record_date DESC, h.id DESC")->fetchAll();
+    foreach ($lr as $r) if (isset($staff[$r['user_id']]) && !isset($full[$r['user_id']])) $full[$r['user_id']] = $r;
+    $full = array_column(health_attach_labs(array_values($full)), null, 'user_id');
+
+    // ทีมมีเรื่องไหนเยอะ: นับคนต่อค่า+ทิศ (คอเลสเตอรอลสูง ฯลฯ)
+    $team = []; $labTotal = 0;
+    foreach ($full as $uid => $r) {
+        if ($r['labs']) $labTotal++;
+        foreach ($r['labs'] as $l) {
+            if (!$l['abnormal']) continue;
+            $k = $l['code'] . $l['dir'];
+            $team[$k] ??= ['label' => $l['label'], 'dir' => $l['dir'], 'people' => []];
+            $team[$k]['people'][] = ['id' => $uid, 'name' => $staff[$uid]['name'], 'val' => $l['val']];
+        }
+    }
+    usort($team, fn($a, $b) => count($b['people']) <=> count($a['people']));
+
+    // คิวติดตามพบแพทย์: ทุกใบที่ตั้งสถานะไว้ (รอนัด → นัดแล้ว → ตรวจแล้ว)
+    $follow = [];
+    foreach (db()->query(
+        "SELECT id, user_id, xray, xray_level, follow_status status, follow_date date, follow_note note FROM health_records
+         WHERE follow_status IS NOT NULL ORDER BY FIELD(follow_status,'wait','booked','done'), follow_date") as $r) {
+        if (!isset($staff[$r['user_id']])) continue;
+        $r['name'] = $staff[$r['user_id']]['name'];
+        $r['overdue'] = $r['status'] === 'booked' && $r['date'] && $r['date'] < date('Y-m-d');
+        if ($r['xray_level'] === 'ok' || $r['xray_level'] === null) $r['xray'] = '';   // โชว์เฉพาะเอกซเรย์ที่เป็นเหตุ
+        $follow[] = $r;
+    }
+
     $hRed = []; $hYellow = []; $hGreen = 0;
     foreach ($latest as $uid => $r) {
         if (!isset($staff[$uid])) continue;               // ไม่ active แล้ว = ซ่อน
@@ -594,6 +752,15 @@ function h_health_dashboard(): never {
             if (!$c) continue;
             if ($c['level'] === 'bad')       $bad[]  = "$name: {$c['label']}";
             elseif ($c['level'] === 'warn')  $warn[] = "$name: {$c['label']}";
+        }
+        if (isset($full[$uid])) {
+            $fx = $full[$uid];
+            // หมอสั่งพบแพทย์ = แดง จนกว่าจะกดว่าตรวจแล้ว
+            if ($fx['xray_level'] === 'refer' && $fx['follow_status'] !== 'done') array_unshift($bad, "เอกซเรย์: {$fx['xray']}");
+            elseif (in_array($fx['xray_level'], ['refer', 'warn'], true)) $warn[] = "เอกซเรย์: {$fx['xray']}";
+            $ab = array_map(fn($l) => $l['label'] . ['hi' => ' ▲', 'lo' => ' ▼', '' => ''][$l['dir']],
+                            array_filter($fx['labs'], fn($l) => $l['abnormal']));
+            if ($ab) $warn[] = 'แลบ: ' . implode(', ', $ab);
         }
         if ($bad)      $hRed[]    = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => array_merge($bad, $warn)];
         elseif ($warn) $hYellow[] = ['id' => $uid, 'name' => $staff[$uid]['name'], 'issues' => $warn];
@@ -632,6 +799,8 @@ function h_health_dashboard(): never {
     }
 
     ok([
+        'follow'  => $follow,
+        'team'    => ['total' => $labTotal, 'items' => $team],
         'health'  => ['red' => $hRed, 'yellow' => $hYellow, 'green' => $hGreen,
                       'total' => count($hRed) + count($hYellow) + $hGreen],
         'fitness' => ['red' => $fRed, 'yellow' => $fYellow, 'green' => $fGreen,

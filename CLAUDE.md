@@ -31,7 +31,7 @@
 | [`face-verify.md`](docs/notes/face-verify.md) | ยืนยันใบหน้า 1:1 — เกณฑ์ที่วัดมา, ตั๋ว, ธง, ลงทะเบียน | `face.php`, `face-api.js`, `assets/models/` |
 | [`gdrive.md`](docs/notes/gdrive.md) | สำเนารูปเช็คอินขึ้น Google Drive (คิว + worker + OAuth) | `drive.php`, `cron/drive.php`, `oauth.php` |
 | [`mailbox.md`](docs/notes/mailbox.md) | กล่องข้อความ 📬 + จุดแดง + แดชบอร์ดคืนนี้ใครเข้าเวร | `notify.php`, `notify_push/broadcast` |
-| [`health.md`](docs/notes/health.md) | โซนสุขภาพ: สมุดสุขภาพ / ทดสอบสมรรถภาพ / การ์ดวัคซีน | `health.php`, `vaccine.php` |
+| [`health.md`](docs/notes/health.md) | โซนสุขภาพ: สมุดสุขภาพ / ผลแลบรายค่า+ติดตามพบแพทย์ (v48) / ทดสอบสมรรถภาพ / การ์ดวัคซีน | `health.php`, `vaccine.php` |
 | [`training.md`](docs/notes/training.md) | ประวัติการฝึกอบรม (v35) | `training.php` |
 | [`push.md`](docs/notes/push.md) | แจ้งเตือนเข้ามือถือ Web Push (v37) + เก็บข้อมูลอุปกรณ์ | `push.php`, `sw.js`, `Push` ใน app.js |
 | [`settings.md`](docs/notes/settings.md) | หน้าตั้งค่าแอดมิน 5 แท็บย่อย (v41): โครง, แถบบันทึกลอย, กับดัก `saveSettings`/`.seg-5` | `vSettings`, `saveSettings`, เพิ่ม setting ใหม่ |

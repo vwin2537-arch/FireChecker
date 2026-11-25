@@ -629,3 +629,34 @@ body.rpt-open { overflow: hidden; }
   .seg-5 button { flex-direction:row; gap:6px; padding:8px 12px; font-size:13.5px; }
   .seg-5 button .si { font-size:inherit; }
 }
+
+/* ---------- ผลแลบ + ติดตามพบแพทย์ (v48) ---------- */
+.lab-xray { margin-top:8px; padding:9px 12px; border-radius:10px; font-size:13.5px; background:var(--surface); border-left:3px solid var(--ink-3); }
+.lab-xray b { font-weight:500; margin-right:4px; }
+.lab-xray.lab-ok { border-left-color:var(--ok); } .lab-xray.lab-warn { border-left-color:var(--late); background:#fdfaf3; }
+.lab-xray.lab-bad { border-left-color:var(--absent); background:#fdf5f5; color:var(--absent); }
+.lab-list { margin-top:8px; }
+.lab-g { border-bottom:1px solid var(--line); }
+.lab-g:last-of-type { border-bottom:none; }
+.lab-g > summary { display:flex; align-items:center; gap:10px; padding:10px 2px; cursor:pointer; list-style:none; }
+.lab-g > summary::-webkit-details-marker, .h-rec > summary::-webkit-details-marker { display:none; }
+.lab-g > summary::after { content:'▾'; color:var(--ink-3); font-size:12px; flex:0 0 auto; }
+.lab-g[open] > summary::after { content:'▴'; }
+.lab-gn { flex:0 0 auto; max-width:60%; font-size:14px; }
+.lab-gs { flex:1; min-width:0; display:flex; flex-wrap:wrap; gap:4px 10px; justify-content:flex-end; text-align:right; }
+.lab-bad { font-size:12px; color:var(--late); } .lab-bad b { font-weight:600; }
+.lab-r { display:flex; gap:8px; padding:5px 8px; font-size:13px; align-items:baseline; }
+.lab-r.is-bad { background:var(--late-bg); border-radius:8px; }
+.lab-n { flex:1; min-width:0; color:var(--ink-2); }
+.lab-v { flex:0 0 auto; font-weight:500; font-variant-numeric:tabular-nums; } .lab-v i { font-style:normal; font-weight:400; font-size:11px; color:var(--ink-3); }
+.lab-ref { flex:0 0 82px; text-align:right; font-size:11.5px; color:var(--ink-3); }
+.h-rec > summary { cursor:pointer; list-style:none; } .h-rec:not([open]) > summary h3 { margin-bottom:0; }
+.h-act { display:flex; justify-content:space-between; gap:8px; margin-top:12px; }
+.lab-form { margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
+.lab-e { display:flex; align-items:center; gap:6px; padding:3px 0; font-size:13px; }
+.lab-e .input { padding:7px 8px; font-size:13px; } .lab-e .le-v { flex:0 0 74px; width:74px; } .lab-e .le-r { flex:0 0 88px; width:88px; color:var(--ink-3); }
+.le-c { flex:0 0 auto; font-size:12px; white-space:nowrap; }
+.ov-row.ov-g { border-left-color:var(--ok); }
+.ov-bar { flex:1; min-width:40px; height:8px; border-radius:99px; background:var(--surface); overflow:hidden; } .ov-bar i { display:block; height:100%; background:var(--late); }
+.ov-cnt { flex:0 0 auto; font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums; }
+.ov-team .lab-gn { flex:0 0 46%; max-width:46%; }

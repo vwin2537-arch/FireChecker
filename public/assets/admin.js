@@ -817,8 +817,39 @@ const Admin = {
     byId('view').innerHTML = this.healthSegHtml() + '<div id="ovBox"><div class="card muted">กำลังโหลด...</div></div>';
     const d = await App.api('health_dashboard');
     byId('ovBox').innerHTML =
+      this.ovFollow(d.follow) + this.ovTeam(d.team) +
       this.ovCard('🩺 สุขภาพ', d.health, 'จากผลตรวจล่าสุด') +
       this.ovCard('🏃 สมรรถภาพ', d.fitness, 'จากรอบทดสอบล่าสุด');
+  },
+
+  // ใครต้องไปหาหมอ (บนสุด) — มาจากสถานะติดตามของผลตรวจ
+  ovFollow(list) {
+    const open = list.filter(f => f.status !== 'done'), done = list.filter(f => f.status === 'done');
+    const row = f => `<button class="ov-row ov-${f.status === 'done' ? 'g' : (f.status === 'wait' || f.overdue) ? 'r' : 'y'}" onclick="Admin.healthOpen(${f.user_id})">
+      <span class="ov-name">${esc(f.name)} ${this.followChip(f)}</span>
+      <span class="ov-iss">${[f.xray, f.note].filter(Boolean).map(esc).join(' · ') || 'หัวหน้าตั้งให้ติดตาม'}</span></button>`;
+    return `<div class="card"><h3>🏥 ต้องไปพบแพทย์ <span class="h-right tiny">${open.length ? `ค้าง ${open.length} คน` : ''}</span></h3>
+      ${open.map(row).join('') || '<div class="empty" style="padding:14px 12px">ไม่มีใครค้างพบแพทย์ค่ะ</div>'}
+      ${done.length ? `<details class="lab-g"><summary><span class="lab-gn">ตรวจแล้ว</span><span class="lab-gs">${done.length} คน</span></summary>${done.map(row).join('')}</details>` : ''}
+    </div>`;
+  },
+
+  followChip(f) {
+    if (f.status === 'done') return healthChip({ label: 'ตรวจแล้ว' + (f.date ? ' ' + thaiDate(f.date, false) : ''), level: 'ok' });
+    if (f.status === 'booked') return healthChip({ label: (f.overdue ? 'เลยวันนัด ' : 'นัด ') + thaiDate(f.date, false), level: f.overdue ? 'bad' : 'warn' });
+    return healthChip({ label: 'รอนัด', level: 'bad' });
+  },
+
+  // ทีมมีเรื่องไหนเยอะ — แตะดูรายชื่อ
+  ovTeam(t) {
+    if (!t.total) return '';
+    const row = it => `<details class="lab-g"><summary><span class="lab-gn">${esc(it.label)}${LAB_DIR[it.dir] || ''}</span>
+        <span class="ov-bar"><i style="width:${Math.round(it.people.length / t.total * 100)}%"></i></span><span class="ov-cnt">${it.people.length}/${t.total}</span></summary>
+      ${it.people.map(p => `<button class="ov-row" onclick="Admin.healthOpen(${p.id})"><span class="ov-name">${esc(p.name)} <span class="tiny">${esc(p.val)}</span></span></button>`).join('')}</details>`;
+    const top = t.items.slice(0, 5), rest = t.items.slice(5);
+    return `<div class="card ov-team"><h3>🔎 ทีมมีเรื่องไหนเยอะ <span class="h-right tiny">จากผลแลบ ${t.total} คน</span></h3>
+      ${top.map(row).join('') || '<div class="empty" style="padding:14px 12px">ไม่มีค่าที่ รพ. ระบุผิดปกติค่ะ</div>'}
+      ${rest.length ? `<details class="lab-g"><summary><span class="lab-gn">เรื่องอื่น ๆ</span><span class="lab-gs tiny">${rest.length} เรื่อง</span></summary>${rest.map(row).join('')}</details>` : ''}</div>`;
   },
 
   ovCard(title, s, sub) {
@@ -852,7 +883,7 @@ const Admin = {
       ? `<div class="alert-bar" style="margin-bottom:12px">⚠️ ${esc(u.name)} ยัง${!u.birthdate ? 'ไม่มีวันเกิด' : ''}${(!u.gender && !u.birthdate) ? '+' : ''}${!u.gender ? 'ไม่ระบุเพศ' : ''} — บันทึกผลตรวจได้ แต่รอบเอวจะยังไม่จัดระดับ (ตั้งได้ที่แท็บเจ้าหน้าที่)</div>`
       : '';
     // ฟอร์มกรอกผลตรวจใหม่
-    const form = `<div class="card"><h3>➕ บันทึกผลตรวจใหม่</h3>
+    const form = `<div class="card"><details class="h-rec"${d.records.length ? '' : ' open'}><summary><h3>➕ บันทึกผลตรวจใหม่</h3></summary>
       ${warn}
       <div class="grid-2">
         <div class="field"><label>วันที่ตรวจ</label><input type="date" class="input" id="hDate" value="${todayStr()}"></div>
@@ -872,16 +903,72 @@ const Admin = {
       </div>
       <div class="field"><label>ผลตรวจอื่น ๆ / หมายเหตุ</label><textarea class="input" id="hNote" rows="2" placeholder="เช่น น้ำตาลในเลือด ไขมัน ฯลฯ"></textarea></div>
       <button class="btn btn-primary btn-block" onclick="Admin.saveHealth()">บันทึกผลตรวจ</button>
-    </div>`;
-    // ประวัติ
+      <div class="tiny" style="margin-top:6px">บันทึกแล้วกด "✏️ กรอก/แก้ผลแลบ" ในใบนั้นเพื่อใส่ผลเลือด/เอกซเรย์</div>
+    </details></div>`;
+    // ผลตรวจทุกครั้ง — ใบล่าสุดเปิดไว้ ใบเก่าพับ
+    this.healthRecs = d.records; this.labCat = d.lab_catalog;
     const hist = d.records.length
-      ? `<div class="card"><h3>ประวัติผลตรวจ <span class="h-right">${d.records.length} ครั้ง${age !== null ? ` • อายุ ${age} ปี` : ''}</span></h3>
-          ${d.records.map(r => `<div class="list-row"><span class="dot" style="background:#0ea5e9"></span>
-            <div class="lr-main"><div class="lr-title">${thaiDate(r.record_date)}${r.checkup_place ? ` <span class="tiny">· ${esc(r.checkup_place)}</span>` : ''}</div>
-              <div class="lr-sub">${healthSummary(r)}${r.bmi_class ? ' · ' + healthChip(r.bmi_class) : ''}${r.bp_class ? ' ' + healthChip(r.bp_class) : ''}</div></div>
-            <button class="btn btn-danger-ghost btn-sm" onclick="Admin.delHealth(${r.id})">ลบ</button></div>`).join('')}</div>`
+      ? d.records.map((r, i) => `<div class="card"><details class="h-rec"${i ? '' : ' open'}>
+          <summary><h3>${thaiDate(r.record_date)} ${r.follow_status ? this.followChip({ status: r.follow_status, date: r.follow_date, overdue: r.follow_status === 'booked' && r.follow_date < todayStr() }) : ''}
+            <span class="h-right">${!i && age !== null ? `อายุ ${age} ปี` : ''}</span></h3></summary>
+          <div class="lr-sub tiny">${r.checkup_place ? '📍 ' + esc(r.checkup_place) + ' · ' : ''}${healthSummary(r)}</div>
+          <div style="margin:6px 0">${r.bmi_class ? 'BMI ' + healthChip(r.bmi_class) : ''}${r.bp_class ? ' ความดัน ' + healthChip(r.bp_class) : ''}${r.waist_class ? ` รอบเอว ${+r.waist_cm} ` + healthChip(r.waist_class) : ''}</div>
+          ${healthLabsHtml(r)}
+          ${r.note ? `<div class="hm-note">📝 ${esc(r.note)}</div>` : ''}
+          ${this.followForm(r)}
+          <div id="hEdit${r.id}"></div>
+          <div class="h-act"><button class="btn btn-ghost btn-sm" onclick="Admin.labEdit(${r.id})">✏️ กรอก/แก้ผลแลบ</button>
+            <button class="btn btn-danger-ghost btn-sm" onclick="Admin.delHealth(${r.id})">ลบ</button></div>
+        </details></div>`).join('')
       : '<div class="card empty"><span class="e-ico">🩺</span>ยังไม่มีบันทึกผลตรวจของคนนี้</div>';
-    byId('hDetail').innerHTML = form + hist;
+    byId('hDetail').innerHTML = hist + form;
+  },
+
+  followForm(r) {
+    const o = (v, l) => `<option value="${v}"${(r.follow_status || '') === v ? ' selected' : ''}>${l}</option>`;
+    return `<details class="lab-g"${r.follow_status ? ' open' : ''}><summary><span class="lab-gn">🏥 ติดตามพบแพทย์</span><span class="lab-gs tiny">เห็นเฉพาะหัวหน้า</span></summary>
+      <div class="grid-2" style="margin-top:8px">
+        <div class="field"><label>สถานะ</label><select class="select" id="fs${r.id}">${o('', 'ไม่ต้องติดตาม')}${o('wait', 'รอนัด')}${o('booked', 'นัดแล้ว')}${o('done', 'ตรวจแล้ว')}</select></div>
+        <div class="field"><label>วันนัด / วันที่ตรวจ</label><input type="date" class="input" id="fd${r.id}" value="${r.follow_date || ''}"></div>
+      </div>
+      <div class="field"><label>หมายเหตุ</label><input class="input" id="fn${r.id}" value="${esc(r.follow_note)}" placeholder="เช่น นัดอายุรกรรม รพ.พหลฯ"></div>
+      <button class="btn btn-ghost btn-sm" onclick="Admin.followSave(${r.id})">บันทึกการติดตาม</button></details>`;
+  },
+
+  async followSave(id) {
+    const d = await App.api('health_follow_save', { record_id: id, status: byId('fs' + id).value, date: byId('fd' + id).value, note: byId('fn' + id).value });
+    toast(d.message);
+    this.loadHealthDetail();
+  },
+
+  // ฟอร์มแลบสร้างจาก lab_catalog ของ server (ค่าเดิมในใบมาก่อน ค่าปกติตั้งต้นใช้เฉพาะช่องใหม่)
+  labEdit(id) {
+    const r = this.healthRecs.find(x => +x.id === id), cur = Object.fromEntries(r.labs.map(l => [l.code, l]));
+    const lv = (v, l) => `<option value="${v}"${(r.xray_level || '') === v ? ' selected' : ''}>${l}</option>`;
+    const groups = [...new Set(this.labCat.map(c => c.group))].map(g => `<div class="ov-sec">${esc(g)}</div>` +
+      this.labCat.filter(c => c.group === g).map(c => {
+        const l = cur[c.code];
+        return `<div class="lab-e" data-code="${c.code}"><span class="lab-n">${esc(c.label)}</span>
+          <input class="input le-v" value="${l ? esc(l.val) : ''}" placeholder="ค่า"><input class="input le-r" value="${esc(l ? l.ref : c.ref)}" placeholder="ค่าปกติ">
+          <label class="le-c"><input type="checkbox" class="le-a"${l && l.abnormal ? ' checked' : ''}> ผิด</label></div>`;
+      }).join('')).join('');
+    byId('hEdit' + id).innerHTML = `<div class="lab-form">
+      <div class="grid-2"><div class="field"><label>เอกซเรย์ปอด (ตามที่หมอเขียน)</label><input class="input" id="leX" value="${esc(r.xray)}"></div>
+        <div class="field"><label>ระดับ</label><select class="select" id="leXl">${lv('', '— ไม่ได้ตรวจ —')}${lv('ok', 'ปกติ')}${lv('warn', 'เฝ้าระวัง')}${lv('refer', 'หมอสั่งพบแพทย์')}</select></div></div>
+      ${groups}
+      <div class="field" style="margin-top:12px"><label>สรุปผลที่หมอเขียน</label><input class="input" id="leS" value="${esc(r.doctor_summary)}"></div>
+      <div class="field"><label>หมายเหตุอื่น</label><textarea class="input" id="leN" rows="2">${esc(r.note)}</textarea></div>
+      <button class="btn btn-primary btn-block" onclick="Admin.labSave(${id})">บันทึกผลแลบ</button></div>`;
+    byId('hEdit' + id).scrollIntoView({ behavior: 'smooth' });
+  },
+
+  async labSave(id) {
+    const labs = [...document.querySelectorAll('#hEdit' + id + ' .lab-e')].map(e => ({ code: e.dataset.code,
+      val: e.querySelector('.le-v').value, ref: e.querySelector('.le-r').value, abn: e.querySelector('.le-a').checked ? 1 : 0 }));
+    const d = await App.api('health_labs_save', { record_id: id, labs, xray: byId('leX').value, xray_level: byId('leXl').value,
+      doctor_summary: byId('leS').value, note: byId('leN').value });
+    toast(d.message);
+    this.loadHealthDetail();
   },
 
   async saveHealth() {

@@ -95,6 +95,12 @@ function ensure_admin(): void {
         db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     }
     try {
+        db()->query('SELECT 1 FROM health_labs LIMIT 1');
+    } catch (PDOException $e) {
+        if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
+        db()->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    }
+    try {
         db()->query('SELECT 1 FROM fitness_items LIMIT 1');
     } catch (PDOException $e) {
         if (($e->errorInfo[0] ?? '') !== '42S02') throw $e;   // ไม่ใช่ table-not-found
@@ -271,6 +277,21 @@ function ensure_admin(): void {
     )->fetchColumn();
     if (!(int)$hasFitNotified) {
         db()->exec("ALTER TABLE fitness_rounds ADD COLUMN notified_at DATETIME NULL AFTER note");
+    }
+
+    // migrate: health_records เอกซเรย์/สรุปหมอ/ติดตามพบแพทย์ (v48) — probe คอลัมน์แรกคุมทั้งชุด
+    $hasXray = db()->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_records' AND COLUMN_NAME = 'xray'"
+    )->fetchColumn();
+    if (!(int)$hasXray) {
+        db()->exec("ALTER TABLE health_records
+                    ADD COLUMN xray VARCHAR(255) NOT NULL DEFAULT '' AFTER note,
+                    ADD COLUMN xray_level VARCHAR(10) NULL AFTER xray,
+                    ADD COLUMN doctor_summary VARCHAR(255) NOT NULL DEFAULT '' AFTER xray_level,
+                    ADD COLUMN follow_status VARCHAR(10) NULL AFTER doctor_summary,
+                    ADD COLUMN follow_date DATE NULL AFTER follow_status,
+                    ADD COLUMN follow_note VARCHAR(255) NOT NULL DEFAULT '' AFTER follow_date");
     }
 }
 

@@ -225,9 +225,26 @@ CREATE TABLE IF NOT EXISTS health_records (
   bp_dia        INT NULL,                      -- ความดันตัวล่าง (DBP)
   pulse         INT NULL,                      -- ชีพจรขณะพัก (ครั้ง/นาที)
   note          VARCHAR(500) NOT NULL DEFAULT '',  -- ผลตรวจอื่น ๆ / หมายเหตุ
+  xray          VARCHAR(255) NOT NULL DEFAULT '',  -- ผลเอกซเรย์ปอดตามที่หมอเขียน (v48)
+  xray_level    VARCHAR(10) NULL,              -- ok / warn / refer (หมอสั่งพบแพทย์)
+  doctor_summary VARCHAR(255) NOT NULL DEFAULT '', -- สรุปผลที่หมอเขียนในใบ
+  follow_status VARCHAR(10) NULL,              -- ติดตามพบแพทย์: wait / booked / done (NULL = ไม่ต้องติดตาม)
+  follow_date   DATE NULL,                     -- วันนัด/วันที่ไปตรวจ
+  follow_note   VARCHAR(255) NOT NULL DEFAULT '',  -- หมายเหตุติดตาม (เห็นเฉพาะแอดมิน)
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_user_date (user_id, record_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ผลแลบรายค่า (v48) — เกณฑ์+ธงผิดปกติเก็บตามที่ใบ รพ. พิมพ์มา ไม่คำนวณเอง
+CREATE TABLE IF NOT EXISTS health_labs (
+  record_id INT NOT NULL,
+  code      VARCHAR(12) NOT NULL,              -- key ใน HEALTH_LABS (health.php)
+  val       VARCHAR(30) NOT NULL DEFAULT '',   -- ตัวเลขหรือข้อความ (Negative / Trace / 5-10)
+  ref       VARCHAR(40) NOT NULL DEFAULT '',   -- ค่าปกติในใบ
+  abnormal  TINYINT(1) NOT NULL DEFAULT 0,     -- รพ. ระบุผิดปกติ
+  PRIMARY KEY (record_id, code),
+  FOREIGN KEY (record_id) REFERENCES health_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------- ทดสอบสมรรถภาพ (โซนสุขภาพ เฟส 2) ----------

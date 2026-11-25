@@ -988,6 +988,7 @@ const App = {
         ${metric('ชีพจร', latest.pulse, 'ครั้ง/นาที', latest.pulse_class)}
       </div>
       ${latest.note ? `<div class="hm-note">📝 ${esc(latest.note)}</div>` : ''}
+      ${healthLabsHtml(latest)}
     </div>`;
 
     // กราฟแนวโน้มน้ำหนัก (ถ้ามี ≥2 ครั้งที่ชั่งน้ำหนัก)
@@ -1347,6 +1348,29 @@ const VAC_ICON = { ok: '🟢', warn: '🟡', bad: '🔴', none: '⚪️' };
 function vaccineChip(st) {
   const c = st.level === 'none' ? '#64748b' : (HEALTH_LV[st.level] || '#64748b');
   return `<span class="hchip" style="background:${c}1a;color:${c}">${VAC_ICON[st.level] || ''} ${esc(st.label)}</span>`;
+}
+// ผลเอกซเรย์ + แลบแยกหมวดพับได้ (ใช้ทั้งหน้า จนท. และแอดมิน) — ธงผิดปกติมาจากใบ รพ.
+const LAB_DIR = { hi: ' ▲', lo: ' ▼' };
+function healthLabsHtml(r) {
+  const labs = r.labs || [];
+  const tone = { ok: 'ok', warn: 'warn', refer: 'bad' }[r.xray_level] || 'info';
+  let html = '';
+  if (r.xray) html += `<div class="lab-xray lab-${tone}"><b>🫁 เอกซเรย์ปอด</b> ${esc(r.xray)}</div>`;
+  if (r.doctor_summary) html += `<div class="lab-xray lab-info"><b>👨‍⚕️ สรุปในใบ</b> ${esc(r.doctor_summary)}</div>`;
+  if (!labs.length) return html;
+  const val = l => l.val === '' ? 'ผิดปกติ' : esc(l.val);
+  const groups = [...new Set(labs.map(l => l.group))].map(g => {
+    const items = labs.filter(l => l.group === g), bad = items.filter(l => l.abnormal);
+    const sum = bad.length
+      ? bad.map(l => `<span class="lab-bad">${esc(l.label)} <b>${val(l)}${LAB_DIR[l.dir] || ''}</b></span>`).join('')
+      : healthChip({ label: 'ปกติ', level: 'ok' });
+    return `<details class="lab-g"><summary><span class="lab-gn">${esc(g)}</span><span class="lab-gs">${sum}</span></summary>
+      ${items.map(l => `<div class="lab-r${l.abnormal ? ' is-bad' : ''}"><span class="lab-n">${esc(l.label)}</span>
+        <span class="lab-v">${val(l)}${LAB_DIR[l.dir] || ''} <i>${esc(l.unit)}</i></span><span class="lab-ref">${esc(l.ref)}</span></div>`).join('')}
+    </details>`;
+  }).join('');
+  return html + `<div class="lab-list">${groups}</div>
+    <div class="tiny" style="margin-top:6px">แตะหมวดเพื่อดูทุกค่า · ช่องขวาสุด = ค่าปกติในใบ · ผิดปกติตามที่ รพ. ระบุ</div>`;
 }
 // สรุปสั้น 1 บรรทัดของผลตรวจ (ใช้ในรายการประวัติ)
 function healthSummary(r) {

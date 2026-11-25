@@ -18,6 +18,16 @@
 - **แดชบอร์ดภาพรวม `h_health_dashboard` (v21, admin, แท็บ 📊 ภาพรวม = แท็บแรก+default):** สรุปคนต้องดูแล🔴/เฝ้าระวัง🟡/ปกติ🟢 **แยก 2 การ์ด สุขภาพ & สมรรถภาพ** — ผลล่าสุดต่อคน (health = MAX(record_date) / fitness = round test_date ล่าสุด), เฉพาะ staff active, **ซ่อนคนไม่มีข้อมูล**. เกณฑ์: สุขภาพ level bad→🔴 / warn→🟡. สมรรถภาพใช้**ตำแหน่งระดับใน `criteria_json.levels`** (ล่างสุด→🔴, รองล่างสุด→🟡) **ไม่ใช้ `tone` ดิบ** (เพราะ fitness_tone ให้ "ดี"=warn จะ false-alarm) · cap/ไม่มี levels → พึ่ง tone bad→🔴. ลิสต์เฉพาะ 🔴🟡 พร้อม issues, กดชื่อ→`Admin.healthOpen(uid)` ไปแท็บ record รายคน. render `Admin.vHealthOverview`/`ovCard` (admin.js), style `.ov-*` (app.css)
 - migration: probe `health_records` + `fitness_items` (42S02→schema.sql) — pattern เดียวกับ night_shifts
 
+## ผลแลบรายค่า + ติดตามพบแพทย์ (v48)
+
+- **`health_labs`** (1 แถว = 1 ค่า, PK record_id+code, CASCADE ตาม `health_records`) — `val` เป็นข้อความ (Negative/Trace/5-10) · `ref`+`abnormal` เก็บ**ตามที่ใบ รพ. พิมพ์** ห้ามคำนวณธงเอง · `lab_dir()` ใช้แค่โชว์ลูกศร ▲▼
+- **`HEALTH_LABS`** (health.php) = แม่แบบรายการแลบที่เดียว ทั้งฟอร์มกรอก + การแสดงผลสร้างจากตัวนี้ — เพิ่มรายการใหม่แก้ที่นี่ที่เดียว (code ยาวได้ 12)
+- คอลัมน์ใหม่ใน `health_records`: `xray`/`xray_level`(ok|warn|refer)/`doctor_summary`/`follow_status`(wait|booked|done|NULL)/`follow_date`/`follow_note` (guarded ALTER probe `xray` ตัวเดียวคุมทั้งชุด)
+- `health_labs_save` = แทนที่แลบทั้งชุด (DELETE+INSERT ใน transaction) · `refer` → `follow_status='wait'` อัตโนมัติ แต่**ไม่ทับสถานะที่ตั้งไว้แล้ว** · `health_follow_save` นัดแล้ว = ต้องมีวัน
+- ภาพรวม: 🏥 ต้องไปพบแพทย์ → 🔎 ทีมมีเรื่องไหนเยอะ (top 5) → การ์ดสีเดิม · สี: refer ที่ยังไม่ done = 🔴, xray warn / แลบธงผิดปกติ = 🟡 · แลบดึงจาก**ใบล่าสุดที่มีแลบ** (จดน้ำหนักอย่างเดียวทีหลังต้องไม่บังแลบ)
+- **`h_health_my` ห้ามส่ง `follow_*`** (เห็นเฉพาะหัวหน้า) · `healthLabsHtml()` (app.js) ใช้ร่วมทั้งสองฝั่ง
+- ค่าที่ผิดปกติเพียงเล็กน้อยก็เป็น 🟡 → เกือบทุกคนเหลือง ใช้การ์ด "ต้องไปพบแพทย์" เป็นตัวบอกความเร่งด่วน ไม่ใช่สี
+
 ## วิ่ง 2 กม. — ท่าแบบ `mode=step` (v45)
 
 เกณฑ์ = การเลือกสรรพนักงานพิทักษ์ป่า 2561 (เอกสารหมายเลข 5, ไฟล์ต้นฉบับใน OneDrive `00_ERW_01_70/`) — 8 ช่วงอายุ × 2 เพศ

@@ -119,6 +119,8 @@ const ACTIONS = [
     'health_admin_list'  => 'h_health_admin_list',
     'health_admin_add'   => 'h_health_admin_add',
     'health_admin_del'   => 'h_health_admin_del',
+    'health_labs_save'   => 'h_health_labs_save',
+    'health_follow_save' => 'h_health_follow_save',
     // ทดสอบสมรรถภาพ (admin)
     'fitness_items_admin' => 'h_fitness_items_admin',
     'fitness_item_save'   => 'h_fitness_item_save',
